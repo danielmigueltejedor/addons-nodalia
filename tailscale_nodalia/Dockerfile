@@ -2,66 +2,53 @@ ARG BUILD_FROM=ghcr.io/hassio-addons/base/amd64:19.0.0
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
 
-# Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Setup base
 ARG BUILD_ARCH=amd64
 ARG TAILSCALE_VERSION="v1.92.5"
+
 RUN \
-    apk add --no-cache \
-        ethtool=6.14.1-r0 \
-        ipcalc=1.0.3-r0 \
-        iproute2=6.15.0-r0 \
-        iptables=1.8.11-r1 \
-        nginx=1.28.0-r3 \
-        coreutils=9.7-r1 \
-        networkmanager=1.52.1-r0 \
-    \
-    && ln -sf /sbin/xtables-nft-multi /sbin/ip6tables \
-    && ln -sf /sbin/xtables-nft-multi /sbin/iptables \
-    \
-    && if [ "${BUILD_ARCH}" = "aarch64" ]; then ARCH="arm64"; fi \
-    && if [ "${BUILD_ARCH}" = "amd64" ]; then ARCH="amd64"; fi \
-    \
-    && curl -L -s \
-        "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION#v}_${ARCH}.tgz" \
-        | tar zxvf - -C /opt/ --strip-components 1 \
-    \
-    && rm -f -r \
-        /opt/systemd
+  apk add --no-cache \
+    ethtool=6.14.1-r0 \
+    ipcalc=1.0.3-r0 \
+    iproute2=6.15.0-r0 \
+    iptables=1.8.11-r1 \
+    nginx=1.28.0-r3 \
+    coreutils=9.7-r1 \
+    networkmanager=1.52.1-r0 \
+  && ln -sf /sbin/xtables-nft-multi /sbin/ip6tables \
+  && ln -sf /sbin/xtables-nft-multi /sbin/iptables \
+  && if [ "${BUILD_ARCH}" = "aarch64" ]; then ARCH="arm64"; fi \
+  && if [ "${BUILD_ARCH}" = "amd64" ]; then ARCH="amd64"; fi \
+  && curl -L -s "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION#v}_${ARCH}.tgz" \
+     | tar zxvf - -C /opt/ --strip-components 1 \
+  && rm -rf /opt/systemd
 
 # Copy root filesystem
 COPY rootfs /
 
-# ✅ FIX: Asegura permisos ejecutables para scripts de s6 (s6-rc, cont-init, services)
-# Esto evita los "Permission denied" (exit 126) si se pierden permisos en git/copias.
-RUN set -euo pipefail; \
-    chmod +x /etc/s6-overlay/scripts/stage2_hook.sh 2>/dev/null || true; \
-    \
-    # s6-rc (lo que te falla: /etc/s6-overlay/s6-rc.d/*/run)
-    if [ -d /etc/s6-overlay/s6-rc.d ]; then \
-      find /etc/s6-overlay/s6-rc.d -type f \( -name run -o -name finish -o -name check \) -exec chmod +x {} \; 2>/dev/null || true; \
-    fi; \
-    \
-    # cont-init.d
-    if [ -d /etc/cont-init.d ]; then \
-      find /etc/cont-init.d -type f -exec chmod +x {} \; 2>/dev/null || true; \
-    fi; \
-    \
-    # services.d (algunos add-ons siguen usándolo)
-    if [ -d /etc/services.d ]; then \
-      find /etc/services.d -type f \( -name run -o -name finish \) -exec chmod +x {} \; 2>/dev/null || true; \
-    fi
+# --- PERMISOS: s6 + scripts + binarios ---
+RUN set -eux; \
+  \
+  # Arregla CRLF (por si Windows/gitattributes)
+  find /etc -type f -maxdepth 5 \( -name "run" -o -name "*.sh" \) -print0 2>/dev/null \
+    | xargs -0 -r sed -i 's/\r$//' || true; \
+  find /usr/bin -type f -maxdepth 1 -print0 2>/dev/null \
+    | xargs -0 -r sed -i 's/\r$//' || true; \
+  \
+  # Ejecutables s6
+  chmod 0755 /etc/s6-overlay/scripts/stage2_hook.sh || true; \
+  find /etc/cont-init.d -type f -print0 2>/dev/null | xargs -0 -r chmod 0755 || true; \
+  find /etc/services.d -type f -name run -print0 2>/dev/null | xargs -0 -r chmod 0755 || true; \
+  find /etc/s6-overlay/s6-rc.d -type f -name run -print0 2>/dev/null | xargs -0 -r chmod 0755 || true; \
+  \
+  # Ejecutables propios usados por post-tailscaled
+  chmod 0755 /usr/bin/subnet-routes || true
 
-HEALTHCHECK \
-    CMD healthcheck
+HEALTHCHECK CMD healthcheck
 
-# S6 Overlay stage 2 hook
 ENV S6_STAGE2_HOOK=/etc/s6-overlay/scripts/stage2_hook.sh
 
-# Build arguments
-ARG BUILD_ARCH
 ARG BUILD_DATE
 ARG BUILD_DESCRIPTION
 ARG BUILD_NAME
@@ -69,22 +56,21 @@ ARG BUILD_REF
 ARG BUILD_REPOSITORY
 ARG BUILD_VERSION
 
-# Labels
 LABEL \
-    io.hass.name="${BUILD_NAME}" \
-    io.hass.description="${BUILD_DESCRIPTION}" \
-    io.hass.arch="${BUILD_ARCH}" \
-    io.hass.type="addon" \
-    io.hass.version=${BUILD_VERSION} \
-    maintainer="Franck Nijhof <frenck@addons.community>" \
-    org.opencontainers.image.title="${BUILD_NAME}" \
-    org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
-    org.opencontainers.image.vendor="Home Assistant Community Add-ons" \
-    org.opencontainers.image.authors="Franck Nijhof <frenck@addons.community>" \
-    org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.url="https://addons.community" \
-    org.opencontainers.image.source="https://github.com/${BUILD_REPOSITORY}" \
-    org.opencontainers.image.documentation="https://github.com/${BUILD_REPOSITORY}/blob/main/README.md" \
-    org.opencontainers.image.created=${BUILD_DATE} \
-    org.opencontainers.image.revision=${BUILD_REF} \
-    org.opencontainers.image.version=${BUILD_VERSION}
+  io.hass.name="${BUILD_NAME}" \
+  io.hass.description="${BUILD_DESCRIPTION}" \
+  io.hass.arch="${BUILD_ARCH}" \
+  io.hass.type="addon" \
+  io.hass.version=${BUILD_VERSION} \
+  maintainer="Franck Nijhof <frenck@addons.community>" \
+  org.opencontainers.image.title="${BUILD_NAME}" \
+  org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
+  org.opencontainers.image.vendor="Home Assistant Community Add-ons" \
+  org.opencontainers.image.authors="Franck Nijhof <frenck@addons.community>" \
+  org.opencontainers.image.licenses="MIT" \
+  org.opencontainers.image.url="https://addons.community" \
+  org.opencontainers.image.source="https://github.com/${BUILD_REPOSITORY}" \
+  org.opencontainers.image.documentation="https://github.com/${BUILD_REPOSITORY}/blob/main/README.md" \
+  org.opencontainers.image.created=${BUILD_DATE} \
+  org.opencontainers.image.revision=${BUILD_REF} \
+  org.opencontainers.image.version=${BUILD_VERSION}
