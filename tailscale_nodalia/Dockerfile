@@ -27,23 +27,22 @@ RUN \
 # Copy root filesystem
 COPY rootfs /
 
-# --- PERMISOS: s6 + scripts + binarios ---
+# ✅ FIX seguro: solo scripts del add-on (NO tocar /usr/bin del sistema base)
 RUN set -eux; \
   \
-  # Arregla CRLF (por si Windows/gitattributes)
-  find /etc -type f -maxdepth 5 \( -name "run" -o -name "*.sh" \) -print0 2>/dev/null \
-    | xargs -0 -r sed -i 's/\r$//' || true; \
-  find /usr/bin -type f -maxdepth 1 -print0 2>/dev/null \
-    | xargs -0 -r sed -i 's/\r$//' || true; \
+  # Normaliza CRLF SOLO en scripts típicos de add-ons
+  find /etc/s6-overlay -type f \( -name "run" -o -name "*.sh" \) -exec sed -i 's/\r$//' {} \; 2>/dev/null || true; \
+  find /etc/cont-init.d -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true; \
+  find /etc/services.d -type f \( -name "run" -o -name "finish" \) -exec sed -i 's/\r$//' {} \; 2>/dev/null || true; \
   \
-  # Ejecutables s6
-  chmod 0755 /etc/s6-overlay/scripts/stage2_hook.sh || true; \
-  find /etc/cont-init.d -type f -print0 2>/dev/null | xargs -0 -r chmod 0755 || true; \
-  find /etc/services.d -type f -name run -print0 2>/dev/null | xargs -0 -r chmod 0755 || true; \
-  find /etc/s6-overlay/s6-rc.d -type f -name run -print0 2>/dev/null | xargs -0 -r chmod 0755 || true; \
+  # Permisos ejecutables de s6
+  chmod 0755 /etc/s6-overlay/scripts/stage2_hook.sh 2>/dev/null || true; \
+  find /etc/s6-overlay/s6-rc.d -type f -name run -exec chmod 0755 {} \; 2>/dev/null || true; \
+  find /etc/cont-init.d -type f -exec chmod 0755 {} \; 2>/dev/null || true; \
+  find /etc/services.d -type f -name run -exec chmod 0755 {} \; 2>/dev/null || true; \
   \
-  # Ejecutables propios usados por post-tailscaled
-  chmod 0755 /usr/bin/subnet-routes || true
+  # Permisos de scripts propios si existen (ajusta nombres si los tienes)
+  chmod 0755 /usr/bin/subnet-routes 2>/dev/null || true
 
 HEALTHCHECK CMD healthcheck
 
