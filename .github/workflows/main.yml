@@ -126,13 +126,10 @@ jobs:
             exit 1
           fi
 
-          # bump minor: X.Y.Z -> X.(Y+1).0
-          NEW_VER=$(python3 -c 'import re,sys
-v=sys.argv[1].strip()
-m=re.match(r"^(\d+)\.(\d+)\.(\d+)$", v)
-if not m: raise SystemExit(f"Version no valida en config.yaml: {v}")
-x,y,z=map(int,m.groups())
-print(f"{x}.{y+1}.0")' "${CURRENT_VER}")
+          # bump minor: X.Y.Z -> X.(Y+1).0  (todo en 1 línea, sin saltos)
+          NEW_VER=$(python3 -c 'import re,sys; v=sys.argv[1].strip(); m=re.match(r"^(\d+)\.(\d+)\.(\d+)$", v); 
+if not m: raise SystemExit(f"Version no valida en config.yaml: {v}"); 
+x,y,z=map(int,m.groups()); print(f"{x}.{y+1}.0")' "${CURRENT_VER}")
 
           sed -i -E "s/^version: .*/version: ${NEW_VER}/" "${DIR}/config.yaml"
           echo "Bump version: ${CURRENT_VER} -> ${NEW_VER}"
