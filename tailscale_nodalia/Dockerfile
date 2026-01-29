@@ -5,7 +5,7 @@ FROM ${BUILD_FROM}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG BUILD_ARCH=amd64
-ARG TAILSCALE_VERSION="v1.92.5"
+ARG TAILSCALE_VERSION="1.94.1"
 
 RUN \
   apk add --no-cache \
