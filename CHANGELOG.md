@@ -4,6 +4,13 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 1.2.9 - 2026-02-09
+### Fixed
+- Simplify ingress proxy template for Tailscale Web UI:
+  - Remove IP allow/deny filter in ingress template.
+  - Remove JavaScript `sub_filter` rewrite (`window.open`) and use direct proxying.
+  - This improves compatibility with Home Assistant UI/webview flows where the page could remain loading indefinitely.
+
 ## 1.2.8 - 2026-02-09
 ### Fixed
 - Improve ingress compatibility for Web UI:
