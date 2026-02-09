@@ -1,4 +1,4 @@
-# Home Assistant Add-on: Tailscale (Nodalia)
+# Home Assistant App: Tailscale (Nodalia)
 
 Tailscale es una VPN “zero config” que se instala en minutos, incluyendo tu instancia de Home Assistant.
 
@@ -15,7 +15,7 @@ Es gratuita para uso personal/hobby (hasta 100 dispositivos en una cuenta). Pued
 
 https://login.tailscale.com/start
 
-También puedes crear la cuenta durante el proceso de autenticación del add-on.
+También puedes crear la cuenta durante el proceso de autenticación de la aplicación.
 
 ---
 
@@ -23,16 +23,16 @@ También puedes crear la cuenta durante el proceso de autenticación del add-on.
 
 ### A) Añadir el repositorio “Nodalia” en Home Assistant
 
-1. En Home Assistant ve a: **Settings → Add-ons → Add-on Store**
+1. En Home Assistant ve a: **Settings → Apps → Apps Store**
 2. Menú (⋮) → **Repositories**
 3. Añade este repositorio:
 
    https://github.com/danielmigueltejedor/addon-tailscale-nodalia
 
 4. Menú (⋮) → **Reload**
-5. Instala el add-on **Tailscale (Nodalia)**.
-6. Inicia el add-on.
-7. Abre el **Web UI** del add-on para completar la autenticación.
+5. Instala la aplicación **Tailscale (Nodalia)**.
+6. Inicia la aplicación.
+7. Abre el **Web UI** de la aplicación para completar la autenticación.
 
 > **Nota:** algunos navegadores dan problemas en el paso de login; suele ir mejor desde escritorio con Chrome.
 
@@ -40,48 +40,44 @@ También puedes crear la cuenta durante el proceso de autenticación del add-on.
 
 ## Configuración
 
-Este add-on tiene pocas opciones propias.
+Esta aplicación tiene pocas opciones propias.
 
 La mayoría de la configuración de tu red Tailscale se hace desde su panel:
 
 https://login.tailscale.com/
 
-El add-on puede exponer capacidades como **Exit Node**, y (si tu red lo permite) también puede anunciar rutas a subredes.
+La aplicación puede exponer capacidades como **Exit Node**, y (si tu red lo permite) también puede anunciar rutas a subredes.
 
 > 💡 Recomendación: considera desactivar *key expiry* en el dispositivo de Home Assistant para evitar perder acceso.  
 > Más info: https://tailscale.com/kb/1028/key-expiry
 
-Ejemplo completo:
+Ejemplo rápido recomendado:
 
 ```yaml
-accept_dns: true
-accept_routes: true
-advertise_exit_node: true
-advertise_connector: true
-advertise_routes:
-  - 192.168.1.0/24
-  - fd12:3456:abcd::/64
-exit_node: 100.101.102.103
+setup_profile: home_access
 log_level: info
-login_server: "https://controlplane.tailscale.com"
 share_homeassistant: disabled
-share_on_port: 443
-snat_subnet_routes: true
-stateful_filtering: false
-tags:
-  - tag:example
-  - tag:homeassistant
 taildrop: true
-userspace_networking: true
 ```
 
 > [!NOTE]
 > Algunas opciones también aparecen en la Web UI de Tailscale, pero ahí pueden ser “solo lectura”.
-> Si las cambias en la Web UI, podrías perder esos cambios al reiniciar el add-on.
+> Si las cambias en la Web UI, podrías perder esos cambios al reiniciar la aplicación.
 
 ---
 
 ## Opciones
+
+### `setup_profile`
+
+Perfil de configuración simplificada para no tener que ajustar todas las opciones manualmente:
+
+- `custom` (por defecto): comportamiento manual, sin sobrescribir tu configuración.
+- `home_access`: perfil recomendado para acceso remoto a Home Assistant.
+- `subnet_router`: pensado para routing de subredes (acepta rutas y, si `advertise_routes` está vacío, anuncia automáticamente subredes locales).
+- `exit_node`: activa el nodo como exit node con ajustes seguros para ese caso.
+
+---
 
 ### `accept_dns`
 
@@ -101,7 +97,7 @@ Permite aceptar rutas de subred anunciadas por otros nodos de tu tailnet.
 
 Más info: https://tailscale.com/kb/1019/subnets
 
-Si no se configura, está habilitado por defecto.
+Si no se configura, está deshabilitado por defecto.
 
 ---
 
@@ -111,7 +107,7 @@ Anuncia este dispositivo como **Exit Node**.
 
 Más info: https://tailscale.com/kb/1103/exit-nodes
 
-Si no se configura, está habilitado por defecto.
+Si no se configura, está deshabilitado por defecto.
 
 > **Nota:** no puedes anunciar Exit Node y, a la vez, configurar `exit_node` (usar otro exit node).
 
@@ -123,7 +119,7 @@ Anuncia este dispositivo como **App Connector**.
 
 Más info: https://tailscale.com/kb/1281/app-connectors
 
-Si no se configura, está habilitado por defecto.
+Si no se configura, está deshabilitado por defecto.
 
 ---
 
@@ -135,7 +131,8 @@ Para desactivar: pon una lista vacía `[]`.
 
 Más info: https://tailscale.com/kb/1019/subnets
 
-Si no se configura, por defecto el add-on puede anunciar rutas a tus subredes en interfaces soportadas (según el entorno de red de Supervisor).
+Si no se configura, por defecto no anuncia rutas (lista vacía).
+Con `setup_profile: subnet_router`, si `advertise_routes` está vacío, se auto-detectan y anuncian subredes locales.
 
 ---
 
@@ -163,7 +160,7 @@ Controla el nivel de logs:
 - `error`
 - `fatal`
 
-Si `log_level` es `info` o menor, el add-on también opta por no subir logs del cliente a log.tailscale.io.
+Si `log_level` es `info` o menor, la aplicación también opta por no subir logs del cliente a log.tailscale.io.
 
 ---
 
@@ -257,7 +254,7 @@ Más info: https://tailscale.com/kb/1106/taildrop
 
 Usa modo userspace para hacer accesible Home Assistant (y opcionalmente subredes) dentro de tu tailnet.
 
-Si no se configura, está habilitado por defecto.
+Si no se configura, está deshabilitado por defecto.
 
 Si necesitas acceder desde Home Assistant a otros clientes de tu tailnet (y resolver por nombre),
 puede interesarte desactivar este modo para crear interfaz `tailscale0` en el host y ajustar DNS.
@@ -295,4 +292,3 @@ MIT License
 Copyright (c) 2021-2025 Franck Nijhof
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
-

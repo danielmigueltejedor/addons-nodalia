@@ -6,6 +6,8 @@
 # ==============================================================================
 declare -a options
 declare udp_port
+declare setup_profile
+declare userspace_networking_enabled
 
 bashio::log.info 'Starting Tailscale...'
 
@@ -23,10 +25,24 @@ if bashio::var.has_value "${udp_port}"; then
   options+=("--port=${udp_port}")
 fi
 
-# Use userspace networking by default when not set, or when explicitly enabled
+# Effective userspace mode (aligned with setup_profile behavior)
+setup_profile="$(bashio::config "setup_profile" "custom")"
+userspace_networking_enabled=false
 if ! bashio::config.has_value "userspace_networking" || \
   bashio::config.true "userspace_networking";
 then
+  userspace_networking_enabled=true
+fi
+
+case "${setup_profile}" in
+  home_access|subnet_router|exit_node)
+    userspace_networking_enabled=false
+    ;;
+  *)
+    ;;
+esac
+
+if bashio::var.true "${userspace_networking_enabled}"; then
   options+=(--tun=userspace-networking)
 fi
 

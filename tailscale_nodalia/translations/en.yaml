@@ -20,14 +20,14 @@ configuration:
     description: >-
       This option allows you to accept subnet routes advertised by other nodes
       in your tailnet.
-      When not set, this option is enabled by default.
+      When not set, this option is disabled by default.
   advertise_exit_node:
     name: Advertise as an exit node
     description: >-
       This option allows you to advertise this Tailscale instance as an exit node.
       By setting a device on your network as an exit node, you can use it to
       route all your public internet traffic as needed, like a consumer VPN.
-      When not set, this option is enabled by default.
+      When not set, this option is disabled by default.
   advertise_connector:
     name: Advertise as an app connector
     description: >-
@@ -35,14 +35,15 @@ configuration:
       accessible over your tailnet, and the domains for those applications. Any traffic
       for that application is then forced over the tailnet to a node running an app
       connector before egressing to the target domains.
-      When not set, this option is enabled by default.
+      When not set, this option is disabled by default.
   advertise_routes:
     name: Advertise subnet routes
     description: >-
       This option allows you to advertise routes to subnets (accessible on the network
       your device is connected to) to other clients on your tailnet.
-      When not set, the add-on by default will advertise routes to your subnets on all
-      supported interfaces.
+      When not set, no subnet routes are advertised by default.
+      With `setup_profile: subnet_router`, empty `advertise_routes` enables local
+      subnet auto-detection and advertisement.
   exit_node:
     name: Use exit node
     description: >-
@@ -54,8 +55,8 @@ configuration:
   log_level:
     name: Log level
     description: >-
-      Controls the level of log details the add-on provides.
-      This only applies to the add-on itself, not Tailscale.
+      Controls the level of log details the app provides.
+      This only applies to the app itself, not Tailscale.
   login_server:
     name: Login server
     description: >-
@@ -110,7 +111,7 @@ configuration:
       If you need to access other clients on your tailnet from your Home
       Assistant instance, disable userspace networking mode, which will create a
       `tailscale0` network interface on your host.
-      When not set, this option is enabled by default.
+      When not set, this option is disabled by default.
 network:
   41641/udp: >-
     UDP port to listen on for WireGuard and peer-to-peer traffic.

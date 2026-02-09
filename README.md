@@ -9,10 +9,10 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.0.1`
+`2.0.2`
 
 Cambios destacados:
-- Simplificación del proxy de Ingress para la Web UI (sin reescritura JS), mejorando compatibilidad y evitando carga infinita.
+- Ajuste del proxy de Ingress para la Web UI con redirección segura fuera del iframe de Home Assistant.
 - Mejoras de estabilidad en arranque y diagnóstico de estado.
 - Comprobación de integridad (SHA256) del binario de Tailscale en build.
 - Mejora de CI para validar scripts y build multi-arquitectura.
@@ -125,7 +125,7 @@ Permite aceptar rutas de subred anunciadas por otros nodos de tu tailnet.
 
 Más info: https://tailscale.com/kb/1019/subnets
 
-Si no se configura, está habilitado por defecto.
+Si no se configura, está deshabilitado por defecto.
 
 ---
 
@@ -135,7 +135,7 @@ Anuncia este dispositivo como **Exit Node**.
 
 Más info: https://tailscale.com/kb/1103/exit-nodes
 
-Si no se configura, está habilitado por defecto.
+Si no se configura, está deshabilitado por defecto.
 
 > **Nota:** no puedes anunciar Exit Node y, a la vez, configurar `exit_node` (usar otro exit node).
 
@@ -147,7 +147,7 @@ Anuncia este dispositivo como **App Connector**.
 
 Más info: https://tailscale.com/kb/1281/app-connectors
 
-Si no se configura, está habilitado por defecto.
+Si no se configura, está deshabilitado por defecto.
 
 ---
 
@@ -159,7 +159,8 @@ Para desactivar: pon una lista vacía `[]`.
 
 Más info: https://tailscale.com/kb/1019/subnets
 
-Si no se configura, por defecto la aplicación puede anunciar rutas a tus subredes en interfaces soportadas (según el entorno de red de Supervisor).
+Si no se configura, por defecto no anuncia rutas (lista vacía).
+Con `setup_profile: subnet_router`, si `advertise_routes` está vacío, se auto-detectan y anuncian subredes locales.
 
 ---
 
@@ -281,7 +282,7 @@ Más info: https://tailscale.com/kb/1106/taildrop
 
 Usa modo userspace para hacer accesible Home Assistant (y opcionalmente subredes) dentro de tu tailnet.
 
-Si no se configura, está habilitado por defecto.
+Si no se configura, está deshabilitado por defecto.
 
 Si necesitas acceder desde Home Assistant a otros clientes de tu tailnet (y resolver por nombre),
 puede interesarte desactivar este modo para crear interfaz `tailscale0` en el host y ajustar DNS.

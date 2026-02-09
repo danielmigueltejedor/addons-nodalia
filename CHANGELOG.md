@@ -4,6 +4,18 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 2.0.2 - 2026-02-09
+### Changed
+- Align ingress fallback server config with ingress template to avoid drift in Web UI behavior.
+- Align README/DOCS/translations defaults with effective `config.yaml` defaults and `setup_profile` behavior.
+- Refresh `tailscale_nodalia/DOCS.md` to use app terminology and include `setup_profile`.
+
+### Fixed
+- Ensure `setup_profile` and `tailscaled` networking mode are consistent:
+  - `tailscaled/run` now applies the effective userspace mode derived from `setup_profile`.
+  - Prevents mismatches where profile-based services expected kernel mode while `tailscaled` still used userspace mode.
+- Add CI metadata consistency checks (version/changelog/docs/translations sync) to prevent release drift.
+
 ## 2.0.1 - 2026-02-09
 ### Fixed
 - Improve Web UI behavior inside Home Assistant ingress panel:

@@ -20,14 +20,14 @@ configuration:
     description: >-
       Esta opcion permite aceptar rutas de subred anunciadas por otros nodos
       de tu tailnet.
-      Si no se configura, esta opcion esta activada por defecto.
+      Si no se configura, esta opcion esta desactivada por defecto.
   advertise_exit_node:
     name: Anunciar como exit node
     description: >-
       Esta opcion permite anunciar esta instancia de Tailscale como exit node.
       Al definir un dispositivo de tu red como exit node, puedes usarlo para
       enrutar todo tu trafico publico de Internet, como una VPN de consumo.
-      Si no se configura, esta opcion esta activada por defecto.
+      Si no se configura, esta opcion esta desactivada por defecto.
   advertise_connector:
     name: Anunciar como app connector
     description: >-
@@ -35,14 +35,15 @@ configuration:
       accesibles desde tu tailnet y los dominios de esas aplicaciones.
       El trafico de esa aplicacion se fuerza por la tailnet hacia un nodo con
       app connector antes de salir hacia los dominios de destino.
-      Si no se configura, esta opcion esta activada por defecto.
+      Si no se configura, esta opcion esta desactivada por defecto.
   advertise_routes:
     name: Anunciar rutas de subred
     description: >-
       Esta opcion permite anunciar rutas hacia subredes (accesibles en la red
       a la que esta conectado tu dispositivo) al resto de clientes de tu tailnet.
-      Si no se configura, la aplicacion anunciara por defecto rutas a tus
-      subredes en todas las interfaces compatibles.
+      Si no se configura, por defecto no se anuncian rutas de subred.
+      Con `setup_profile: subnet_router`, `advertise_routes` vacio habilita
+      auto-deteccion y anuncio de subredes locales.
   exit_node:
     name: Usar exit node
     description: >-
@@ -107,7 +108,7 @@ configuration:
       Esta opcion permite habilitar el modo de red en userspace.
       Si necesitas acceder desde Home Assistant a otros clientes de tu tailnet,
       desactiva este modo para crear la interfaz `tailscale0` en el host.
-      Si no se configura, esta opcion esta activada por defecto.
+      Si no se configura, esta opcion esta desactivada por defecto.
 network:
   41641/udp: >-
     Puerto UDP para WireGuard y trafico peer-to-peer.

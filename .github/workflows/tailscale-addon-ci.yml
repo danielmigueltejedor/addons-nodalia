@@ -14,6 +14,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate metadata consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cfg_version="$(awk -F': *' '/^version:/ {print $2; exit}' tailscale_nodalia/config.yaml)"
+          if [[ -z "${cfg_version}" ]]; then
+            echo "Unable to read version from tailscale_nodalia/config.yaml"
+            exit 1
+          fi
+
+          grep -Eq "^## ${cfg_version} - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md
+          grep -Fq "\`${cfg_version}\`" README.md
+          grep -Fq "setup_profile:" tailscale_nodalia/translations/en.yaml
+          grep -Fq "setup_profile:" tailscale_nodalia/translations/es.yaml
+          grep -Fq "setup_profile" tailscale_nodalia/DOCS.md
+
   shellcheck:
     runs-on: ubuntu-latest
     steps:
