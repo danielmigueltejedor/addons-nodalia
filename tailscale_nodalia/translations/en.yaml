@@ -1,5 +1,14 @@
 ---
 configuration:
+  setup_profile:
+    name: Setup profile
+    description: >-
+      High-level profile to simplify setup.
+      `custom` keeps manual control (current behavior).
+      `home_access` applies safe defaults for remote access to Home Assistant.
+      `subnet_router` enables route acceptance and (when advertise_routes is empty)
+      auto-advertises local subnets.
+      `exit_node` enables advertising this node as an exit node.
   accept_dns:
     name: Accept DNS
     description: >-

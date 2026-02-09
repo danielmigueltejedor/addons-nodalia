@@ -4,6 +4,20 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 2.0.0 - 2026-02-09
+### Changed
+- Major release that consolidates the recent reliability, ingress, security-hardening and CI improvements.
+- Added `setup_profile` (high-level setup profiles) to simplify configuration for common scenarios:
+  - `home_access`
+  - `subnet_router`
+  - `exit_node`
+  - `custom` (manual control, backward-compatible behavior)
+- Added Spanish translation file for add-on options (`translations/es.yaml`), including the new `setup_profile`.
+- Adopted versioning strategy from this release onward:
+  - `X`: major changes.
+  - `Y`: Tailscale upstream version updates.
+  - `Z`: bug fixes and basic improvements.
+
 ## 1.2.9 - 2026-02-09
 ### Fixed
 - Simplify ingress proxy template for Tailscale Web UI:

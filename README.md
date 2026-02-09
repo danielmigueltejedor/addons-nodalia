@@ -9,13 +9,18 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`1.2.9`
+`2.0.0`
 
 Cambios destacados:
 - Simplificación del proxy de Ingress para la Web UI (sin reescritura JS), mejorando compatibilidad y evitando carga infinita.
 - Mejoras de estabilidad en arranque y diagnóstico de estado.
 - Comprobación de integridad (SHA256) del binario de Tailscale en build.
 - Mejora de CI para validar scripts y build multi-arquitectura.
+
+Estrategia de versionado a partir de esta versión:
+- `X`: cambios mayores.
+- `Y`: nuevas versiones de Tailscale integradas.
+- `Z`: correcciones de errores y mejoras básicas.
 
 ---
 
@@ -63,28 +68,13 @@ La aplicación puede exponer capacidades como **Exit Node**, y (si tu red lo per
 > 💡 Recomendación: considera desactivar *key expiry* en el dispositivo de Home Assistant para evitar perder acceso.  
 > Más info: https://tailscale.com/kb/1028/key-expiry
 
-Ejemplo completo:
+Ejemplo rápido recomendado:
 
 ```yaml
-accept_dns: true
-accept_routes: true
-advertise_exit_node: true
-advertise_connector: true
-advertise_routes:
-  - 192.168.1.0/24
-  - fd12:3456:abcd::/64
-exit_node: 100.101.102.103
+setup_profile: home_access
 log_level: info
-login_server: "https://controlplane.tailscale.com"
 share_homeassistant: disabled
-share_on_port: 443
-snat_subnet_routes: true
-stateful_filtering: false
-tags:
-  - tag:example
-  - tag:homeassistant
 taildrop: true
-userspace_networking: true
 ```
 
 > [!NOTE]
@@ -94,6 +84,28 @@ userspace_networking: true
 ---
 
 ## Opciones
+
+### `setup_profile`
+
+Perfil de configuración simplificada para no tener que ajustar todas las opciones manualmente:
+
+- `custom` (por defecto): comportamiento manual, sin sobrescribir tu configuración.
+- `home_access`: perfil recomendado para acceso remoto a Home Assistant.
+- `subnet_router`: pensado para routing de subredes (acepta rutas y, si `advertise_routes` está vacío, anuncia automáticamente subredes locales).
+- `exit_node`: activa el nodo como exit node con ajustes seguros para ese caso.
+
+Si quieres control total, usa `custom`.
+
+Perfil recomendado según caso:
+
+| Caso de uso | Perfil |
+| --- | --- |
+| Solo acceso remoto a Home Assistant | `home_access` |
+| Exponer subredes LAN a la tailnet | `subnet_router` |
+| Usar este equipo como salida a Internet | `exit_node` |
+| Ajuste manual fino | `custom` |
+
+---
 
 ### `accept_dns`
 

@@ -1,5 +1,5 @@
 name: Tailscale (Nodalia)
-version: 1.2.9
+version: 2.0.0
 slug: tailscale_nodalia
 description: Zero config VPN for building secure networks (Nodalia build)
 url: https://github.com/danielmigueltejedor/addon-tailscale-nodalia
@@ -37,6 +37,7 @@ ports:
 
 # ✅ Defaults para que la UI no empiece "vacía" y evitar errores por claves no existentes
 options:
+  setup_profile: custom
   log_level: info
   accept_dns: true
   accept_routes: false
@@ -54,6 +55,7 @@ options:
   login_server: "https://controlplane.tailscale.com"
 
 schema:
+  setup_profile: list(custom|home_access|subnet_router|exit_node)?
   accept_dns: bool?
   accept_routes: bool?
   advertise_exit_node: bool?

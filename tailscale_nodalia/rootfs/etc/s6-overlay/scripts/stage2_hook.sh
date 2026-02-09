@@ -7,6 +7,10 @@
 
 declare options
 declare proxy funnel proxy_and_funnel_port
+declare setup_profile
+declare userspace_networking_enabled
+declare accept_routes_enabled
+declare advertise_routes_count
 
 # This is to execute potentially failing supervisor api functions within conditions,
 # where set -e is not propagated inside the function and bashio relies on set -e for api error handling
@@ -19,6 +23,36 @@ function try {
 
 # Load add-on options, even deprecated one to upgrade
 options=$(bashio::addon.options)
+setup_profile=$(bashio::config "setup_profile" "custom")
+
+# Effective values based on current defaults
+userspace_networking_enabled=false
+if ! bashio::config.has_value "userspace_networking" || bashio::config.true "userspace_networking"; then
+    userspace_networking_enabled=true
+fi
+
+accept_routes_enabled=false
+if ! bashio::config.has_value "accept_routes" || bashio::config.true "accept_routes"; then
+    accept_routes_enabled=true
+fi
+
+# Setup profile overrides (non-breaking: default is custom)
+case "${setup_profile}" in
+    home_access)
+        userspace_networking_enabled=false
+        accept_routes_enabled=false
+        ;;
+    subnet_router)
+        userspace_networking_enabled=false
+        accept_routes_enabled=true
+        ;;
+    exit_node)
+        userspace_networking_enabled=false
+        accept_routes_enabled=false
+        ;;
+    *)
+        ;;
+esac
 
 # Upgrade configuration from 'proxy', 'funnel' and 'proxy_and_funnel_port' to 'share_homeassistant' and 'share_on_port'
 # This step can be removed in a later version
@@ -59,29 +93,28 @@ if bashio::var.has_value "${proxy_and_funnel_port}"; then
 fi
 
 # Disable protect-subnets service when userspace-networking is enabled or accepting routes is disabled
-if ! bashio::config.has_value "userspace_networking" || \
-    bashio::config.true "userspace_networking" || \
-    bashio::config.false "accept_routes";
+if bashio::var.true "${userspace_networking_enabled}" || \
+    bashio::var.false "${accept_routes_enabled}";
 then
     rm -f /etc/s6-overlay/s6-rc.d/post-tailscaled/dependencies.d/protect-subnets
 fi
 
-# If advertise_routes is configured, do not wait for the local network to be ready to collect subnet information
-if bashio::config.exists "advertise_routes";
+# If advertise_routes is explicitly non-empty, do not wait for local network.
+# For setup_profile=subnet_router with empty advertise_routes, we keep local-network.
+advertise_routes_count=$(bashio::config "advertise_routes | length" "0")
+if [[ "${advertise_routes_count}" != "0" ]];
 then
     rm -f /etc/s6-overlay/s6-rc.d/post-tailscaled/dependencies.d/local-network
 fi
 
 # Disable forwarding service when userspace-networking is enabled
-if ! bashio::config.has_value "userspace_networking" || \
-    bashio::config.true "userspace_networking";
+if bashio::var.true "${userspace_networking_enabled}";
 then
     rm -f /etc/s6-overlay/s6-rc.d/user/contents.d/forwarding
 fi
 
 # Disable mss-clamping service when userspace-networking is enabled
-if ! bashio::config.has_value "userspace_networking" || \
-    bashio::config.true "userspace_networking";
+if bashio::var.true "${userspace_networking_enabled}";
 then
     rm -f /etc/s6-overlay/s6-rc.d/user/contents.d/mss-clamping
 fi
