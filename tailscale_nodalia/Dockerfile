@@ -6,6 +6,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG BUILD_ARCH=amd64
 ARG TAILSCALE_VERSION="1.94.1"
+ARG TAILSCALE_REPO="https://pkgs.tailscale.com/stable"
 
 RUN \
   apk add --no-cache \
@@ -20,9 +21,20 @@ RUN \
   && ln -sf /sbin/xtables-nft-multi /sbin/iptables \
   && if [ "${BUILD_ARCH}" = "aarch64" ]; then ARCH="arm64"; fi \
   && if [ "${BUILD_ARCH}" = "amd64" ]; then ARCH="amd64"; fi \
+  && TS_PKG="tailscale_${TAILSCALE_VERSION#v}_${ARCH}.tgz" \
   && curl --fail --show-error --silent --location \
-    "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION#v}_${ARCH}.tgz" \
-     | tar zxvf - -C /opt/ --strip-components 1 \
+    "${TAILSCALE_REPO}/${TS_PKG}" \
+    --output "/tmp/${TS_PKG}" \
+  && curl --fail --show-error --silent --location \
+    "${TAILSCALE_REPO}/${TS_PKG}.sha256" \
+    --output "/tmp/${TS_PKG}.sha256" \
+  && if grep -Eq "[[:space:]]${TS_PKG}$" "/tmp/${TS_PKG}.sha256"; then \
+      (cd /tmp && sha256sum -c "${TS_PKG}.sha256"); \
+    else \
+      echo "$(cat "/tmp/${TS_PKG}.sha256")  /tmp/${TS_PKG}" | sha256sum -c -; \
+    fi \
+  && tar zxvf "/tmp/${TS_PKG}" -C /opt/ --strip-components 1 \
+  && rm -f "/tmp/${TS_PKG}" "/tmp/${TS_PKG}.sha256" \
   && rm -rf /opt/systemd
 
 # Copy root filesystem

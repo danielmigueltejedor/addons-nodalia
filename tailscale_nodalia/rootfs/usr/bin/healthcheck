@@ -16,6 +16,7 @@ readonly HEALTHCHECK_RESTART_TIMEOUT=3600  # 1 hour
 
 declare status_json
 declare backend_state is_self_online
+declare now
 # STARTED_TIMESTAMP is in contenv at /var/run/s6/container_environment
 # LAST_ONLINE_TIMESTAMP is in contenv at /var/run/s6/container_environment
 
@@ -36,12 +37,28 @@ then
   printf "${LAST_ONLINE_TIMESTAMP}" > /var/run/s6/container_environment/LAST_ONLINE_TIMESTAMP
 fi
 
-if [[ "${backend_state-}" == "Stopped" ]] || \
-  (bashio::var.has_value "${LAST_ONLINE_TIMESTAMP-}" && \
-    (( $(date +"%s") - ${LAST_ONLINE_TIMESTAMP} > ${HEALTHCHECK_OFFLINE_TIMEOUT} )) ) || \
-  (! bashio::var.has_value "${LAST_ONLINE_TIMESTAMP-}" && \
-    (( $(date +"%s") - ${STARTED_TIMESTAMP} > ${HEALTHCHECK_RESTART_TIMEOUT} )) )
+now=$(date +"%s")
+if [[ "${backend_state-}" == "Stopped" ]]; then
+  bashio::log.error \
+    "Healthcheck failed: backend is Stopped" \
+    "(online=${is_self_online-unknown})"
+  bashio::exit.nok
+fi
+
+if bashio::var.has_value "${LAST_ONLINE_TIMESTAMP-}" && \
+  (( now - LAST_ONLINE_TIMESTAMP > HEALTHCHECK_OFFLINE_TIMEOUT ))
 then
-  # Unhealthy
+  bashio::log.error \
+    "Healthcheck failed: Tailscale stayed offline for more than ${HEALTHCHECK_OFFLINE_TIMEOUT}s" \
+    "(backend=${backend_state-unknown}, online=${is_self_online-unknown})"
+  bashio::exit.nok
+fi
+
+if ! bashio::var.has_value "${LAST_ONLINE_TIMESTAMP-}" && \
+  (( now - STARTED_TIMESTAMP > HEALTHCHECK_RESTART_TIMEOUT ))
+then
+  bashio::log.error \
+    "Healthcheck failed: Tailscale never reached online state in ${HEALTHCHECK_RESTART_TIMEOUT}s" \
+    "(backend=${backend_state-unknown}, online=${is_self_online-unknown})"
   bashio::exit.nok
 fi

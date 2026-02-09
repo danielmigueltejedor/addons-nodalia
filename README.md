@@ -1,4 +1,4 @@
-# Home Assistant Add-on: Tailscale (Nodalia)
+# Home Assistant App: Tailscale (Nodalia)
 
 Tailscale es una VPN “zero config” que se instala en minutos, incluyendo tu instancia de Home Assistant.
 
@@ -15,7 +15,7 @@ Es gratuita para uso personal/hobby (hasta 100 dispositivos en una cuenta). Pued
 
 https://login.tailscale.com/start
 
-También puedes crear la cuenta durante el proceso de autenticación del add-on.
+También puedes crear la cuenta durante el proceso de autenticación de la aplicación.
 
 ---
 
@@ -23,16 +23,16 @@ También puedes crear la cuenta durante el proceso de autenticación del add-on.
 
 ### A) Añadir el repositorio “Nodalia” en Home Assistant
 
-1. En Home Assistant ve a: **Settings → Add-ons → Add-on Store**
+1. En Home Assistant ve a: **Settings → Apps → Apps Store**
 2. Menú (⋮) → **Repositories**
 3. Añade este repositorio:
 
    https://github.com/danielmigueltejedor/addon-tailscale-nodalia
 
 4. Menú (⋮) → **Reload**
-5. Instala el add-on **Tailscale (Nodalia)**.
-6. Inicia el add-on.
-7. Abre el **Web UI** del add-on para completar la autenticación.
+5. Instala la aplicación **Tailscale (Nodalia)**.
+6. Inicia la aplicación.
+7. Abre el **Web UI** de la aplicación para completar la autenticación.
 
 > **Nota:** algunos navegadores dan problemas en el paso de login; suele ir mejor desde escritorio con Chrome.
 
@@ -40,13 +40,13 @@ También puedes crear la cuenta durante el proceso de autenticación del add-on.
 
 ## Configuración
 
-Este add-on tiene pocas opciones propias.
+Esta aplicación tiene pocas opciones propias.
 
 La mayoría de la configuración de tu red Tailscale se hace desde su panel:
 
 https://login.tailscale.com/
 
-El add-on puede exponer capacidades como **Exit Node**, y (si tu red lo permite) también puede anunciar rutas a subredes.
+La aplicación puede exponer capacidades como **Exit Node**, y (si tu red lo permite) también puede anunciar rutas a subredes.
 
 > 💡 Recomendación: considera desactivar *key expiry* en el dispositivo de Home Assistant para evitar perder acceso.  
 > Más info: https://tailscale.com/kb/1028/key-expiry
@@ -77,7 +77,7 @@ userspace_networking: true
 
 > [!NOTE]
 > Algunas opciones también aparecen en la Web UI de Tailscale, pero ahí pueden ser “solo lectura”.
-> Si las cambias en la Web UI, podrías perder esos cambios al reiniciar el add-on.
+> Si las cambias en la Web UI, podrías perder esos cambios al reiniciar la aplicación.
 
 ---
 
@@ -135,7 +135,7 @@ Para desactivar: pon una lista vacía `[]`.
 
 Más info: https://tailscale.com/kb/1019/subnets
 
-Si no se configura, por defecto el add-on puede anunciar rutas a tus subredes en interfaces soportadas (según el entorno de red de Supervisor).
+Si no se configura, por defecto la aplicación puede anunciar rutas a tus subredes en interfaces soportadas (según el entorno de red de Supervisor).
 
 ---
 
@@ -163,7 +163,7 @@ Controla el nivel de logs:
 - `error`
 - `fatal`
 
-Si `log_level` es `info` o menor, el add-on también opta por no subir logs del cliente a log.tailscale.io.
+Si `log_level` es `info` o menor, la aplicación también opta por no subir logs del cliente a log.tailscale.io.
 
 ---
 
