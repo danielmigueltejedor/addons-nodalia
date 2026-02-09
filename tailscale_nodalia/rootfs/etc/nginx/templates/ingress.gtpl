@@ -6,5 +6,10 @@ server {
 
     location / {
         proxy_pass http://backend;
+
+        # Tailscale web UI is not designed to run inside HA's iframe.
+        # Replace the internal redirect to break out to the top window.
+        sub_filter_once off;
+        sub_filter 'document.location.href = url' 'window.top.location.href = url';
     }
 }

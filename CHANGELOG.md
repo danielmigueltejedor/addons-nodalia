@@ -4,6 +4,13 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 2.0.1 - 2026-02-09
+### Fixed
+- Improve Web UI behavior inside Home Assistant ingress panel:
+  - Keep direct proxying but rewrite Tailscale's `document.location.href = url`
+    to `window.top.location.href = url` so the UI breaks out of iframe reliably.
+  - Avoid dependence on popup windows that can be blocked by browser settings.
+
 ## 2.0.0 - 2026-02-09
 ### Changed
 - Major release that consolidates the recent reliability, ingress, security-hardening and CI improvements.

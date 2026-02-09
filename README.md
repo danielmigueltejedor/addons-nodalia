@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.0.0`
+`2.0.1`
 
 Cambios destacados:
 - Simplificación del proxy de Ingress para la Web UI (sin reescritura JS), mejorando compatibilidad y evitando carga infinita.
