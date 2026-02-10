@@ -4,6 +4,13 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 2.1.3 - 2026-02-10
+### Changed
+- Improve Web UI startup responsiveness:
+  - Remove NGINX startup wait on Tailscale web backend readiness.
+  - Add NGINX fallback for backend transient errors (`502/503/504`) to `/onboarding`.
+- This avoids long loading periods in Home Assistant while Tailscale web is still initializing.
+
 ## 2.1.2 - 2026-02-10
 ### Added
 - Add `webui_readonly` option (default `true`) to choose Web UI mode:

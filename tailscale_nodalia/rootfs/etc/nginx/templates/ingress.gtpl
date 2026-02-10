@@ -17,6 +17,8 @@ server {
     }
 
     location / {
+        proxy_intercept_errors on;
+        error_page 502 503 504 = /onboarding;
         proxy_pass http://backend;
 
         # Tailscale web UI is not designed to run inside HA's iframe.
