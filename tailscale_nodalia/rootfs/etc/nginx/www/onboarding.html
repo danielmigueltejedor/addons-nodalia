@@ -92,10 +92,11 @@
     </div>
     <div id="ok-box" hidden>
       <div class="actions">
+        <a id="open-webui-btn" class="btn" href="webui">Abrir Web UI</a>
         <button id="refresh-ok-btn" type="button" class="ghost">Actualizar estado</button>
       </div>
     </div>
-    <p class="small">Nota: esta pagina lee <code>/onboarding.json</code> generado por la aplicacion.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> generado por la aplicacion.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -104,8 +105,17 @@
     const loginUrlInput = document.getElementById("login-url");
     const copyBtn = document.getElementById("copy-btn");
     const openBtn = document.getElementById("open-btn");
+    const openWebuiBtn = document.getElementById("open-webui-btn");
     const refreshBtn = document.getElementById("refresh-btn");
     const refreshOkBtn = document.getElementById("refresh-ok-btn");
+    let pollHandle = null;
+
+    function schedulePoll() {
+      if (pollHandle) {
+        clearTimeout(pollHandle);
+      }
+      pollHandle = setTimeout(loadState, 1000);
+    }
 
     async function loadState() {
       stateEl.className = "state";
@@ -113,7 +123,7 @@
       loginBox.hidden = true;
       okBox.hidden = true;
       try {
-        const response = await fetch("/onboarding.json?_ts=" + Date.now(), { cache: "no-store" });
+        const response = await fetch("onboarding.json?_ts=" + Date.now(), { cache: "no-store" });
         if (!response.ok) {
           throw new Error("onboarding state not available");
         }
@@ -143,12 +153,42 @@
         }
 
         stateEl.classList.add("running");
-        stateEl.textContent = "Estado: conectado (" + backendState + ")";
+        stateEl.textContent = "Estado: conectado (" + backendState + "). Verificando Web UI...";
         okBox.hidden = false;
+        const webUiReady = await canReachWebUi();
+        if (webUiReady) {
+          stateEl.textContent = "Estado: conectado (" + backendState + "). Redirigiendo a la Web UI...";
+          setTimeout(() => window.location.replace("webui?_ts=" + Date.now()), 350);
+        } else {
+          stateEl.textContent = "Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...";
+          if (pollHandle) {
+            clearTimeout(pollHandle);
+          }
+          pollHandle = setTimeout(loadState, 500);
+        }
+        return;
       } catch (error) {
         stateEl.classList.add("login");
         stateEl.textContent = "Estado no disponible. La aplicacion puede seguir arrancando.";
         okBox.hidden = false;
+      } finally {
+        schedulePoll();
+      }
+    }
+
+    async function canReachWebUi() {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1500);
+      try {
+        const response = await fetch("webui-ready?_ts=" + Date.now(), {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        return response.ok;
+      } catch (_) {
+        return false;
+      } finally {
+        clearTimeout(timeout);
       }
     }
 
@@ -163,8 +203,22 @@
       }
     });
 
-    refreshBtn.addEventListener("click", loadState);
-    refreshOkBtn.addEventListener("click", loadState);
+    refreshBtn.addEventListener("click", () => {
+      if (pollHandle) {
+        clearTimeout(pollHandle);
+      }
+      loadState();
+    });
+    refreshOkBtn.addEventListener("click", () => {
+      if (pollHandle) {
+        clearTimeout(pollHandle);
+      }
+      loadState();
+    });
+    openWebuiBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      window.location.replace("webui");
+    });
     loadState();
   </script>
 </body>

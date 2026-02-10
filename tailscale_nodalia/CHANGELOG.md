@@ -1,8 +1,23 @@
 # Changelog
 
-All notable changes to this add-on will be documented in this file.
+All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
+
+## 2.1.6 - 2026-02-10
+### Changed
+- Improve onboarding and Web UI startup flow in Home Assistant ingress:
+  - onboarding now polls status faster and validates backend web readiness before redirect.
+  - add dedicated `/webui` and `/webui-ready` routes for a more stable transition from onboarding.
+  - include fallback behavior to onboarding on upstream errors to reduce visible 502 errors.
+- Add startup timing telemetry in logs (`timings_sec={tailscale_up,ready_wait,total}`).
+- Initialize onboarding state earlier with `Starting` state for faster UI feedback.
+- Ensure `web` service is included in s6 `user` bundle startup (prevents ingress upstream `connection refused` loops).
+
+### Fixed
+- Fix persistent notification formatting for login-required flow (real line breaks, no literal `\\n`).
+- Avoid unnecessary login-notification dismiss calls when no notification has been created yet.
+- Reduce noisy taildrop logs by retrying with backoff and only polling while backend is `Running`.
 
 ## 2.1.5 - 2026-02-10
 ### Changed

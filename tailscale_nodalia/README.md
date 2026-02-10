@@ -9,9 +9,21 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.1.5`
+`2.1.6`
 
 Cambios destacados:
+- Optimización del onboarding y entrada a Web UI:
+  - onboarding con refresco automático más rápido y verificación de disponibilidad real.
+  - nuevo flujo de redirección estable a `/webui`.
+- Menos errores visibles en primer acceso:
+  - fallback a onboarding ante errores de backend web.
+  - reducción de casos de `502 Bad Gateway` durante arranque.
+- Mejoras de robustez en arranque de servicios:
+  - arranque garantizado del servicio `web` en el bundle `user`.
+  - telemetría de tiempos de arranque en logs (`timings_sec`).
+- Mejora de notificaciones de login:
+  - formato corregido de saltos de línea.
+  - evita intentos innecesarios de dismiss cuando no existe notificación.
 - Web UI más reactiva en primer acceso: timeout corto de proxy y fallback rápido a `/onboarding` si el backend web tarda en responder.
 - Arranque inicial más rápido en instalaciones/actualizaciones nuevas:
   - menor espera de `local-network` en startup.
