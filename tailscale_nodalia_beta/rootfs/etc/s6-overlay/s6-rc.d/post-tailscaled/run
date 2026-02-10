@@ -58,9 +58,10 @@ write_onboarding_state() {
 notify_login_required() {
   local url message
   url="${1:-}"
-  message="Tailscale necesita inicio de sesion en esta aplicacion.\n\nAbre la pagina de onboarding en la Web UI: /onboarding"
+  message=$'Tailscale necesita inicio de sesion en esta aplicacion.\n\nAbre la pagina de onboarding en la Web UI: /onboarding'
   if bashio::var.has_value "${url}"; then
-    message="${message}\n\nURL directa de login:\n${url}"
+    message+=$'\n\nURL directa de login:\n'
+    message+="${url}"
   fi
 
   notification_payload=$(jq -nc \
