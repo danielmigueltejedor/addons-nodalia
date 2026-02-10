@@ -6,7 +6,7 @@ Repositorio general de aplicaciones para Home Assistant mantenidas por Nodalia.
 
 Añade este repositorio en la tienda de Apps de Home Assistant:
 
-`https://github.com/danielmigueltejedor/addons-nodalia`
+`https://github.com/danielmigueltejedor/apps-nodalia`
 
 ## Apps incluidas (estable)
 

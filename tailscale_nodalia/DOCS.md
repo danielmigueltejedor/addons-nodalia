@@ -27,7 +27,7 @@ También puedes crear la cuenta durante el proceso de autenticación de la aplic
 2. Menú (⋮) → **Repositories**
 3. Añade este repositorio:
 
-   https://github.com/danielmigueltejedor/addon-tailscale-nodalia
+   https://github.com/danielmigueltejedor/apps-nodalia
 
 4. Menú (⋮) → **Reload**
 5. Instala la aplicación **Tailscale (Nodalia)**.
