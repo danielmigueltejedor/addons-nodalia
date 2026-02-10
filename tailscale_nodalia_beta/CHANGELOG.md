@@ -4,6 +4,24 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 2.1.6-beta5 - 2026-02-10
+### Fixed
+- Avoid visible `502 Bad Gateway` after onboarding redirect:
+  - add `/webui-ready` probe endpoint (direct proxy) used only for readiness checks.
+  - make `/webui` user endpoint fallback to `/onboarding` on upstream errors.
+  - redirect to `webui` with cache-busting query when ready.
+
+## 2.1.6-beta4 - 2026-02-10
+### Changed
+- Improve onboarding-to-WebUI transition reliability:
+  - onboarding now checks `webui` availability before redirecting.
+  - if backend is `Running` but web is not ready yet, it keeps retrying instead of redirecting to a dead end.
+  - add explicit "Abrir Web UI" action in onboarding.
+
+### Fixed
+- Avoid noisy/irrelevant HTTP error during startup notification handling:
+  - persistent notification dismiss is now attempted only when a login notification was previously created.
+
 ## 2.1.6-beta3 - 2026-02-10
 ### Fixed
 - Fix onboarding redirect when backend is `Running`:

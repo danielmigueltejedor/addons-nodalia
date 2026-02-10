@@ -92,6 +92,7 @@
     </div>
     <div id="ok-box" hidden>
       <div class="actions">
+        <a id="open-webui-btn" class="btn" href="webui">Abrir Web UI</a>
         <button id="refresh-ok-btn" type="button" class="ghost">Actualizar estado</button>
       </div>
     </div>
@@ -104,6 +105,7 @@
     const loginUrlInput = document.getElementById("login-url");
     const copyBtn = document.getElementById("copy-btn");
     const openBtn = document.getElementById("open-btn");
+    const openWebuiBtn = document.getElementById("open-webui-btn");
     const refreshBtn = document.getElementById("refresh-btn");
     const refreshOkBtn = document.getElementById("refresh-ok-btn");
     let pollHandle = null;
@@ -151,9 +153,15 @@
         }
 
         stateEl.classList.add("running");
-        stateEl.textContent = "Estado: conectado (" + backendState + "). Redirigiendo a la Web UI...";
+        stateEl.textContent = "Estado: conectado (" + backendState + "). Verificando Web UI...";
         okBox.hidden = false;
-        setTimeout(() => window.location.replace("webui"), 600);
+        const webUiReady = await canReachWebUi();
+        if (webUiReady) {
+          stateEl.textContent = "Estado: conectado (" + backendState + "). Redirigiendo a la Web UI...";
+          setTimeout(() => window.location.replace("webui?_ts=" + Date.now()), 350);
+        } else {
+          stateEl.textContent = "Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...";
+        }
         return;
       } catch (error) {
         stateEl.classList.add("login");
@@ -161,6 +169,22 @@
         okBox.hidden = false;
       } finally {
         schedulePoll();
+      }
+    }
+
+    async function canReachWebUi() {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1500);
+      try {
+        const response = await fetch("webui-ready?_ts=" + Date.now(), {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        return response.ok;
+      } catch (_) {
+        return false;
+      } finally {
+        clearTimeout(timeout);
       }
     }
 
@@ -186,6 +210,10 @@
         clearTimeout(pollHandle);
       }
       loadState();
+    });
+    openWebuiBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      window.location.replace("webui");
     });
     loadState();
   </script>

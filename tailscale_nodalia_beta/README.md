@@ -9,9 +9,17 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.1.6-beta3`
+`2.1.6-beta5`
 
 Cambios destacados:
+- Menos 502 al entrar en Web UI tras onboarding:
+  - nueva comprobación técnica `/webui-ready` para validar backend.
+  - `/webui` hace fallback a onboarding si el backend aún no responde.
+- Onboarding más robusto antes de entrar en Web UI:
+  - ahora comprueba que `webui` responde antes de redirigir.
+  - añade botón explícito "Abrir Web UI".
+- Menos ruido de errores HTTP en arranque:
+  - solo se intenta cerrar notificación persistente si antes se creó.
 - Fix de redirección final a Web UI:
   - nuevo endpoint `/webui` para proxy directo al backend Tailscale.
   - onboarding redirige a `/webui` al detectar `Running`.
