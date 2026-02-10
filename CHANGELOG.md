@@ -4,6 +4,16 @@ All notable changes to this add-on will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 2.1.1 - 2026-02-10
+### Fixed
+- Fix onboarding access when Tailscale needs interactive login:
+  - `post-tailscaled` now bounds `tailscale up` with a timeout to avoid hanging startup.
+  - If state is `NeedsLogin`/`NeedsMachineAuth`, onboarding state is always written and exposed to UI.
+  - Login URL is extracted from status/output fallback when needed.
+- Include `NeedsMachineAuth` in pre-up readiness detection.
+- Serve `/onboarding.json` through explicit NGINX `alias` for reliable file resolution.
+- Enable `homeassistant_api` permission so persistent onboarding notifications can be created/dismissed.
+
 ## 2.1.0 - 2026-02-10
 ### Added
 - Login onboarding page in the app Web UI at `/onboarding`:

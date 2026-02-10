@@ -29,11 +29,14 @@ declare status_json
 declare auth_url
 declare notification_payload
 declare onboarding_payload
+declare up_output
+declare up_rc
 
 readonly WAIT_DELAY=2
 readonly WAIT_RUNNING_COUNT=150  # 150*2s = 300s = 5m
 readonly LOGIN_NOTIFICATION_ID="tailscale_nodalia_login_required"
 readonly ONBOARDING_STATE_FILE="/data/tailscale-onboarding.json"
+readonly TAILSCALE_UP_TIMEOUT=45
 
 write_onboarding_state() {
   local state needs_login url now
@@ -256,9 +259,32 @@ do
   sleep 2
 done
 
-# Start Tailscale
-if ! /opt/tailscale up "${options[@]}"; then
-  bashio::exit.nok "Unable to start up Tailscale"
+# Start Tailscale (bounded timeout to avoid hanging forever when login is required)
+set +e
+up_output="$(timeout "${TAILSCALE_UP_TIMEOUT}" /opt/tailscale up "${options[@]}" 2>&1)"
+up_rc=$?
+set -e
+
+if (( up_rc != 0 )); then
+  status_json=$(/opt/tailscale status --json --peers=false --self=false 2>/dev/null || true)
+  backend_state=$(jq -r '.BackendState // "Unknown"' <<< "${status_json}" 2>/dev/null || echo "Unknown")
+  if bashio::var.equals "${backend_state}" "NeedsLogin" || \
+    bashio::var.equals "${backend_state}" "NeedsMachineAuth";
+  then
+    auth_url=$(jq -r '.AuthURL // .Self.AuthURL // empty' <<< "${status_json}" 2>/dev/null || true)
+    if ! bashio::var.has_value "${auth_url}"; then
+      auth_url=$(grep -Eo 'https://login\.tailscale\.com/[[:alnum:]/._-]+' <<< "${up_output}" | head -n1 || true)
+    fi
+    write_onboarding_state "${backend_state}" true "${auth_url}"
+    notify_login_required "${auth_url}"
+    bashio::log.notice \
+      "Tailscale startup requires interactive login (${backend_state})." \
+      "Open /onboarding in the app Web UI to continue."
+  else
+    bashio::exit.nok \
+      "Unable to start up Tailscale (state: ${backend_state}, exit: ${up_rc})" \
+      "${up_output}"
+  fi
 fi
 
 # Wait for the network to become operational (Running) or explicitly require login.

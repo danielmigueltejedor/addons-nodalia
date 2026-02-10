@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.1.0`
+`2.1.1`
 
 Cambios destacados:
 - Nuevo onboarding sin logs: página `/onboarding` con URL de login, botón copiar y abrir enlace.
