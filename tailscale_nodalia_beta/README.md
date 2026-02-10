@@ -9,9 +9,12 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.1.6-beta5`
+`2.1.6-beta6`
 
 Cambios destacados:
+- Web UI más rápida tras el arranque:
+  - polling de onboarding más frecuente (1s) y reintento rápido (500ms) cuando ya está `Running`.
+  - timeouts ajustados en `/webui-ready` y `/webui` para reducir esperas visibles.
 - Menos 502 al entrar en Web UI tras onboarding:
   - nueva comprobación técnica `/webui-ready` para validar backend.
   - `/webui` hace fallback a onboarding si el backend aún no responde.

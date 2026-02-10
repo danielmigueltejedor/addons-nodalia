@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 2.1.6-beta6 - 2026-02-10
+### Changed
+- Improve Web UI responsiveness after app startup:
+  - reduce onboarding polling interval from 3s to 1s.
+  - add fast retry (500ms) when backend is `Running` but web UI is not yet ready.
+  - reduce `/webui-ready` probe timeouts to 1s.
+  - reduce `/webui` upstream timeouts to 8s to avoid long visible hangs.
+
 ## 2.1.6-beta5 - 2026-02-10
 ### Fixed
 - Avoid visible `502 Bad Gateway` after onboarding redirect:

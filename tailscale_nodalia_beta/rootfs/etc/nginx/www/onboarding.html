@@ -114,7 +114,7 @@
       if (pollHandle) {
         clearTimeout(pollHandle);
       }
-      pollHandle = setTimeout(loadState, 3000);
+      pollHandle = setTimeout(loadState, 1000);
     }
 
     async function loadState() {
@@ -161,6 +161,10 @@
           setTimeout(() => window.location.replace("webui?_ts=" + Date.now()), 350);
         } else {
           stateEl.textContent = "Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...";
+          if (pollHandle) {
+            clearTimeout(pollHandle);
+          }
+          pollHandle = setTimeout(loadState, 500);
         }
         return;
       } catch (error) {
