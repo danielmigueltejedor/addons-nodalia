@@ -95,7 +95,7 @@
         <button id="refresh-ok-btn" type="button" class="ghost">Actualizar estado</button>
       </div>
     </div>
-    <p class="small">Nota: esta pagina lee <code>/onboarding.json</code> generado por la aplicacion.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> generado por la aplicacion.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -121,7 +121,7 @@
       loginBox.hidden = true;
       okBox.hidden = true;
       try {
-        const response = await fetch("/onboarding.json?_ts=" + Date.now(), { cache: "no-store" });
+        const response = await fetch("onboarding.json?_ts=" + Date.now(), { cache: "no-store" });
         if (!response.ok) {
           throw new Error("onboarding state not available");
         }
@@ -153,7 +153,7 @@
         stateEl.classList.add("running");
         stateEl.textContent = "Estado: conectado (" + backendState + "). Redirigiendo a la Web UI...";
         okBox.hidden = false;
-        setTimeout(() => window.location.replace("/"), 600);
+        setTimeout(() => window.location.replace("./"), 600);
         return;
       } catch (error) {
         stateEl.classList.add("login");

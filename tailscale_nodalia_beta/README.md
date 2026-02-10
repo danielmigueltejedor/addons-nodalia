@@ -9,9 +9,11 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.1.6-beta1`
+`2.1.6-beta2`
 
 Cambios destacados:
+- Fix para Home Assistant Ingress:
+  - onboarding usa rutas relativas para evitar errores de carga en iframe (`Estado no disponible`).
 - Arranque de Web UI más rápido en Home Assistant:
   - NGINX ya no espera al servicio `web` para iniciar.
   - fallback más agresivo a `/onboarding` con timeouts de proxy más cortos.

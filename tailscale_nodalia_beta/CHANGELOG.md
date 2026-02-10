@@ -4,6 +4,12 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 2.1.6-beta2 - 2026-02-10
+### Fixed
+- Fix onboarding inside Home Assistant ingress iframe:
+  - use relative paths (`onboarding.json`, `./`) instead of absolute (`/onboarding.json`, `/`).
+  - prevents "Estado no disponible" caused by requests resolving outside ingress prefix.
+
 ## 2.1.6-beta1 - 2026-02-10
 ### Changed
 - Reduce Web UI startup latency in Home Assistant ingress:
