@@ -4,6 +4,12 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 2.1.6-beta7 - 2026-02-10
+### Fixed
+- Fix critical Web UI startup regression:
+  - ensure `web` service is part of `user` bundle startup (`s6-rc.d/user/contents.d/web`).
+  - without this, nginx was up but upstream `127.0.0.1:25899` stayed closed and ingress showed repeated `connection refused`.
+
 ## 2.1.6-beta6 - 2026-02-10
 ### Changed
 - Improve Web UI responsiveness after app startup:

@@ -9,9 +9,12 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.1.6-beta6`
+`2.1.6-beta7`
 
 Cambios destacados:
+- Fix crítico de arranque de Web UI:
+  - se asegura el arranque del servicio `web` en el bundle `user` de s6.
+  - evita bucles de `connection refused` a `127.0.0.1:25899` en ingress.
 - Web UI más rápida tras el arranque:
   - polling de onboarding más frecuente (1s) y reintento rápido (500ms) cuando ya está `Running`.
   - timeouts ajustados en `/webui-ready` y `/webui` para reducir esperas visibles.
