@@ -4,6 +4,17 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta34 - 2026-02-11
+### Fixed
+- Resolved onboarding loop where state stayed forever in:
+  `Estado: conectado (Running), la Web UI aun no responde. Reintentando...`
+- Web UI readiness gating now prioritizes stable backend runtime telemetry:
+  - if `runtime.json` reports `webui_ready=true` with streak `>= 2`, onboarding unlocks Web UI access.
+  - ingress live probe remains a secondary signal (no longer a hard blocker).
+- Ingress probe robustness improved:
+  - uses `fetch(..., redirect: "manual")` and treats `opaqueredirect` as ready.
+  - avoids false negative loops when Web UI returns redirect/auth flows.
+
 ## 3.0.0-beta33 - 2026-02-11
 ### Fixed
 - Web UI readiness detection hardened across backend and frontend:

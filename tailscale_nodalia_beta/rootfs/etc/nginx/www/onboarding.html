@@ -525,7 +525,11 @@
         const response = await fetch("webui-ready?_ts=" + Date.now(), {
           cache: "no-store",
           signal: controller.signal,
+          redirect: "manual",
         });
+        if (response.type === "opaqueredirect") {
+          return true;
+        }
         const status = Number(response.status || 0);
         const statusLooksReady = (
           (status >= 200 && status < 400) ||
@@ -1043,8 +1047,9 @@
         } else {
           liveWebUiReadyStreak = 0;
         }
-        const effectiveStreak = Math.max(runtimeWebUiReady ? runtimeStreak : 0, liveWebUiReadyStreak);
-        const webUiReady = liveWebUiReady && effectiveStreak >= 2;
+        const runtimeStable = runtimeWebUiReady && runtimeStreak >= 2;
+        const liveStable = liveWebUiReadyStreak >= 2;
+        const webUiReady = runtimeStable || liveStable;
         if (webUiReady) {
           setActiveStep("access");
           updateStateView("Estado: conectado (" + backendState + "). Web UI lista.", "running");
