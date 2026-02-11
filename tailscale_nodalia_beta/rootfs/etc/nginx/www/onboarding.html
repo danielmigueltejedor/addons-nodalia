@@ -530,10 +530,7 @@
           return false;
         }
         const text = await response.text();
-        if (!text || text.trim().length === 0) {
-          return false;
-        }
-        if (text.toLowerCase().includes("tailscale web interface is unavailable")) {
+        if (text && text.toLowerCase().includes("tailscale web interface is unavailable")) {
           return false;
         }
         return true;

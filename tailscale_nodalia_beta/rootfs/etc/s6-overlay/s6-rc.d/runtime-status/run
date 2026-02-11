@@ -77,9 +77,6 @@ do
       if grep -qi "Tailscale web interface is unavailable" <<< "${webui_probe_body}"; then
         webui_ready=false
         ready_streak=0
-      elif [[ -z "${webui_probe_body//[[:space:]]/}" ]]; then
-        webui_ready=false
-        ready_streak=0
       else
         webui_ready=true
         ready_streak=$((ready_streak + 1))

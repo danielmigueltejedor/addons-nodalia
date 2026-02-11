@@ -4,6 +4,21 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta31 - 2026-02-11
+### Changed
+- Updated beta branding assets for Tailscale (Nodalia Beta):
+  - `icon.png`
+  - `logo.png`
+  - onboarding header logo (`rootfs/etc/nginx/www/nodalia-logo.png`)
+- General technical review pass before next stabilization cycle (shell syntax/consistency checks).
+
+## 3.0.0-beta30 - 2026-02-11
+### Fixed
+- Web UI readiness no longer rejects valid empty-body responses.
+- Runtime probe now treats valid `2xx/3xx/401` responses as ready unless the known unavailable marker is present.
+- Onboarding live probe (`/webui-ready`) aligned with the same rule to prevent false `Inicializacion` loops.
+- Resolves the case where runtime showed very low probe time but `webui_ready=false` permanently.
+
 ## 3.0.0-beta29 - 2026-02-11
 ### Fixed
 - Onboarding Web UI gating now uses a live ingress probe (`/webui-ready`) as final readiness source.
