@@ -455,6 +455,9 @@
       if (needsLogin) {
         suggestions.push("Login pendiente: abre la URL de inicio y completa la autenticacion.");
       }
+      if (backend === "NeedsMachineAuth") {
+        suggestions.push("Nodo pendiente de aprobacion en la consola de admin de Tailscale (MachineAuth).");
+      }
       if (backend !== "Running") {
         suggestions.push("Backend aun no esta Running: espera 20-60s tras actualizar/reinstalar.");
       }
@@ -497,10 +500,13 @@
         }
         const data = await response.json();
         lastOnboarding = data;
-        const backendState = String(data.backend_state || "Unknown");
-        const needsLogin = Boolean(data.needs_login);
-        const authUrl = String(data.auth_url || "");
         await refreshRuntime();
+        const runtimeBackendState = String(lastRuntime?.backend_state || "");
+        const onboardingBackendState = String(data.backend_state || "Unknown");
+        const backendState = runtimeBackendState || onboardingBackendState;
+        const runtimeNeedsLogin = runtimeBackendState === "NeedsLogin" || runtimeBackendState === "NeedsMachineAuth";
+        const needsLogin = runtimeBackendState ? runtimeNeedsLogin : Boolean(data.needs_login);
+        const authUrl = String(lastRuntime?.auth_url || data.auth_url || "");
 
         if (needsLogin) {
           setActiveStep("auth");
