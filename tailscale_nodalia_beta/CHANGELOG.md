@@ -4,6 +4,12 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta47 - 2026-02-11
+### Fixed
+- Orden de arranque corregido para Web UI:
+  - el servicio `web` ahora depende de `tailscaled`, evitando iniciar `tailscale web` demasiado pronto.
+- Este ajuste ataca el patrón visto en logs donde `web` arrancaba antes del daemon y quedaba en `upstream-unavailable-banner`.
+
 ## 3.0.0-beta46 - 2026-02-11
 ### Added
 - Telemetria de runtime mucho mas util en logs del addon para depuracion:
