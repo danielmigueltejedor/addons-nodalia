@@ -4,6 +4,16 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta41 - 2026-02-11
+### Fixed
+- Logout action is now more deterministic and resilient:
+  - `control-api` logout path now executes `tailscale down` + `tailscale logout` as primary sequence.
+  - if backend still remains `Running`, hard fallback is applied (restart daemon + clear local state) to force session reset.
+- Logout success validation broadened:
+  - considers `NeedsLogin`, `NeedsMachineAuth`, `NoState`, and `Stopped` as valid post-logout states.
+- Frontend logout confirmation updated:
+  - transition check now accepts `NoState/Stopped` as successful logout outcomes.
+
 ## 3.0.0-beta40 - 2026-02-11
 ### Fixed
 - Restored floating `Volver al panel Nodalia` button inside Tailscale iframe Web UI.
