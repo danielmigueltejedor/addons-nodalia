@@ -132,6 +132,11 @@ configuration:
     description: >-
       URL interna que se expone con el tunel temporal de soporte.
       Por defecto apunta a Home Assistant en este host.
+  support_tunnel_ttl_minutes:
+    name: TTL del tunel de soporte (minutos)
+    description: >-
+      Tiempo maximo de vida del tunel temporal de soporte.
+      Al cumplirse, se revoca automaticamente y se registra un evento en auditoria.
 network:
   41641/udp: >-
     Puerto UDP para WireGuard y trafico peer-to-peer.

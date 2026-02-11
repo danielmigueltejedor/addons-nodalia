@@ -9,6 +9,8 @@ set -euo pipefail
 readonly PID_FILE="/run/support-tunnel.pid"
 readonly STATE_FILE="/data/support-tunnel.json"
 readonly LOG_FILE="/data/support-tunnel.log"
+readonly META_FILE="/data/support-tunnel-meta.json"
+readonly AUDIT_FILE="/data/support-tunnel-audit.log"
 readonly URL_REGEX='https://[A-Za-z0-9.-]+\.trycloudflare\.com'
 readonly STARTUP_WAIT_LOOPS=50
 readonly STARTUP_WAIT_DELAY=0.2
@@ -41,6 +43,53 @@ extract_url() {
   if [[ -f "${LOG_FILE}" ]]; then
     grep -Eo "${URL_REGEX}" "${LOG_FILE}" | tail -n1 || true
   fi
+}
+
+audit_event() {
+  local action reason url actor now
+  action="${1:-unknown}"
+  reason="${2:-}"
+  url="${3:-}"
+  actor="${SUPPORT_ACTOR:-ui}"
+  now="$(now_utc)"
+  jq -nc \
+    --arg ts "${now}" \
+    --arg action "${action}" \
+    --arg reason "${reason}" \
+    --arg url "${url}" \
+    --arg actor "${actor}" \
+    --arg target_id "${SUPPORT_TARGET_ID:-}" \
+    --arg target_url "${SUPPORT_TARGET_URL:-}" \
+    '{ts:$ts,action:$action,reason:$reason,url:$url,actor:$actor,target_id:$target_id,target_url:$target_url}' \
+    >> "${AUDIT_FILE}"
+}
+
+read_meta() {
+  META_EXPIRES_EPOCH=0
+  META_EXPIRES_AT=""
+  META_TTL_MIN=0
+  if [[ -f "${META_FILE}" ]]; then
+    META_EXPIRES_EPOCH="$(jq -r '.expires_epoch // 0' "${META_FILE}" 2>/dev/null || echo "0")"
+    META_EXPIRES_AT="$(jq -r '.expires_at // empty' "${META_FILE}" 2>/dev/null || true)"
+    META_TTL_MIN="$(jq -r '.ttl_minutes // 0' "${META_FILE}" 2>/dev/null || echo "0")"
+  fi
+}
+
+write_meta() {
+  local ttl now_epoch expires_epoch expires_at
+  ttl="${1:-30}"
+  now_epoch="$(date +%s)"
+  expires_epoch=$((now_epoch + ttl * 60))
+  expires_at="$(date -u -r "${expires_epoch}" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)"
+  if [[ -z "${expires_at}" ]]; then
+    expires_at="$(date -u -d "@${expires_epoch}" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)"
+  fi
+  jq -nc \
+    --arg created_at "$(now_utc)" \
+    --arg expires_at "${expires_at}" \
+    --argjson expires_epoch "${expires_epoch}" \
+    --argjson ttl_minutes "${ttl}" \
+    '{created_at:$created_at,expires_at:$expires_at,expires_epoch:$expires_epoch,ttl_minutes:$ttl_minutes}' > "${META_FILE}"
 }
 
 build_eligibility() {
@@ -97,6 +146,7 @@ write_state() {
   url="${3:-}"
   eligible="${4:-false}"
   now="$(now_utc)"
+  read_meta
   jq -nc \
     --arg updated_at "${now}" \
     --arg support_target_id "${SUPPORT_TARGET_ID}" \
@@ -105,6 +155,9 @@ write_state() {
     --arg reason "${SUPPORT_REASON}" \
     --arg url "${url}" \
     --arg pid "${pid}" \
+    --arg expires_at "${META_EXPIRES_AT}" \
+    --argjson expires_epoch "${META_EXPIRES_EPOCH}" \
+    --argjson ttl_minutes "${META_TTL_MIN}" \
     --argjson support_enabled "$(json_bool "${SUPPORT_ENABLED}")" \
     --argjson tailnet_match "$(json_bool "${SUPPORT_TAILNET_MATCH}")" \
     --argjson eligible "$(json_bool "${eligible}")" \
@@ -120,12 +173,29 @@ write_state() {
       active: $active,
       pid: $pid,
       url: $url,
-      reason: $reason
+      reason: $reason,
+      expires_at: $expires_at,
+      expires_epoch: $expires_epoch,
+      ttl_minutes: $ttl_minutes
     }' > "${STATE_FILE}"
 }
 
+disable_running_tunnel() {
+  local reason pid url
+  reason="${1:-manual}"
+  pid="$(cloudflared_pid)"
+  url="$(extract_url)"
+  if is_pid_running "${pid}"; then
+    kill "${pid}" 2>/dev/null || true
+    sleep 0.2
+  fi
+  rm -f "${PID_FILE}"
+  rm -f "${META_FILE}"
+  audit_event "disabled" "${reason}" "${url}"
+}
+
 status_cmd() {
-  local pid active url eligible
+  local pid active url eligible now_epoch
   build_eligibility
   pid="$(cloudflared_pid)"
   active=false
@@ -136,6 +206,20 @@ status_cmd() {
     pid=""
     rm -f "${PID_FILE}"
   fi
+
+  # Auto-revoke when TTL expires.
+  if [[ "${active}" == "true" ]]; then
+    read_meta
+    now_epoch="$(date +%s)"
+    if [[ "${META_EXPIRES_EPOCH:-0}" -gt 0 ]] && (( now_epoch >= META_EXPIRES_EPOCH )); then
+      disable_running_tunnel "ttl_expired"
+      active=false
+      pid=""
+      url=""
+      SUPPORT_REASON="ttl_expired"
+    fi
+  fi
+
   eligible=false
   if [[ "${SUPPORT_ENABLED}" == "true" && "${SUPPORT_TAILNET_MATCH}" == "true" && "${SUPPORT_BACKEND}" == "Running" ]]; then
     eligible=true
@@ -145,7 +229,7 @@ status_cmd() {
 }
 
 enable_cmd() {
-  local pid loop url
+  local pid loop url ttl_minutes
   build_eligibility
   if [[ "${SUPPORT_ENABLED}" != "true" || "${SUPPORT_TAILNET_MATCH}" != "true" || "${SUPPORT_BACKEND}" != "Running" ]]; then
     write_state false "" "" false
@@ -185,21 +269,26 @@ enable_cmd() {
     exit 1
   fi
 
+  ttl_minutes="$(bashio::config "support_tunnel_ttl_minutes" "30")"
+  write_meta "${ttl_minutes}"
+  audit_event "enabled" "ok" "${url}"
   write_state true "${pid}" "${url}" true
   cat "${STATE_FILE}"
 }
 
 disable_cmd() {
-  local pid
-  pid="$(cloudflared_pid)"
-  if is_pid_running "${pid}"; then
-    kill "${pid}" 2>/dev/null || true
-    sleep 0.2
-  fi
-  rm -f "${PID_FILE}"
   build_eligibility
+  disable_running_tunnel "manual_disable"
   write_state false "" "" false
   cat "${STATE_FILE}"
+}
+
+audit_cmd() {
+  if [[ -f "${AUDIT_FILE}" ]]; then
+    tail -n 100 "${AUDIT_FILE}"
+  else
+    echo ""
+  fi
 }
 
 case "${1:-status}" in
@@ -212,8 +301,11 @@ case "${1:-status}" in
   disable)
     disable_cmd
     ;;
+  audit)
+    audit_cmd
+    ;;
   *)
-    echo "Usage: support-tunnel [status|enable|disable]" >&2
+    echo "Usage: support-tunnel [status|enable|disable|audit]" >&2
     exit 2
     ;;
 esac

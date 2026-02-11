@@ -28,3 +28,8 @@ Añade este repositorio en la tienda de Apps de Home Assistant:
 
 - Abre un issue en el repositorio
 - Incluye versión de Home Assistant, versión de la app y logs relevantes
+
+## Wiki
+
+- GitHub Wiki (cuando se publique): `https://github.com/danielmigueltejedor/apps-nodalia/wiki`
+- Fuentes locales de la wiki: `docs/wiki/`

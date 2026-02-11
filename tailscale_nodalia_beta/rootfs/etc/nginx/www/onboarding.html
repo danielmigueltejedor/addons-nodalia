@@ -45,6 +45,27 @@
       padding-bottom: 12px;
       border-bottom: 1px solid var(--border);
     }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+    }
+    .brand img {
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #fff;
+      padding: 3px;
+    }
+    .brand-name {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #0f2138;
+      letter-spacing: 0.02em;
+    }
     .badge {
       display: inline-flex;
       align-items: center;
@@ -197,6 +218,28 @@
       inline-size: 16px;
       block-size: 16px;
     }
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 6px 0 10px;
+    }
+    .score-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      background: #eef4ff;
+      color: #0d2a50;
+      font-size: 0.85rem;
+    }
+    .score-ok { background: #e8f7ef; border-color: #b7e3c8; color: #0f5f37; }
+    .score-warn { background: #fff2e8; border-color: #ffd0b0; color: #8a3a10; }
+    .score-bad { background: #fdecec; border-color: #f7c2c2; color: #8e1f1f; }
     @media (max-width: 640px) {
       .card { padding: 14px; }
       .kv { grid-template-columns: 1fr; }
@@ -206,11 +249,15 @@
 <body>
   <main class="card">
     <section class="hero">
+      <div class="brand">
+        <img src="nodalia-logo.png" alt="Nodalia logo">
+        <span class="brand-name">Nodalia</span>
+      </div>
       <span class="badge">Nodalia Control Center</span>
       <h1>Asistente de inicio de sesion</h1>
       <p>Gestiona Tailscale desde aqui sin depender del iframe, con acceso directo cuando quieras.</p>
       <div class="quick">
-        <a id="go-webui-btn" class="btn ghost" href="webui">Ir al iframe de Tailscale</a>
+        <a id="go-status-btn" class="btn ghost" href="#ok-box">Ir a acciones de conexion</a>
         <button id="hard-refresh-btn" type="button" class="ghost">Recargar panel</button>
         <button id="toggle-advanced-btn" type="button" class="ghost">Modo avanzado: ON</button>
       </div>
@@ -280,6 +327,15 @@
       <p id="op-message" class="small"></p>
       <div id="op-output" class="mono" hidden></div>
     </section>
+    <section class="panel">
+      <h2>Salud y diagnostico</h2>
+      <div class="score-row">
+        <span id="health-score-pill" class="score-pill">Health score: --</span>
+        <button id="run-health-btn" type="button" class="ghost">Ejecutar test de conectividad</button>
+        <button id="download-report-btn" type="button" class="ghost">Descargar diagnostico JSON</button>
+      </div>
+      <ul id="health-checks" class="diag-list"></ul>
+    </section>
     <section class="panel advanced-only">
       <h2>Sugerencias inteligentes</h2>
       <ul id="suggestions-list" class="diag-list"></ul>
@@ -298,14 +354,17 @@
         <div>Elegible:</div><div><code id="sup-eligible">-</code></div>
         <div>Tunel activo:</div><div><code id="sup-active">-</code></div>
         <div>URL temporal:</div><div><code id="sup-url">-</code></div>
+        <div>Expira en:</div><div><code id="sup-expires">-</code></div>
         <div>Motivo:</div><div><code id="sup-reason">-</code></div>
       </div>
       <div class="actions" style="margin-top:10px;">
         <button id="sup-enable-btn" type="button" class="ghost">Activar tunel soporte</button>
-        <button id="sup-disable-btn" type="button" class="ghost">Desactivar tunel soporte</button>
+        <button id="sup-disable-btn" type="button" class="ghost">Revocar ahora</button>
         <button id="sup-copy-url-btn" type="button" class="ghost">Copiar URL soporte</button>
+        <button id="sup-audit-btn" type="button" class="ghost">Ver auditoria</button>
       </div>
       <p id="sup-message" class="small"></p>
+      <div id="sup-audit-output" class="mono" hidden></div>
     </section>
     <section class="panel advanced-only">
       <h2>Perfiles recomendados</h2>
@@ -341,7 +400,7 @@
     const openBtn = document.getElementById("open-btn");
     const openWebuiBtn = document.getElementById("open-webui-btn");
     const openDirectBtn = document.getElementById("open-direct-btn");
-    const goWebuiBtn = document.getElementById("go-webui-btn");
+    const goStatusBtn = document.getElementById("go-status-btn");
     const hardRefreshBtn = document.getElementById("hard-refresh-btn");
     const toggleAdvancedBtn = document.getElementById("toggle-advanced-btn");
     const refreshBtn = document.getElementById("refresh-btn");
@@ -361,11 +420,14 @@
     const supportEligible = document.getElementById("sup-eligible");
     const supportActive = document.getElementById("sup-active");
     const supportUrl = document.getElementById("sup-url");
+    const supportExpires = document.getElementById("sup-expires");
     const supportReason = document.getElementById("sup-reason");
     const supportMessage = document.getElementById("sup-message");
     const supportEnableBtn = document.getElementById("sup-enable-btn");
     const supportDisableBtn = document.getElementById("sup-disable-btn");
     const supportCopyUrlBtn = document.getElementById("sup-copy-url-btn");
+    const supportAuditBtn = document.getElementById("sup-audit-btn");
+    const supportAuditOutput = document.getElementById("sup-audit-output");
     const rtBackend = document.getElementById("rt-backend");
     const rtWebUi = document.getElementById("rt-webui");
     const rtWebUiStreak = document.getElementById("rt-webui-streak");
@@ -391,15 +453,28 @@
     const opRefreshBtn = document.getElementById("op-refresh-btn");
     const opMessage = document.getElementById("op-message");
     const opOutput = document.getElementById("op-output");
+    const runHealthBtn = document.getElementById("run-health-btn");
+    const downloadReportBtn = document.getElementById("download-report-btn");
+    const healthChecks = document.getElementById("health-checks");
+    const healthScorePill = document.getElementById("health-score-pill");
     let pollHandle = null;
     let redirectHandle = null;
     let lastOnboarding = null;
     let lastRuntime = null;
     let lastSupportUrl = "";
+    let lastSuggestionsHtml = "";
+    let lastHealthHtml = "";
+    let lastRuntimeSignature = "";
     let lastStateMessage = "";
     let lastStateClass = "";
     let isFirstRender = true;
     let advancedModeEnabled = true;
+    let redirectDeadlineMs = 0;
+    let actionInFlight = 0;
+    let supportBusy = false;
+    let supportRules = { enable: false, disable: false, copy: false, audit: false };
+    let opBusy = false;
+    let opCanLogout = false;
     const RUNTIME_CACHE_KEY = "nodalia_runtime_cache_v1";
     const UI_PREFS_KEY = "nodalia_ui_prefs_v1";
     const aclWebUiSnippet = JSON.stringify({
@@ -463,34 +538,151 @@
       toggleAdvancedBtn.textContent = advancedModeEnabled ? "Modo avanzado: ON" : "Modo avanzado: OFF";
     }
 
+    function setUiDisabled(element, disabled) {
+      if (!element) {
+        return;
+      }
+      if ("disabled" in element) {
+        element.disabled = disabled;
+      }
+      element.classList.toggle("disabled", disabled);
+      if (element.tagName === "A") {
+        if (disabled) {
+          element.setAttribute("aria-disabled", "true");
+        } else {
+          element.removeAttribute("aria-disabled");
+        }
+      }
+    }
+
+    function isUiDisabled(element) {
+      if (!element) {
+        return true;
+      }
+      return element.classList.contains("disabled") || ("disabled" in element && element.disabled);
+    }
+
+    function beginUiAction() {
+      actionInFlight += 1;
+    }
+
+    function endUiAction() {
+      actionInFlight = Math.max(0, actionInFlight - 1);
+    }
+
+    function renderSupportButtons() {
+      setUiDisabled(supportEnableBtn, supportBusy || !supportRules.enable);
+      setUiDisabled(supportDisableBtn, supportBusy || !supportRules.disable);
+      setUiDisabled(supportCopyUrlBtn, supportBusy || !supportRules.copy);
+      setUiDisabled(supportAuditBtn, supportBusy || !supportRules.audit);
+    }
+
+    function renderOpButtons() {
+      setUiDisabled(opReconnectBtn, opBusy);
+      setUiDisabled(opRefreshBtn, opBusy);
+      setUiDisabled(opLogoutBtn, opBusy || !opCanLogout);
+    }
+
     function setSupportButtonState(busy) {
-      supportEnableBtn.disabled = busy;
-      supportDisableBtn.disabled = busy;
-      supportCopyUrlBtn.disabled = busy;
+      supportBusy = busy;
+      renderSupportButtons();
     }
 
     function renderSupportFromRuntime(runtime) {
       const enabled = Boolean(runtime?.support_enabled);
-      const match = Boolean(runtime?.support_tailnet_match);
-      const eligible = Boolean(runtime?.support_eligible);
-      const active = Boolean(runtime?.support_active);
-      const url = String(runtime?.support_url || "");
-      const reason = String(runtime?.support_reason || "");
+      const match = Boolean(runtime?.support_tailnet_match ?? runtime?.tailnet_match);
+      const eligible = Boolean(runtime?.support_eligible ?? runtime?.eligible);
+      const active = Boolean(runtime?.support_active ?? runtime?.active);
+      const url = String(runtime?.support_url || runtime?.url || "");
+      const expiresAt = String(runtime?.support_expires_at || runtime?.expires_at || "");
+      const reason = String(runtime?.support_reason || runtime?.reason || "");
       supportEnabled.textContent = enabled ? "true" : "false";
-      supportTailnet.textContent = String(runtime?.support_tailnet_id || "-");
+      supportTailnet.textContent = String(runtime?.support_tailnet_id || runtime?.support_target_id || "-");
       supportMatch.textContent = match ? "true" : "false";
       supportEligible.textContent = eligible ? "true" : "false";
       supportActive.textContent = active ? "true" : "false";
       supportUrl.textContent = url || "-";
+      supportExpires.textContent = expiresAt || "-";
       supportReason.textContent = reason || "-";
       lastSupportUrl = url;
-      supportEnableBtn.classList.toggle("disabled", !enabled || !eligible);
-      supportDisableBtn.classList.toggle("disabled", !active);
-      supportCopyUrlBtn.classList.toggle("disabled", !url);
+      supportRules = {
+        enable: enabled && eligible,
+        disable: active,
+        copy: Boolean(url),
+        audit: enabled,
+      };
+      renderSupportButtons();
+    }
+
+    function renderHealthFromRuntime(runtime) {
+      const backend = String(runtime?.backend_state || "Unknown");
+      const online = Boolean(runtime?.self_online);
+      const webui = Boolean(runtime?.webui_ready);
+      const supportEligible = Boolean(runtime?.support_eligible);
+      let score = 0;
+      if (backend === "Running") {
+        score += 45;
+      } else if (backend === "NeedsLogin" || backend === "NeedsMachineAuth") {
+        score += 25;
+      }
+      if (online) score += 20;
+      if (webui) score += 20;
+      if (supportEligible) score += 15;
+      if (score > 100) score = 100;
+      healthScorePill.textContent = "Health score: " + score;
+      healthScorePill.classList.remove("score-ok", "score-warn", "score-bad");
+      if (score >= 80) {
+        healthScorePill.classList.add("score-ok");
+      } else if (score >= 50) {
+        healthScorePill.classList.add("score-warn");
+      } else {
+        healthScorePill.classList.add("score-bad");
+      }
+
+      const checks = [
+        { ok: backend === "Running", label: "Backend Running" },
+        { ok: online, label: "Self online" },
+        { ok: webui, label: "Web UI local disponible" },
+        { ok: !!runtime?.support_enabled, label: "Modo soporte habilitado" },
+      ];
+      const html = checks.map((c) =>
+        `<li class="${c.ok ? "diag-ok" : "diag-ko"}">${c.ok ? "OK" : "WARN"}: ${c.label}</li>`
+      ).join("");
+      if (html !== lastHealthHtml) {
+        healthChecks.innerHTML = html;
+        lastHealthHtml = html;
+      }
     }
 
     function applyRuntimeData(data) {
+      const signature = JSON.stringify([
+        data?.backend_state,
+        data?.self_online,
+        data?.webui_ready,
+        data?.webui_ready_streak,
+        data?.webui_probe_s,
+        data?.webui_readonly,
+        data?.setup_profile,
+        data?.share_mode,
+        data?.self_dns_name,
+        data?.self_host_name,
+        data?.support_enabled,
+        data?.support_tailnet_match,
+        data?.support_eligible,
+        data?.support_active,
+        data?.support_url,
+        data?.support_reason,
+        data?.support_expires_at,
+        data?.direct_webui_url
+      ]);
       lastRuntime = data;
+      if (signature === lastRuntimeSignature) {
+        renderSupportFromRuntime(data);
+        opCanLogout = String(data?.backend_state || "") === "Running";
+        renderOpButtons();
+        return;
+      }
+      lastRuntimeSignature = signature;
       rtBackend.textContent = String(data.backend_state || "-");
       rtWebUi.textContent = data.webui_ready ? "true" : "false";
       rtWebUiStreak.textContent = Number(data.webui_ready_streak || 0).toString();
@@ -506,11 +698,14 @@
       rtUptime.textContent = Number(data.uptime_sec || 0).toString();
       rtUpdated.textContent = String(data.updated_at || "-");
       renderSupportFromRuntime(data);
+      renderHealthFromRuntime(data);
+      opCanLogout = String(data?.backend_state || "") === "Running";
+      renderOpButtons();
       if (typeof data.direct_webui_url === "string" && data.direct_webui_url.length > 0) {
         openDirectBtn.href = data.direct_webui_url;
-        openDirectBtn.classList.remove("disabled");
+        setUiDisabled(openDirectBtn, false);
       } else {
-        openDirectBtn.classList.add("disabled");
+        setUiDisabled(openDirectBtn, true);
       }
       try {
         localStorage.setItem(RUNTIME_CACHE_KEY, JSON.stringify(data));
@@ -568,6 +763,23 @@
       return data;
     }
 
+    async function downloadDiagnostics() {
+      const report = {
+        generated_at: new Date().toISOString(),
+        onboarding: lastOnboarding,
+        runtime: lastRuntime,
+      };
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "nodalia-tailscale-diagnostics.json";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    }
+
     function schedulePoll(delayMs = 1000) {
       if (pollHandle) {
         clearTimeout(pollHandle);
@@ -590,9 +802,8 @@
     }
 
     function setOpButtonsBusy(busy) {
-      opReconnectBtn.disabled = busy;
-      opLogoutBtn.disabled = busy;
-      opRefreshBtn.disabled = busy;
+      opBusy = busy;
+      renderOpButtons();
     }
 
     function cancelAutoRedirect() {
@@ -600,32 +811,35 @@
         clearTimeout(redirectHandle);
         redirectHandle = null;
       }
+      redirectDeadlineMs = 0;
       cancelRedirectBtn.hidden = true;
       redirectState.textContent = "";
     }
 
     function startAutoRedirect() {
-      cancelAutoRedirect();
-      if (!autoOpenCheck.checked || openWebuiBtn.classList.contains("disabled")) {
+      if (!autoOpenCheck.checked || isUiDisabled(openWebuiBtn)) {
+        cancelAutoRedirect();
         return;
       }
-      let countdown = 3;
+      if (redirectHandle && redirectDeadlineMs > Date.now()) {
+        return;
+      }
+      redirectDeadlineMs = Date.now() + 3000;
       cancelRedirectBtn.hidden = false;
-      redirectState.textContent = "Redireccion automatica en " + countdown + "s...";
       const tick = () => {
-        if (openWebuiBtn.classList.contains("disabled")) {
+        if (isUiDisabled(openWebuiBtn)) {
           cancelAutoRedirect();
           return;
         }
-        countdown -= 1;
-        if (countdown <= 0) {
+        const remaining = Math.max(0, Math.ceil((redirectDeadlineMs - Date.now()) / 1000));
+        redirectState.textContent = "Redireccion automatica en " + remaining + "s...";
+        if (remaining <= 0) {
           window.location.replace("webui");
           return;
         }
-        redirectState.textContent = "Redireccion automatica en " + countdown + "s...";
-        redirectHandle = setTimeout(tick, 1000);
+        redirectHandle = setTimeout(tick, 200);
       };
-      redirectHandle = setTimeout(tick, 1000);
+      tick();
     }
 
     function setActiveStep(step) {
@@ -676,15 +890,22 @@
         suggestions.push("Estado estable: sin acciones pendientes.");
       }
 
-      suggestionsList.innerHTML = suggestions.map((item) => `<li>${item}</li>`).join("");
+      const html = suggestions.map((item) => `<li>${item}</li>`).join("");
+      if (html !== lastSuggestionsHtml) {
+        suggestionsList.innerHTML = html;
+        lastSuggestionsHtml = html;
+      }
     }
 
     async function loadState() {
       let nextDelayMs = 1200;
+      if (actionInFlight > 0) {
+        schedulePoll(nextDelayMs);
+        return;
+      }
       if (isFirstRender) {
         updateStateView("Cargando estado...", "");
       }
-      cancelAutoRedirect();
       try {
         const ts = Date.now();
         const onboardingPromise = fetchJsonWithTimeout("onboarding.json?_ts=" + ts, 1500);
@@ -700,9 +921,10 @@
         const authUrl = String(lastRuntime?.auth_url || data.auth_url || "");
 
         if (needsLogin) {
+          cancelAutoRedirect();
           setActiveStep("auth");
-          openWebuiBtn.classList.add("disabled");
-          openDirectBtn.classList.add("disabled");
+          setUiDisabled(openWebuiBtn, true);
+          setUiDisabled(openDirectBtn, true);
           updateStateView("Estado: login requerido (" + backendState + ")", "login");
           if (authUrl) {
             loginUrlInput.value = authUrl;
@@ -720,8 +942,9 @@
         }
 
         if (backendState !== "Running") {
+          cancelAutoRedirect();
           setActiveStep("warmup");
-          openWebuiBtn.classList.add("disabled");
+          setUiDisabled(openWebuiBtn, true);
           updateStateView("Estado: iniciando (" + backendState + ")", "login");
           okBox.hidden = false;
           loginBox.hidden = true;
@@ -739,17 +962,18 @@
         if (webUiReady && streak >= 2) {
           setActiveStep("access");
           updateStateView("Estado: conectado (" + backendState + "). Web UI lista.", "running");
-          openWebuiBtn.classList.remove("disabled");
+          setUiDisabled(openWebuiBtn, false);
           startAutoRedirect();
         } else {
+          cancelAutoRedirect();
           setActiveStep("warmup");
-          openWebuiBtn.classList.add("disabled");
+          setUiDisabled(openWebuiBtn, true);
           if (webUiReady) {
             updateStateView("Estado: conectado (" + backendState + "). Confirmando disponibilidad de Web UI...", "running");
           } else {
             updateStateView("Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...", "running");
           }
-          nextDelayMs = 600;
+          nextDelayMs = 900;
         }
         renderSuggestions();
         isFirstRender = false;
@@ -784,10 +1008,18 @@
         supportEligible.textContent = "n/a";
         supportActive.textContent = "n/a";
         supportUrl.textContent = "n/a";
+        supportExpires.textContent = "n/a";
         supportReason.textContent = "runtime unavailable";
-        supportEnableBtn.classList.add("disabled");
-        supportDisableBtn.classList.add("disabled");
-        supportCopyUrlBtn.classList.add("disabled");
+        supportRules = { enable: false, disable: false, copy: false, audit: false };
+        renderSupportButtons();
+        opCanLogout = false;
+        renderOpButtons();
+        healthScorePill.textContent = "Health score: --";
+        healthScorePill.classList.remove("score-ok", "score-warn", "score-bad");
+        if (lastHealthHtml !== "") {
+          healthChecks.innerHTML = "";
+          lastHealthHtml = "";
+        }
         return null;
       }
     }
@@ -844,46 +1076,68 @@
       await copyText(tagOwnersSnippet, copyTagOwnersBtn, "tagOwners copiado", "Copiar bloque tagOwners");
     });
     supportEnableBtn.addEventListener("click", async () => {
-      if (supportEnableBtn.classList.contains("disabled")) {
+      if (isUiDisabled(supportEnableBtn)) {
         return;
       }
+      beginUiAction();
       setSupportButtonState(true);
       supportMessage.textContent = "Activando tunel de soporte...";
       try {
         const data = await callSupportApi("enable", "POST");
-        renderSupportFromRuntime(data);
         supportMessage.textContent = data.url
           ? "Tunel activo. URL temporal lista."
           : "Tunel activado, esperando URL temporal...";
+        await refreshRuntime(1500);
       } catch (error) {
         supportMessage.textContent = "No se pudo activar el tunel: " + error.message;
       } finally {
         setSupportButtonState(false);
+        endUiAction();
       }
     });
     supportDisableBtn.addEventListener("click", async () => {
-      if (supportDisableBtn.classList.contains("disabled")) {
+      if (isUiDisabled(supportDisableBtn)) {
         return;
       }
+      beginUiAction();
       setSupportButtonState(true);
       supportMessage.textContent = "Desactivando tunel de soporte...";
       try {
-        const data = await callSupportApi("disable", "POST");
-        renderSupportFromRuntime(data);
+        await callSupportApi("disable", "POST");
         supportMessage.textContent = "Tunel de soporte desactivado.";
+        await refreshRuntime(1500);
       } catch (error) {
         supportMessage.textContent = "No se pudo desactivar el tunel: " + error.message;
       } finally {
         setSupportButtonState(false);
+        endUiAction();
       }
     });
     supportCopyUrlBtn.addEventListener("click", async () => {
-      if (supportCopyUrlBtn.classList.contains("disabled") || !lastSupportUrl) {
+      if (isUiDisabled(supportCopyUrlBtn) || !lastSupportUrl) {
         return;
       }
       await copyText(lastSupportUrl, supportCopyUrlBtn, "URL copiada", "Copiar URL soporte");
     });
+    supportAuditBtn.addEventListener("click", async () => {
+      if (isUiDisabled(supportAuditBtn)) {
+        return;
+      }
+      beginUiAction();
+      supportAuditOutput.hidden = false;
+      supportAuditOutput.textContent = "Cargando auditoria...";
+      try {
+        const response = await fetch("support-api?action=audit&_ts=" + Date.now(), { cache: "no-store" });
+        const text = await response.text();
+        supportAuditOutput.textContent = text.trim() || "Sin eventos de auditoria todavia.";
+      } catch (error) {
+        supportAuditOutput.textContent = "No se pudo cargar auditoria: " + error.message;
+      } finally {
+        endUiAction();
+      }
+    });
     opReconnectBtn.addEventListener("click", async () => {
+      beginUiAction();
       setOpButtonsBusy(true);
       opMessage.textContent = "Reintentando conexion con Tailscale...";
       opOutput.hidden = true;
@@ -899,16 +1153,22 @@
       } catch (error) {
         opMessage.textContent = "Error al reconectar: " + error.message;
       } finally {
+        endUiAction();
         await refreshRuntime(1800);
-        loadState();
+        await loadState();
         setOpButtonsBusy(false);
       }
     });
     opLogoutBtn.addEventListener("click", async () => {
+      if (isUiDisabled(opLogoutBtn)) {
+        opMessage.textContent = "Logout no disponible: el backend no esta en Running.";
+        return;
+      }
       const confirmed = window.confirm("Se cerrara la sesion actual de Tailscale en este dispositivo. Continuar?");
       if (!confirmed) {
         return;
       }
+      beginUiAction();
       setOpButtonsBusy(true);
       opMessage.textContent = "Cerrando sesion...";
       opOutput.hidden = true;
@@ -916,7 +1176,7 @@
         const data = await callControlApi("logout", "POST");
         opMessage.textContent = data.ok
           ? "Sesion cerrada. Vuelve a autenticar desde esta pagina."
-          : "No se pudo cerrar sesion.";
+          : "Logout no confirmado. Estado actual: " + String(data.backend_state || "Unknown");
         if (data.output) {
           opOutput.textContent = data.output;
           opOutput.hidden = false;
@@ -924,17 +1184,61 @@
       } catch (error) {
         opMessage.textContent = "Error al cerrar sesion: " + error.message;
       } finally {
+        endUiAction();
         await refreshRuntime(1800);
-        loadState();
+        await loadState();
         setOpButtonsBusy(false);
       }
     });
     opRefreshBtn.addEventListener("click", async () => {
-      opMessage.textContent = "Actualizando estado...";
-      await refreshRuntime(1800);
-      loadState();
-      opMessage.textContent = "Estado actualizado.";
+      beginUiAction();
+      setOpButtonsBusy(true);
+      try {
+        opMessage.textContent = "Actualizando estado...";
+        await refreshRuntime(1800);
+        await loadState();
+        opMessage.textContent = "Estado actualizado.";
+      } finally {
+        endUiAction();
+        setOpButtonsBusy(false);
+      }
     });
+    runHealthBtn.addEventListener("click", async () => {
+      beginUiAction();
+      runHealthBtn.disabled = true;
+      opMessage.textContent = "Ejecutando test de conectividad...";
+      try {
+        const data = await callControlApi("diag", "POST");
+        const checks = data?.checks || {};
+        const rows = [
+          { ok: !!checks.tailscaled_socket, label: "Socket tailscaled" },
+          { ok: !!checks.webui_local, label: "Web UI local 127.0.0.1:25899" },
+          { ok: !!checks.control_plane_reachable, label: "Control plane accesible" },
+        ];
+        const html = rows.map((c) =>
+          `<li class="${c.ok ? "diag-ok" : "diag-ko"}">${c.ok ? "OK" : "WARN"}: ${c.label}</li>`
+        ).join("");
+        healthChecks.innerHTML = html;
+        lastHealthHtml = html;
+        const score = Number(data?.health_score || 0);
+        healthScorePill.textContent = "Health score: " + score;
+        healthScorePill.classList.remove("score-ok", "score-warn", "score-bad");
+        if (score >= 80) {
+          healthScorePill.classList.add("score-ok");
+        } else if (score >= 50) {
+          healthScorePill.classList.add("score-warn");
+        } else {
+          healthScorePill.classList.add("score-bad");
+        }
+        opMessage.textContent = "Diagnostico completado.";
+      } catch (error) {
+        opMessage.textContent = "No se pudo ejecutar el diagnostico: " + error.message;
+      } finally {
+        runHealthBtn.disabled = false;
+        endUiAction();
+      }
+    });
+    downloadReportBtn.addEventListener("click", downloadDiagnostics);
 
     refreshBtn.addEventListener("click", () => {
       if (pollHandle) {
@@ -954,12 +1258,12 @@
     autoOpenCheck.addEventListener("change", () => {
       if (!autoOpenCheck.checked) {
         cancelAutoRedirect();
-      } else if (!openWebuiBtn.classList.contains("disabled")) {
+      } else if (!isUiDisabled(openWebuiBtn)) {
         startAutoRedirect();
       }
     });
     openWebuiBtn.addEventListener("click", (event) => {
-      if (openWebuiBtn.classList.contains("disabled")) {
+      if (isUiDisabled(openWebuiBtn)) {
         event.preventDefault();
         return;
       }
@@ -967,9 +1271,9 @@
       event.preventDefault();
       window.location.replace("webui");
     });
-    goWebuiBtn.addEventListener("click", (event) => {
+    goStatusBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      window.location.replace("webui");
+      okBox.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     hardRefreshBtn.addEventListener("click", () => {
       if (pollHandle) {
@@ -992,7 +1296,7 @@
       }
     });
     openDirectBtn.addEventListener("click", (event) => {
-      if (openDirectBtn.classList.contains("disabled")) {
+      if (isUiDisabled(openDirectBtn)) {
         event.preventDefault();
       }
     });

@@ -6,10 +6,11 @@ action="status"
 case "${QUERY_STRING:-}" in
   *action=enable*) action="enable" ;;
   *action=disable*) action="disable" ;;
+  *action=audit*) action="audit" ;;
   *action=status*) action="status" ;;
 esac
 
-if [[ "${REQUEST_METHOD:-GET}" != "POST" ]] && [[ "${action}" != "status" ]]; then
+if [[ "${REQUEST_METHOD:-GET}" != "POST" ]] && [[ "${action}" != "status" ]] && [[ "${action}" != "audit" ]]; then
   echo "Status: 405 Method Not Allowed"
   echo "Content-Type: application/json"
   echo

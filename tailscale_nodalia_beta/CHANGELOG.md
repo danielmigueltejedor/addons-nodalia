@@ -4,6 +4,37 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta18 - 2026-02-11
+### Fixed
+- Logout action reliability from Nodalia panel:
+  - `control-api` now validates that backend transitions to `NeedsLogin`/`NeedsMachineAuth`.
+  - if state remains `Running`, it retries with `tailscale down` + `tailscale logout`.
+  - returns explicit failure when logout is not actually applied.
+- UI now disables logout action when backend is not `Running`, and shows clearer status messages after logout attempts.
+
+## 3.0.0-beta17 - 2026-02-11
+### Fixed
+- Fix auto-redirect countdown reset loop in onboarding.
+- Countdown now keeps a stable deadline and does not restart to `3s` on each poll refresh.
+
+## 3.0.0-beta16 - 2026-02-11
+### Added
+- Nodalia Assist hardening:
+  - support tunnel TTL (`support_tunnel_ttl_minutes`) with automatic revocation on expiry.
+  - support tunnel audit trail (`enable/disable/ttl_expired`) stored in data and accessible from UI.
+- New control/diagnostic capabilities from onboarding:
+  - connectivity test (`diag`) through `/control-api`,
+  - health score panel,
+  - diagnostic JSON download.
+- New quick operational workflow:
+  - reconnect, logout, refresh, plus cleaner basic/advanced navigation.
+
+### Changed
+- Reduced onboarding page flicker further:
+  - differential rendering for suggestions/health/runtime blocks.
+  - avoid unnecessary auto-redirect state resets on each polling cycle.
+  - lower repaint frequency when data has not materially changed.
+
 ## 3.0.0-beta15 - 2026-02-11
 ### Fixed
 - Fix return button from Tailscale iframe to Nodalia panel under Home Assistant ingress.

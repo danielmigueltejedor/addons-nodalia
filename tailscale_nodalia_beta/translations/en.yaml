@@ -136,6 +136,12 @@ configuration:
     description: >-
       Internal URL exposed through the temporary support tunnel.
       Default points to Home Assistant on this host.
+  support_tunnel_ttl_minutes:
+    name: Support tunnel TTL (minutes)
+    description: >-
+      Auto-expire time for the temporary support tunnel.
+      After this duration, the tunnel is revoked automatically and an audit
+      event is recorded.
 network:
   41641/udp: >-
     UDP port to listen on for WireGuard and peer-to-peer traffic.
