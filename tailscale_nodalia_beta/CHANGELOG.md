@@ -4,6 +4,15 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta45 - 2026-02-11
+### Fixed
+- Reestructurado el enrutado de ingress para priorizar compatibilidad con la Web UI real de Tailscale:
+  - el root `/` vuelve a ser la Web UI proxificada (como en estable),
+  - `/webui` ahora redirige a `/` para compatibilidad con botones antiguos.
+- El panel Nodalia pasa a entrada principal con `ingress_entry: /onboarding`.
+- Se añade ruta explícita para `/nodalia-logo.png` para no romper recursos del panel.
+- Botones del panel actualizados para abrir Web UI en `./` (root real), evitando el bucle de “unavailable”.
+
 ## 3.0.0-beta44 - 2026-02-11
 ### Fixed
 - Revertido bloque `/webui` de beta al comportamiento de la rama estable (más fiable):

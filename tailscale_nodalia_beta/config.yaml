@@ -1,5 +1,5 @@
 name: Tailscale (Nodalia Beta)
-version: 3.0.0-beta44
+version: 3.0.0-beta45
 slug: tailscale_nodalia_beta
 description: Zero config VPN for building secure networks (Nodalia beta build)
 url: https://github.com/danielmigueltejedor/apps-nodalia
@@ -7,6 +7,7 @@ url: https://github.com/danielmigueltejedor/apps-nodalia
 ingress: true
 ingress_port: 0
 ingress_stream: true
+ingress_entry: /onboarding
 
 startup: services
 panel_icon: mdi:vpn
