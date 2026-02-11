@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta46 - 2026-02-11
+### Added
+- Telemetria de runtime mucho mas util en logs del addon para depuracion:
+  - log en cada cambio de estado relevante (`backend`, `webui_ready`, `webui_http`, `dns_degraded`, soporte),
+  - heartbeat periodico con resumen operativo (cada ~60s),
+  - razon de no disponibilidad de Web UI (`probe-timeout`, `http-xxx`, `upstream-unavailable-banner`).
+- Cuando hay warning DNS, ahora se emite linea dedicada en logs (`runtime-status: dns_warning=...`).
+
 ## 3.0.0-beta45 - 2026-02-11
 ### Fixed
 - Reestructurado el enrutado de ingress para priorizar compatibilidad con la Web UI real de Tailscale:

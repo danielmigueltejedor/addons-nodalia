@@ -7,6 +7,7 @@
 
 readonly RUNTIME_STATE_FILE="/data/tailscale-runtime.json"
 readonly POLL_INTERVAL=3
+readonly LOG_HEARTBEAT_EVERY_LOOPS=20
 
 declare status_json
 declare backend_state
@@ -41,11 +42,21 @@ declare support_ttl_minutes
 declare dns_resolvers
 declare dns_warning
 declare dns_degraded
+declare webui_reason
+declare log_summary
 
 declare -i ready_streak=0
 declare -i start_epoch
 declare -i now_epoch
 declare -i uptime_sec
+declare -i loop_count=0
+declare prev_backend_state="__init__"
+declare prev_webui_ready="__init__"
+declare prev_webui_http_code="__init__"
+declare prev_dns_degraded="__init__"
+declare prev_dns_warning="__init__"
+declare prev_support_eligible="__init__"
+declare prev_support_active="__init__"
 
 start_epoch=$(date +%s)
 
@@ -89,6 +100,14 @@ do
     fi
   else
     ready_streak=0
+  fi
+  webui_reason="ok"
+  if [[ "${webui_http_code}" == "000" ]]; then
+    webui_reason="probe-timeout"
+  elif [[ ! "${webui_http_code}" =~ ^(2[0-9][0-9]|3[0-9][0-9]|401|403)$ ]]; then
+    webui_reason="http-${webui_http_code}"
+  elif grep -qi "Tailscale web interface is unavailable" <<< "${webui_probe_body}"; then
+    webui_reason="upstream-unavailable-banner"
   fi
 
   setup_profile=$(bashio::config "setup_profile" "custom")
@@ -189,5 +208,30 @@ do
     }')
 
   printf '%s\n' "${runtime_payload}" > "${RUNTIME_STATE_FILE}"
+  loop_count=$((loop_count + 1))
+
+  if [[ "${backend_state}" != "${prev_backend_state}" ]] || \
+    [[ "${webui_ready}" != "${prev_webui_ready}" ]] || \
+    [[ "${webui_http_code}" != "${prev_webui_http_code}" ]] || \
+    [[ "${dns_degraded}" != "${prev_dns_degraded}" ]] || \
+    [[ "${dns_warning}" != "${prev_dns_warning}" ]] || \
+    [[ "${support_eligible}" != "${prev_support_eligible}" ]] || \
+    [[ "${support_active}" != "${prev_support_active}" ]] || \
+    (( loop_count % LOG_HEARTBEAT_EVERY_LOOPS == 0 ));
+  then
+    log_summary="runtime-status: backend=${backend_state} online=${self_online} webui_ready=${webui_ready} streak=${ready_streak} webui_http=${webui_http_code} webui_reason=${webui_reason} probe_s=${webui_probe_s} dns_degraded=${dns_degraded} support_eligible=${support_eligible} support_active=${support_active}"
+    bashio::log.info "${log_summary}"
+    if [[ -n "${dns_warning}" ]]; then
+      bashio::log.warning "runtime-status: dns_warning=${dns_warning}"
+    fi
+  fi
+
+  prev_backend_state="${backend_state}"
+  prev_webui_ready="${webui_ready}"
+  prev_webui_http_code="${webui_http_code}"
+  prev_dns_degraded="${dns_degraded}"
+  prev_dns_warning="${dns_warning}"
+  prev_support_eligible="${support_eligible}"
+  prev_support_active="${support_active}"
   sleep "${POLL_INTERVAL}"
 done
