@@ -9,9 +9,21 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.2.0-beta1`
+`3.0.0-beta2`
 
 Cambios destacados:
+- Nuevo wizard de onboarding por pasos:
+  - Autenticacion -> Warmup Web UI -> Acceso operativo.
+- Asistentes de perfil con copia rapida:
+  - `setup_profile: home_access`
+  - `setup_profile: subnet_router`
+- Panel de control de sesion con comando de diagnostico copiable.
+- Panel runtime ampliado con `webui_readonly`, `setup_profile` y `share_mode`.
+- Entrada a Web UI más estable desde onboarding:
+  - se elimina la redirección automática.
+  - solo habilita acceso ingress cuando detecta 2 comprobaciones consecutivas de `webui-ready`.
+- Nuevo acceso directo por tailnet:
+  - botón "Abrir Web UI directa (tailnet)" con URL `http://<tailscale-ip>:5252` cuando está disponible.
 - Nueva base "major" para el canal beta:
   - panel de estado en vivo en onboarding (backend, webui_ready, online, DNS/host, IPs, timestamp).
   - endpoint interno `/runtime.json` para telemetría runtime sin revisar logs.

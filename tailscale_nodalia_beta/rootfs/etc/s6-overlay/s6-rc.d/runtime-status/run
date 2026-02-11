@@ -19,6 +19,9 @@ declare ipv6_list
 declare webui_ready
 declare now
 declare runtime_payload
+declare setup_profile
+declare webui_readonly
+declare share_mode
 
 while true
 do
@@ -37,6 +40,14 @@ do
     webui_ready=true
   fi
 
+  setup_profile=$(bashio::config "setup_profile" "custom")
+  if ! bashio::config.has_value "webui_readonly" || bashio::config.true "webui_readonly"; then
+    webui_readonly=true
+  else
+    webui_readonly=false
+  fi
+  share_mode=$(bashio::config "share_homeassistant" "disabled")
+
   now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   runtime_payload=$(jq -nc \
     --arg updated_at "${now}" \
@@ -44,11 +55,14 @@ do
     --arg auth_url "${auth_url}" \
     --arg self_dns_name "${self_dns_name}" \
     --arg self_host_name "${self_host_name}" \
+    --arg setup_profile "${setup_profile}" \
+    --arg share_mode "${share_mode}" \
     --argjson self_online "${self_online}" \
     --argjson webui_ready "${webui_ready}" \
+    --argjson webui_readonly "${webui_readonly}" \
     --argjson ipv4 "${ipv4_list}" \
     --argjson ipv6 "${ipv6_list}" \
-    '{updated_at:$updated_at, backend_state:$backend_state, auth_url:$auth_url, self_online:$self_online, webui_ready:$webui_ready, self_dns_name:$self_dns_name, self_host_name:$self_host_name, ipv4:$ipv4, ipv6:$ipv6}')
+    '{updated_at:$updated_at, backend_state:$backend_state, auth_url:$auth_url, self_online:$self_online, webui_ready:$webui_ready, webui_readonly:$webui_readonly, setup_profile:$setup_profile, share_mode:$share_mode, self_dns_name:$self_dns_name, self_host_name:$self_host_name, ipv4:$ipv4, ipv6:$ipv6}')
 
   printf '%s\n' "${runtime_payload}" > "${RUNTIME_STATE_FILE}"
   sleep "${POLL_INTERVAL}"

@@ -99,12 +99,68 @@
     }
     .diag-ok { color: var(--ok); }
     .diag-ko { color: var(--warn); }
+    .disabled {
+      opacity: 0.55;
+      pointer-events: none;
+    }
+    .steps {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 14px;
+    }
+    .step {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+      color: var(--muted);
+      background: #f7fafc;
+    }
+    .step.active {
+      border-color: #7fb1f4;
+      color: var(--text);
+      background: #eef5ff;
+      font-weight: 600;
+    }
+    .grid-2 {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .profile {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fff;
+    }
+    .profile h3 {
+      margin: 0 0 6px;
+      font-size: 0.98rem;
+    }
+    .profile p {
+      margin: 0 0 8px;
+      font-size: 0.88rem;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.84rem;
+      background: #f3f7fb;
+      border-radius: 8px;
+      padding: 6px 8px;
+      margin: 0 0 8px;
+      overflow-wrap: anywhere;
+    }
   </style>
 </head>
 <body>
   <main class="card">
     <h1>Asistente de inicio de sesion</h1>
     <p>Completa el login inicial sin revisar los logs de la aplicacion.</p>
+    <div class="steps">
+      <div id="step-auth" class="step">Paso 1: Autenticacion en tu tailnet</div>
+      <div id="step-warmup" class="step">Paso 2: Inicializacion de Web UI</div>
+      <div id="step-access" class="step">Paso 3: Acceso operativo</div>
+    </div>
     <div id="state" class="state">Cargando estado...</div>
     <div id="login-box" hidden>
       <div class="url-wrap">
@@ -118,7 +174,8 @@
     </div>
     <div id="ok-box" hidden>
       <div class="actions">
-        <a id="open-webui-btn" class="btn" href="webui">Abrir Web UI</a>
+        <a id="open-webui-btn" class="btn disabled" href="webui">Entrar Web UI (ingress)</a>
+        <a id="open-direct-btn" class="btn ghost disabled" href="#" target="_blank" rel="noopener noreferrer">Abrir Web UI directa (tailnet)</a>
         <button id="refresh-ok-btn" type="button" class="ghost">Actualizar estado</button>
       </div>
     </div>
@@ -127,7 +184,10 @@
       <div class="kv">
         <div>Backend:</div><div><code id="rt-backend">-</code></div>
         <div>Web UI lista:</div><div><code id="rt-webui">-</code></div>
+        <div>Web UI readonly:</div><div><code id="rt-readonly">-</code></div>
         <div>Self online:</div><div><code id="rt-online">-</code></div>
+        <div>Perfil:</div><div><code id="rt-profile">-</code></div>
+        <div>Share mode:</div><div><code id="rt-share">-</code></div>
         <div>DNSName:</div><div><code id="rt-dnsname">-</code></div>
         <div>HostName:</div><div><code id="rt-hostname">-</code></div>
         <div>IPv4:</div><div><code id="rt-ipv4">-</code></div>
@@ -140,7 +200,30 @@
       </div>
       <ul id="diag-list" class="diag-list"></ul>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> generado por la aplicacion.</p>
+    <section class="panel">
+      <h2>Perfiles recomendados</h2>
+      <div class="grid-2">
+        <article class="profile">
+          <h3>Acceso remoto basico</h3>
+          <p>Recomendado para entrar a Home Assistant desde fuera de casa.</p>
+          <div class="mono">setup_profile: home_access</div>
+          <button id="copy-profile-home" type="button" class="ghost">Copiar</button>
+        </article>
+        <article class="profile">
+          <h3>Router de subred</h3>
+          <p>Publica redes LAN para acceder desde tu tailnet.</p>
+          <div class="mono">setup_profile: subnet_router</div>
+          <button id="copy-profile-subnet" type="button" class="ghost">Copiar</button>
+        </article>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Control de sesion</h2>
+      <p class="small">Si ves "Viewing" en Web UI, usa acceso directo tailnet y revisa ACL/tagOwners.</p>
+      <div class="mono" id="session-report">tailscale status --json | jq '.BackendState,.AuthURL'</div>
+      <button id="copy-session-report" type="button" class="ghost">Copiar comando de diagnostico</button>
+    </section>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -150,6 +233,7 @@
     const copyBtn = document.getElementById("copy-btn");
     const openBtn = document.getElementById("open-btn");
     const openWebuiBtn = document.getElementById("open-webui-btn");
+    const openDirectBtn = document.getElementById("open-direct-btn");
     const refreshBtn = document.getElementById("refresh-btn");
     const refreshOkBtn = document.getElementById("refresh-ok-btn");
     const diagBtn = document.getElementById("diag-btn");
@@ -157,21 +241,40 @@
     const diagList = document.getElementById("diag-list");
     const rtBackend = document.getElementById("rt-backend");
     const rtWebUi = document.getElementById("rt-webui");
+    const rtReadonly = document.getElementById("rt-readonly");
     const rtOnline = document.getElementById("rt-online");
+    const rtProfile = document.getElementById("rt-profile");
+    const rtShare = document.getElementById("rt-share");
     const rtDnsName = document.getElementById("rt-dnsname");
     const rtHostName = document.getElementById("rt-hostname");
     const rtIpv4 = document.getElementById("rt-ipv4");
     const rtIpv6 = document.getElementById("rt-ipv6");
     const rtUpdated = document.getElementById("rt-updated");
+    const stepAuth = document.getElementById("step-auth");
+    const stepWarmup = document.getElementById("step-warmup");
+    const stepAccess = document.getElementById("step-access");
+    const copyProfileHome = document.getElementById("copy-profile-home");
+    const copyProfileSubnet = document.getElementById("copy-profile-subnet");
+    const copySessionReport = document.getElementById("copy-session-report");
     let pollHandle = null;
     let lastOnboarding = null;
     let lastRuntime = null;
+    let webUiReadyStreak = 0;
 
     function schedulePoll() {
       if (pollHandle) {
         clearTimeout(pollHandle);
       }
       pollHandle = setTimeout(loadState, 1000);
+    }
+
+    function setActiveStep(step) {
+      stepAuth.classList.remove("active");
+      stepWarmup.classList.remove("active");
+      stepAccess.classList.remove("active");
+      if (step === "auth") stepAuth.classList.add("active");
+      if (step === "warmup") stepWarmup.classList.add("active");
+      if (step === "access") stepAccess.classList.add("active");
     }
 
     async function loadState() {
@@ -192,6 +295,10 @@
         await refreshRuntime();
 
         if (needsLogin) {
+          setActiveStep("auth");
+          webUiReadyStreak = 0;
+          openWebuiBtn.classList.add("disabled");
+          openDirectBtn.classList.add("disabled");
           stateEl.classList.add("login");
           stateEl.textContent = "Estado: login requerido (" + backendState + ")";
           if (authUrl) {
@@ -205,6 +312,10 @@
         }
 
         if (backendState !== "Running") {
+          setActiveStep("warmup");
+          webUiReadyStreak = 0;
+          openWebuiBtn.classList.add("disabled");
+          openDirectBtn.classList.add("disabled");
           stateEl.classList.add("login");
           stateEl.textContent = "Estado: iniciando (" + backendState + ")";
           okBox.hidden = false;
@@ -216,9 +327,19 @@
         okBox.hidden = false;
         const webUiReady = await canReachWebUi();
         if (webUiReady) {
-          stateEl.textContent = "Estado: conectado (" + backendState + "). Redirigiendo a la Web UI...";
-          setTimeout(() => window.location.replace("webui?_ts=" + Date.now()), 350);
+          webUiReadyStreak += 1;
+          if (webUiReadyStreak >= 2) {
+            setActiveStep("access");
+            stateEl.textContent = "Estado: conectado (" + backendState + "). Web UI lista.";
+            openWebuiBtn.classList.remove("disabled");
+          } else {
+            setActiveStep("warmup");
+            stateEl.textContent = "Estado: conectado (" + backendState + "). Confirmando disponibilidad de Web UI...";
+          }
         } else {
+          setActiveStep("warmup");
+          webUiReadyStreak = 0;
+          openWebuiBtn.classList.add("disabled");
           stateEl.textContent = "Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...";
           if (pollHandle) {
             clearTimeout(pollHandle);
@@ -245,12 +366,22 @@
         lastRuntime = data;
         rtBackend.textContent = String(data.backend_state || "-");
         rtWebUi.textContent = data.webui_ready ? "true" : "false";
+        rtReadonly.textContent = data.webui_readonly ? "true" : "false";
         rtOnline.textContent = data.self_online ? "true" : "false";
+        rtProfile.textContent = String(data.setup_profile || "-");
+        rtShare.textContent = String(data.share_mode || "-");
         rtDnsName.textContent = String(data.self_dns_name || "-");
         rtHostName.textContent = String(data.self_host_name || "-");
         rtIpv4.textContent = Array.isArray(data.ipv4) && data.ipv4.length ? data.ipv4.join(", ") : "-";
         rtIpv6.textContent = Array.isArray(data.ipv6) && data.ipv6.length ? data.ipv6.join(", ") : "-";
         rtUpdated.textContent = String(data.updated_at || "-");
+
+        if (Array.isArray(data.ipv4) && data.ipv4.length > 0) {
+          openDirectBtn.href = "http://" + data.ipv4[0] + ":5252";
+          openDirectBtn.classList.remove("disabled");
+        } else {
+          openDirectBtn.classList.add("disabled");
+        }
       } catch (_) {
         rtBackend.textContent = "n/a";
         rtWebUi.textContent = "n/a";
@@ -315,6 +446,22 @@
         document.execCommand("copy");
       }
     });
+    copyProfileHome.addEventListener("click", async () => {
+      await navigator.clipboard.writeText("setup_profile: home_access");
+      copyProfileHome.textContent = "Copiado";
+      setTimeout(() => { copyProfileHome.textContent = "Copiar"; }, 1200);
+    });
+    copyProfileSubnet.addEventListener("click", async () => {
+      await navigator.clipboard.writeText("setup_profile: subnet_router");
+      copyProfileSubnet.textContent = "Copiado";
+      setTimeout(() => { copyProfileSubnet.textContent = "Copiar"; }, 1200);
+    });
+    copySessionReport.addEventListener("click", async () => {
+      const cmd = "tailscale status --json | jq '.BackendState,.AuthURL'";
+      await navigator.clipboard.writeText(cmd);
+      copySessionReport.textContent = "Comando copiado";
+      setTimeout(() => { copySessionReport.textContent = "Copiar comando de diagnostico"; }, 1200);
+    });
 
     refreshBtn.addEventListener("click", () => {
       if (pollHandle) {
@@ -329,8 +476,17 @@
       loadState();
     });
     openWebuiBtn.addEventListener("click", (event) => {
+      if (openWebuiBtn.classList.contains("disabled")) {
+        event.preventDefault();
+        return;
+      }
       event.preventDefault();
       window.location.replace("webui");
+    });
+    openDirectBtn.addEventListener("click", (event) => {
+      if (openDirectBtn.classList.contains("disabled")) {
+        event.preventDefault();
+      }
     });
     diagBtn.addEventListener("click", runDiagnostics);
     copyReportBtn.addEventListener("click", copyReport);

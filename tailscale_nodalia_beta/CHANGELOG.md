@@ -4,6 +4,35 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta2 - 2026-02-11
+### Added
+- New onboarding wizard structure with explicit phases:
+  - Step 1: authentication,
+  - Step 2: web UI warmup,
+  - Step 3: operational access.
+- New guided profile helpers in onboarding with one-click copy:
+  - `setup_profile: home_access`
+  - `setup_profile: subnet_router`
+- New session-control guidance panel with copyable diagnostic command.
+- Runtime panel now includes additional operational fields:
+  - `webui_readonly`,
+  - `setup_profile`,
+  - `share_mode`.
+
+### Changed
+- Web UI ingress access button remains disabled until two consecutive readiness checks pass.
+- Direct tailnet Web UI action remains available in parallel for full-control fallback scenarios.
+
+## 3.0.0-beta1 - 2026-02-11
+### Changed
+- Improve Web UI entry reliability in onboarding:
+  - remove auto-redirect to ingress web UI.
+  - require two consecutive `webui-ready` checks before enabling ingress Web UI button.
+  - keep user on onboarding with clear status while web UI is still warming up.
+- Add direct tailnet Web UI action:
+  - onboarding now exposes `http://<tailscale-ip>:5252` when IPv4 is available.
+  - helps bypass ingress sign-in/viewing limitations for full control scenarios.
+
 ## 2.2.0-beta1 - 2026-02-10
 ### Added
 - New runtime status service (`runtime-status`) that continuously writes `/data/tailscale-runtime.json` with:
