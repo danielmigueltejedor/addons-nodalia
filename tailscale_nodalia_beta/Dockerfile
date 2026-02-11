@@ -7,10 +7,10 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG BUILD_ARCH=amd64
 ARG TAILSCALE_VERSION="1.94.1"
 ARG TAILSCALE_REPO="https://pkgs.tailscale.com/stable"
+ARG CLOUDFLARED_REPO="https://github.com/cloudflare/cloudflared/releases/latest/download"
 
 RUN \
   apk add --no-cache \
-    cloudflared \
     ethtool \
     ipcalc \
     iproute2 \
@@ -36,6 +36,12 @@ RUN \
     fi \
   && tar zxvf "/tmp/${TS_PKG}" -C /opt/ --strip-components 1 \
   && rm -f "/tmp/${TS_PKG}" "/tmp/${TS_PKG}.sha256" \
+  && if [ "${BUILD_ARCH}" = "aarch64" ]; then CF_ARCH="arm64"; fi \
+  && if [ "${BUILD_ARCH}" = "amd64" ]; then CF_ARCH="amd64"; fi \
+  && curl --fail --show-error --silent --location \
+    "${CLOUDFLARED_REPO}/cloudflared-linux-${CF_ARCH}" \
+    --output /usr/bin/cloudflared \
+  && chmod 0755 /usr/bin/cloudflared \
   && rm -rf /opt/systemd
 
 # Copy root filesystem

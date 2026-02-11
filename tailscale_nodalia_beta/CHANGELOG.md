@@ -4,6 +4,11 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta7 - 2026-02-11
+### Fixed
+- Fix image build failure caused by unavailable `cloudflared` apk package on base image.
+- `cloudflared` is now installed from official Cloudflare release binaries during build (arch-aware), restoring update/install reliability.
+
 ## 3.0.0-beta6 - 2026-02-11
 ### Fixed
 - Startup robustness when login is pending:
