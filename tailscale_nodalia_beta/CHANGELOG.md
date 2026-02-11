@@ -4,6 +4,13 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta3 - 2026-02-11
+### Fixed
+- Fix runtime-status JSON serialization at startup:
+  - avoid `jq --argjson` failures when startup values are transient/partial.
+  - harden booleans and arrays parsing for `/data/tailscale-runtime.json`.
+  - removes `jq: invalid JSON text passed to --argjson` errors seen in logs.
+
 ## 3.0.0-beta2 - 2026-02-11
 ### Added
 - New onboarding wizard structure with explicit phases:

@@ -57,12 +57,25 @@ do
     --arg self_host_name "${self_host_name}" \
     --arg setup_profile "${setup_profile}" \
     --arg share_mode "${share_mode}" \
-    --argjson self_online "${self_online}" \
-    --argjson webui_ready "${webui_ready}" \
-    --argjson webui_readonly "${webui_readonly}" \
-    --argjson ipv4 "${ipv4_list}" \
-    --argjson ipv6 "${ipv6_list}" \
-    '{updated_at:$updated_at, backend_state:$backend_state, auth_url:$auth_url, self_online:$self_online, webui_ready:$webui_ready, webui_readonly:$webui_readonly, setup_profile:$setup_profile, share_mode:$share_mode, self_dns_name:$self_dns_name, self_host_name:$self_host_name, ipv4:$ipv4, ipv6:$ipv6}')
+    --arg self_online "${self_online}" \
+    --arg webui_ready "${webui_ready}" \
+    --arg webui_readonly "${webui_readonly}" \
+    --arg ipv4 "${ipv4_list}" \
+    --arg ipv6 "${ipv6_list}" \
+    '{
+      updated_at:$updated_at,
+      backend_state:$backend_state,
+      auth_url:$auth_url,
+      self_online: ($self_online == "true"),
+      webui_ready: ($webui_ready == "true"),
+      webui_readonly: ($webui_readonly == "true"),
+      setup_profile:$setup_profile,
+      share_mode:$share_mode,
+      self_dns_name:$self_dns_name,
+      self_host_name:$self_host_name,
+      ipv4: ($ipv4 | fromjson? // []),
+      ipv6: ($ipv6 | fromjson? // [])
+    }')
 
   printf '%s\n' "${runtime_payload}" > "${RUNTIME_STATE_FILE}"
   sleep "${POLL_INTERVAL}"

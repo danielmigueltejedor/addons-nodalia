@@ -9,9 +9,12 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta2`
+`3.0.0-beta3`
 
 Cambios destacados:
+- Corrección de robustez en runtime-status:
+  - elimina error `jq --argjson` en arranque con datos transitorios.
+  - serialización más segura de `/runtime.json`.
 - Nuevo wizard de onboarding por pasos:
   - Autenticacion -> Warmup Web UI -> Acceso operativo.
 - Asistentes de perfil con copia rapida:
