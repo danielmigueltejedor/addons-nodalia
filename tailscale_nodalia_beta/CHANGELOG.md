@@ -4,6 +4,13 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta32 - 2026-02-11
+### Changed
+- Updated Tailscale beta branding assets with the new uploaded logo:
+  - `icon.png`
+  - `logo.png`
+  - onboarding header logo (`rootfs/etc/nginx/www/nodalia-logo.png`)
+
 ## 3.0.0-beta31 - 2026-02-11
 ### Changed
 - Updated beta branding assets for Tailscale (Nodalia Beta):
