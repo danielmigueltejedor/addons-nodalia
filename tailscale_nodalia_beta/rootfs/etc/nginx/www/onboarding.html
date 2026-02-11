@@ -478,6 +478,7 @@
     let supportRules = { enable: false, disable: false, copy: false, audit: false };
     let opBusy = false;
     let opCanLogout = false;
+    let liveWebUiReadyStreak = 0;
     const RUNTIME_CACHE_KEY = "nodalia_runtime_cache_v1";
     const UI_PREFS_KEY = "nodalia_ui_prefs_v1";
     const aclWebUiSnippet = JSON.stringify({
@@ -512,6 +513,32 @@
           throw new Error("http_" + response.status);
         }
         return await response.json();
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
+    }
+
+    async function probeIngressWebUiReady(timeoutMs = 1200) {
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch("webui-ready?_ts=" + Date.now(), {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (response.status >= 500) {
+          return false;
+        }
+        const text = await response.text();
+        if (!text || text.trim().length === 0) {
+          return false;
+        }
+        if (text.toLowerCase().includes("tailscale web interface is unavailable")) {
+          return false;
+        }
+        return true;
+      } catch (_) {
+        return false;
       } finally {
         clearTimeout(timeoutHandle);
       }
@@ -968,6 +995,7 @@
 
         if (needsLogin) {
           cancelAutoRedirect();
+          liveWebUiReadyStreak = 0;
           setActiveStep("auth");
           setUiDisabled(openWebuiBtn, true);
           setUiDisabled(openDirectBtn, true);
@@ -989,6 +1017,7 @@
 
         if (backendState !== "Running") {
           cancelAutoRedirect();
+          liveWebUiReadyStreak = 0;
           setActiveStep("warmup");
           setUiDisabled(openWebuiBtn, true);
           updateStateView("Estado: iniciando (" + backendState + ")", "login");
@@ -1003,9 +1032,17 @@
         updateStateView("Estado: conectado (" + backendState + "). Verificando Web UI...", "running");
         okBox.hidden = false;
         loginBox.hidden = true;
-        const webUiReady = Boolean(lastRuntime?.webui_ready);
-        const streak = Number(lastRuntime?.webui_ready_streak || 0);
-        if (webUiReady && streak >= 2) {
+        const runtimeWebUiReady = Boolean(lastRuntime?.webui_ready);
+        const runtimeStreak = Number(lastRuntime?.webui_ready_streak || 0);
+        const liveWebUiReady = await probeIngressWebUiReady(1200);
+        if (liveWebUiReady) {
+          liveWebUiReadyStreak += 1;
+        } else {
+          liveWebUiReadyStreak = 0;
+        }
+        const effectiveStreak = Math.max(runtimeWebUiReady ? runtimeStreak : 0, liveWebUiReadyStreak);
+        const webUiReady = liveWebUiReady && effectiveStreak >= 2;
+        if (webUiReady) {
           setActiveStep("access");
           updateStateView("Estado: conectado (" + backendState + "). Web UI lista.", "running");
           setUiDisabled(openWebuiBtn, false);
@@ -1014,7 +1051,7 @@
           cancelAutoRedirect();
           setActiveStep("warmup");
           setUiDisabled(openWebuiBtn, true);
-          if (webUiReady) {
+          if (runtimeWebUiReady || liveWebUiReady) {
             updateStateView("Estado: conectado (" + backendState + "). Confirmando disponibilidad de Web UI...", "running");
           } else {
             updateStateView("Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...", "running");

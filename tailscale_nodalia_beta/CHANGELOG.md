@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta29 - 2026-02-11
+### Fixed
+- Onboarding Web UI gating now uses a live ingress probe (`/webui-ready`) as final readiness source.
+- Avoids being blocked by stale/inaccurate `runtime.json` readiness values.
+- Access button is enabled only after consecutive successful live probes, preventing both:
+  - false positive (`web interface is unavailable` page),
+  - false negative (stuck forever in warmup).
+
 ## 3.0.0-beta28 - 2026-02-11
 ### Fixed
 - Web UI readiness detection tuned to avoid false positives:
