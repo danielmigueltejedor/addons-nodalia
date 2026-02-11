@@ -150,6 +150,17 @@
       margin: 0 0 8px;
       overflow-wrap: anywhere;
     }
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .check input {
+      inline-size: 16px;
+      block-size: 16px;
+    }
   </style>
 </head>
 <body>
@@ -177,13 +188,21 @@
         <a id="open-webui-btn" class="btn disabled" href="webui">Entrar Web UI (ingress)</a>
         <a id="open-direct-btn" class="btn ghost disabled" href="#" target="_blank" rel="noopener noreferrer">Abrir Web UI directa (tailnet)</a>
         <button id="refresh-ok-btn" type="button" class="ghost">Actualizar estado</button>
+        <button id="cancel-redirect-btn" type="button" class="ghost" hidden>Cancelar auto-entrada</button>
       </div>
+      <label class="check" style="margin-top:10px;">
+        <input id="auto-open-check" type="checkbox" checked>
+        Abrir Web UI automaticamente cuando este lista
+      </label>
+      <p id="redirect-state" class="small"></p>
     </div>
     <section class="panel">
       <h2>Estado en vivo</h2>
       <div class="kv">
         <div>Backend:</div><div><code id="rt-backend">-</code></div>
         <div>Web UI lista:</div><div><code id="rt-webui">-</code></div>
+        <div>Web UI streak:</div><div><code id="rt-webui-streak">-</code></div>
+        <div>Web UI probe(s):</div><div><code id="rt-webui-probe">-</code></div>
         <div>Web UI readonly:</div><div><code id="rt-readonly">-</code></div>
         <div>Self online:</div><div><code id="rt-online">-</code></div>
         <div>Perfil:</div><div><code id="rt-profile">-</code></div>
@@ -192,6 +211,7 @@
         <div>HostName:</div><div><code id="rt-hostname">-</code></div>
         <div>IPv4:</div><div><code id="rt-ipv4">-</code></div>
         <div>IPv6:</div><div><code id="rt-ipv6">-</code></div>
+        <div>Uptime(s):</div><div><code id="rt-uptime">-</code></div>
         <div>Actualizado:</div><div><code id="rt-updated">-</code></div>
       </div>
       <div class="actions" style="margin-top:10px;">
@@ -199,6 +219,14 @@
         <button id="copy-report-btn" type="button" class="ghost">Copiar reporte</button>
       </div>
       <ul id="diag-list" class="diag-list"></ul>
+    </section>
+    <section class="panel">
+      <h2>Sugerencias inteligentes</h2>
+      <ul id="suggestions-list" class="diag-list"></ul>
+      <div class="actions" style="margin-top:10px;">
+        <button id="copy-acl-webui-btn" type="button" class="ghost">Copiar ACL Web UI (self:5252)</button>
+        <button id="copy-tagowners-btn" type="button" class="ghost">Copiar bloque tagOwners</button>
+      </div>
     </section>
     <section class="panel">
       <h2>Perfiles recomendados</h2>
@@ -236,11 +264,19 @@
     const openDirectBtn = document.getElementById("open-direct-btn");
     const refreshBtn = document.getElementById("refresh-btn");
     const refreshOkBtn = document.getElementById("refresh-ok-btn");
+    const cancelRedirectBtn = document.getElementById("cancel-redirect-btn");
+    const autoOpenCheck = document.getElementById("auto-open-check");
+    const redirectState = document.getElementById("redirect-state");
     const diagBtn = document.getElementById("diag-btn");
     const copyReportBtn = document.getElementById("copy-report-btn");
     const diagList = document.getElementById("diag-list");
+    const suggestionsList = document.getElementById("suggestions-list");
+    const copyAclWebuiBtn = document.getElementById("copy-acl-webui-btn");
+    const copyTagOwnersBtn = document.getElementById("copy-tagowners-btn");
     const rtBackend = document.getElementById("rt-backend");
     const rtWebUi = document.getElementById("rt-webui");
+    const rtWebUiStreak = document.getElementById("rt-webui-streak");
+    const rtWebUiProbe = document.getElementById("rt-webui-probe");
     const rtReadonly = document.getElementById("rt-readonly");
     const rtOnline = document.getElementById("rt-online");
     const rtProfile = document.getElementById("rt-profile");
@@ -249,6 +285,7 @@
     const rtHostName = document.getElementById("rt-hostname");
     const rtIpv4 = document.getElementById("rt-ipv4");
     const rtIpv6 = document.getElementById("rt-ipv6");
+    const rtUptime = document.getElementById("rt-uptime");
     const rtUpdated = document.getElementById("rt-updated");
     const stepAuth = document.getElementById("step-auth");
     const stepWarmup = document.getElementById("step-warmup");
@@ -257,15 +294,70 @@
     const copyProfileSubnet = document.getElementById("copy-profile-subnet");
     const copySessionReport = document.getElementById("copy-session-report");
     let pollHandle = null;
+    let redirectHandle = null;
     let lastOnboarding = null;
     let lastRuntime = null;
-    let webUiReadyStreak = 0;
+    const aclWebUiSnippet = JSON.stringify({
+      acls: [
+        { action: "accept", src: ["autogroup:member"], dst: ["autogroup:self:5252"] }
+      ]
+    }, null, 2);
+    const tagOwnersSnippet = JSON.stringify({
+      tagOwners: {
+        "tag:ha": ["autogroup:admin"]
+      }
+    }, null, 2);
 
-    function schedulePoll() {
+    async function copyText(text, targetButton, okLabel, defaultLabel) {
+      try {
+        await navigator.clipboard.writeText(text);
+        if (targetButton) {
+          targetButton.textContent = okLabel;
+          setTimeout(() => { targetButton.textContent = defaultLabel; }, 1200);
+        }
+      } catch (_) {
+        window.prompt("Copia este texto:", text);
+      }
+    }
+
+    function schedulePoll(delayMs = 1000) {
       if (pollHandle) {
         clearTimeout(pollHandle);
       }
-      pollHandle = setTimeout(loadState, 1000);
+      pollHandle = setTimeout(loadState, delayMs);
+    }
+
+    function cancelAutoRedirect() {
+      if (redirectHandle) {
+        clearTimeout(redirectHandle);
+        redirectHandle = null;
+      }
+      cancelRedirectBtn.hidden = true;
+      redirectState.textContent = "";
+    }
+
+    function startAutoRedirect() {
+      cancelAutoRedirect();
+      if (!autoOpenCheck.checked || openWebuiBtn.classList.contains("disabled")) {
+        return;
+      }
+      let countdown = 3;
+      cancelRedirectBtn.hidden = false;
+      redirectState.textContent = "Redireccion automatica en " + countdown + "s...";
+      const tick = () => {
+        if (openWebuiBtn.classList.contains("disabled")) {
+          cancelAutoRedirect();
+          return;
+        }
+        countdown -= 1;
+        if (countdown <= 0) {
+          window.location.replace("webui");
+          return;
+        }
+        redirectState.textContent = "Redireccion automatica en " + countdown + "s...";
+        redirectHandle = setTimeout(tick, 1000);
+      };
+      redirectHandle = setTimeout(tick, 1000);
     }
 
     function setActiveStep(step) {
@@ -277,11 +369,46 @@
       if (step === "access") stepAccess.classList.add("active");
     }
 
+    function renderSuggestions() {
+      const suggestions = [];
+      const backend = String(lastRuntime?.backend_state || lastOnboarding?.backend_state || "Unknown");
+      const needsLogin = Boolean(lastOnboarding?.needs_login);
+      const isReadonly = Boolean(lastRuntime?.webui_readonly);
+      const hasTailnetIp = Array.isArray(lastRuntime?.ipv4) && lastRuntime.ipv4.length > 0;
+      const streak = Number(lastRuntime?.webui_ready_streak || 0);
+
+      if (needsLogin) {
+        suggestions.push("Login pendiente: abre la URL de inicio y completa la autenticacion.");
+      }
+      if (backend !== "Running") {
+        suggestions.push("Backend aun no esta Running: espera 20-60s tras actualizar/reinstalar.");
+      }
+      if (backend === "Running" && streak < 2) {
+        suggestions.push("Web UI calentando: manten esta pagina abierta y pulsa Actualizar estado.");
+      }
+      if (isReadonly) {
+        suggestions.push("Modo readonly activo: para logout/cambios avanzados pon webui_readonly=false.");
+      }
+      if (!isReadonly && hasTailnetIp) {
+        suggestions.push("Si ves 'Viewing', revisa ACL y usa acceso directo por tailnet para control total.");
+      }
+      if (!hasTailnetIp) {
+        suggestions.push("Sin IP tailnet detectada: revisa conectividad y estado de inicio de sesion.");
+      }
+      if (suggestions.length === 0) {
+        suggestions.push("Estado estable: sin acciones pendientes.");
+      }
+
+      suggestionsList.innerHTML = suggestions.map((item) => `<li>${item}</li>`).join("");
+    }
+
     async function loadState() {
+      let nextDelayMs = 1000;
       stateEl.className = "state";
       stateEl.textContent = "Cargando estado...";
       loginBox.hidden = true;
       okBox.hidden = true;
+      cancelAutoRedirect();
       try {
         const response = await fetch("onboarding.json?_ts=" + Date.now(), { cache: "no-store" });
         if (!response.ok) {
@@ -296,7 +423,6 @@
 
         if (needsLogin) {
           setActiveStep("auth");
-          webUiReadyStreak = 0;
           openWebuiBtn.classList.add("disabled");
           openDirectBtn.classList.add("disabled");
           stateEl.classList.add("login");
@@ -308,51 +434,49 @@
           } else {
             okBox.hidden = false;
           }
+          renderSuggestions();
           return;
         }
 
         if (backendState !== "Running") {
           setActiveStep("warmup");
-          webUiReadyStreak = 0;
           openWebuiBtn.classList.add("disabled");
-          openDirectBtn.classList.add("disabled");
           stateEl.classList.add("login");
           stateEl.textContent = "Estado: iniciando (" + backendState + ")";
           okBox.hidden = false;
+          renderSuggestions();
           return;
         }
 
         stateEl.classList.add("running");
         stateEl.textContent = "Estado: conectado (" + backendState + "). Verificando Web UI...";
         okBox.hidden = false;
-        const webUiReady = await canReachWebUi();
-        if (webUiReady) {
-          webUiReadyStreak += 1;
-          if (webUiReadyStreak >= 2) {
-            setActiveStep("access");
-            stateEl.textContent = "Estado: conectado (" + backendState + "). Web UI lista.";
-            openWebuiBtn.classList.remove("disabled");
-          } else {
-            setActiveStep("warmup");
-            stateEl.textContent = "Estado: conectado (" + backendState + "). Confirmando disponibilidad de Web UI...";
-          }
+        const webUiReady = Boolean(lastRuntime?.webui_ready);
+        const streak = Number(lastRuntime?.webui_ready_streak || 0);
+        if (webUiReady && streak >= 2) {
+          setActiveStep("access");
+          stateEl.textContent = "Estado: conectado (" + backendState + "). Web UI lista.";
+          openWebuiBtn.classList.remove("disabled");
+          startAutoRedirect();
         } else {
           setActiveStep("warmup");
-          webUiReadyStreak = 0;
           openWebuiBtn.classList.add("disabled");
-          stateEl.textContent = "Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...";
-          if (pollHandle) {
-            clearTimeout(pollHandle);
+          if (webUiReady) {
+            stateEl.textContent = "Estado: conectado (" + backendState + "). Confirmando disponibilidad de Web UI...";
+          } else {
+            stateEl.textContent = "Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...";
           }
-          pollHandle = setTimeout(loadState, 500);
+          nextDelayMs = 700;
         }
+        renderSuggestions();
         return;
       } catch (error) {
         stateEl.classList.add("login");
         stateEl.textContent = "Estado no disponible. La aplicacion puede seguir arrancando.";
         okBox.hidden = false;
+        renderSuggestions();
       } finally {
-        schedulePoll();
+        schedulePoll(nextDelayMs);
       }
     }
 
@@ -366,6 +490,8 @@
         lastRuntime = data;
         rtBackend.textContent = String(data.backend_state || "-");
         rtWebUi.textContent = data.webui_ready ? "true" : "false";
+        rtWebUiStreak.textContent = Number(data.webui_ready_streak || 0).toString();
+        rtWebUiProbe.textContent = String(data.webui_probe_s || "-");
         rtReadonly.textContent = data.webui_readonly ? "true" : "false";
         rtOnline.textContent = data.self_online ? "true" : "false";
         rtProfile.textContent = String(data.setup_profile || "-");
@@ -374,10 +500,11 @@
         rtHostName.textContent = String(data.self_host_name || "-");
         rtIpv4.textContent = Array.isArray(data.ipv4) && data.ipv4.length ? data.ipv4.join(", ") : "-";
         rtIpv6.textContent = Array.isArray(data.ipv6) && data.ipv6.length ? data.ipv6.join(", ") : "-";
+        rtUptime.textContent = Number(data.uptime_sec || 0).toString();
         rtUpdated.textContent = String(data.updated_at || "-");
 
-        if (Array.isArray(data.ipv4) && data.ipv4.length > 0) {
-          openDirectBtn.href = "http://" + data.ipv4[0] + ":5252";
+        if (typeof data.direct_webui_url === "string" && data.direct_webui_url.length > 0) {
+          openDirectBtn.href = data.direct_webui_url;
           openDirectBtn.classList.remove("disabled");
         } else {
           openDirectBtn.classList.add("disabled");
@@ -385,24 +512,11 @@
       } catch (_) {
         rtBackend.textContent = "n/a";
         rtWebUi.textContent = "n/a";
+        rtWebUiStreak.textContent = "n/a";
+        rtWebUiProbe.textContent = "n/a";
         rtOnline.textContent = "n/a";
+        rtUptime.textContent = "n/a";
         rtUpdated.textContent = "n/a";
-      }
-    }
-
-    async function canReachWebUi() {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1500);
-      try {
-        const response = await fetch("webui-ready?_ts=" + Date.now(), {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        return response.ok;
-      } catch (_) {
-        return false;
-      } finally {
-        clearTimeout(timeout);
       }
     }
 
@@ -412,6 +526,7 @@
       checks.push({ label: "runtime.json disponible", ok: !!lastRuntime });
       checks.push({ label: "backend Running", ok: (lastRuntime?.backend_state || lastOnboarding?.backend_state) === "Running" });
       checks.push({ label: "webui_ready=true", ok: !!lastRuntime?.webui_ready });
+      checks.push({ label: "webui_ready_streak>=2", ok: Number(lastRuntime?.webui_ready_streak || 0) >= 2 });
       checks.push({ label: "self_online=true", ok: !!lastRuntime?.self_online });
 
       diagList.innerHTML = checks.map((c) =>
@@ -437,49 +552,53 @@
     }
 
     copyBtn.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(loginUrlInput.value);
-        copyBtn.textContent = "Copiado";
-        setTimeout(() => { copyBtn.textContent = "Copiar URL"; }, 1200);
-      } catch (error) {
-        loginUrlInput.select();
-        document.execCommand("copy");
-      }
+      await copyText(loginUrlInput.value, copyBtn, "Copiado", "Copiar URL");
     });
     copyProfileHome.addEventListener("click", async () => {
-      await navigator.clipboard.writeText("setup_profile: home_access");
-      copyProfileHome.textContent = "Copiado";
-      setTimeout(() => { copyProfileHome.textContent = "Copiar"; }, 1200);
+      await copyText("setup_profile: home_access", copyProfileHome, "Copiado", "Copiar");
     });
     copyProfileSubnet.addEventListener("click", async () => {
-      await navigator.clipboard.writeText("setup_profile: subnet_router");
-      copyProfileSubnet.textContent = "Copiado";
-      setTimeout(() => { copyProfileSubnet.textContent = "Copiar"; }, 1200);
+      await copyText("setup_profile: subnet_router", copyProfileSubnet, "Copiado", "Copiar");
     });
     copySessionReport.addEventListener("click", async () => {
       const cmd = "tailscale status --json | jq '.BackendState,.AuthURL'";
-      await navigator.clipboard.writeText(cmd);
-      copySessionReport.textContent = "Comando copiado";
-      setTimeout(() => { copySessionReport.textContent = "Copiar comando de diagnostico"; }, 1200);
+      await copyText(cmd, copySessionReport, "Comando copiado", "Copiar comando de diagnostico");
+    });
+    copyAclWebuiBtn.addEventListener("click", async () => {
+      await copyText(aclWebUiSnippet, copyAclWebuiBtn, "ACL copiada", "Copiar ACL Web UI (self:5252)");
+    });
+    copyTagOwnersBtn.addEventListener("click", async () => {
+      await copyText(tagOwnersSnippet, copyTagOwnersBtn, "tagOwners copiado", "Copiar bloque tagOwners");
     });
 
     refreshBtn.addEventListener("click", () => {
       if (pollHandle) {
         clearTimeout(pollHandle);
       }
+      cancelAutoRedirect();
       loadState();
     });
     refreshOkBtn.addEventListener("click", () => {
       if (pollHandle) {
         clearTimeout(pollHandle);
       }
+      cancelAutoRedirect();
       loadState();
+    });
+    cancelRedirectBtn.addEventListener("click", cancelAutoRedirect);
+    autoOpenCheck.addEventListener("change", () => {
+      if (!autoOpenCheck.checked) {
+        cancelAutoRedirect();
+      } else if (!openWebuiBtn.classList.contains("disabled")) {
+        startAutoRedirect();
+      }
     });
     openWebuiBtn.addEventListener("click", (event) => {
       if (openWebuiBtn.classList.contains("disabled")) {
         event.preventDefault();
         return;
       }
+      cancelAutoRedirect();
       event.preventDefault();
       window.location.replace("webui");
     });

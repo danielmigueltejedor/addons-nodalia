@@ -9,9 +9,21 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta3`
+`3.0.0-beta4`
 
 Cambios destacados:
+- Onboarding reforzado para un flujo mas autonomo:
+  - sugerencias inteligentes segun estado real (login, warmup, readonly, ACL).
+  - snippets copiable de ACL (`autogroup:self:5252`) y `tagOwners`.
+  - auto-entrada opcional a Web UI cuando se confirma disponibilidad.
+- Telemetria runtime ampliada:
+  - `webui_ready_streak`,
+  - `webui_probe_s`,
+  - `uptime_sec`,
+  - `direct_webui_url`.
+- Deteccion de Web UI optimizada:
+  - onboarding usa telemetria runtime (sin sondeo extra redundante),
+  - polling adaptativo para reducir latencia percibida al estar en warmup.
 - Corrección de robustez en runtime-status:
   - elimina error `jq --argjson` en arranque con datos transitorios.
   - serialización más segura de `/runtime.json`.

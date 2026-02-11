@@ -22,6 +22,15 @@ declare runtime_payload
 declare setup_profile
 declare webui_readonly
 declare share_mode
+declare webui_probe_s
+declare direct_webui_url
+
+declare -i ready_streak=0
+declare -i start_epoch
+declare -i now_epoch
+declare -i uptime_sec
+
+start_epoch=$(date +%s)
 
 while true
 do
@@ -36,8 +45,12 @@ do
   ipv6_list=$(/opt/tailscale ip -6 2>/dev/null | jq -Rsc 'split("\n") | map(select(length>0))' || echo '[]')
 
   webui_ready=false
-  if curl -fsS --max-time 1 "http://127.0.0.1:25899/" > /dev/null 2>&1; then
+  webui_probe_s="n/a"
+  if webui_probe_s=$(curl -o /dev/null -sS -w '%{time_total}' --max-time 1 "http://127.0.0.1:25899/"); then
     webui_ready=true
+    ready_streak=$((ready_streak + 1))
+  else
+    ready_streak=0
   fi
 
   setup_profile=$(bashio::config "setup_profile" "custom")
@@ -47,7 +60,16 @@ do
     webui_readonly=false
   fi
   share_mode=$(bashio::config "share_homeassistant" "disabled")
+  direct_webui_url=""
+  if [[ "${ipv4_list}" != "[]" ]]; then
+    direct_webui_url=$(jq -r '.[0] // empty' <<< "${ipv4_list}" 2>/dev/null || true)
+    if [[ -n "${direct_webui_url}" ]]; then
+      direct_webui_url="http://${direct_webui_url}:5252"
+    fi
+  fi
 
+  now_epoch=$(date +%s)
+  uptime_sec=$((now_epoch - start_epoch))
   now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   runtime_payload=$(jq -nc \
     --arg updated_at "${now}" \
@@ -60,6 +82,10 @@ do
     --arg self_online "${self_online}" \
     --arg webui_ready "${webui_ready}" \
     --arg webui_readonly "${webui_readonly}" \
+    --arg webui_probe_s "${webui_probe_s}" \
+    --arg direct_webui_url "${direct_webui_url}" \
+    --argjson webui_ready_streak "${ready_streak}" \
+    --argjson uptime_sec "${uptime_sec}" \
     --arg ipv4 "${ipv4_list}" \
     --arg ipv6 "${ipv6_list}" \
     '{
@@ -69,8 +95,12 @@ do
       self_online: ($self_online == "true"),
       webui_ready: ($webui_ready == "true"),
       webui_readonly: ($webui_readonly == "true"),
+      webui_probe_s:$webui_probe_s,
+      webui_ready_streak:$webui_ready_streak,
+      uptime_sec:$uptime_sec,
       setup_profile:$setup_profile,
       share_mode:$share_mode,
+      direct_webui_url:$direct_webui_url,
       self_dns_name:$self_dns_name,
       self_host_name:$self_host_name,
       ipv4: ($ipv4 | fromjson? // []),

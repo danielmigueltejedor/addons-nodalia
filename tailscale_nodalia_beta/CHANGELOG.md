@@ -4,6 +4,20 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta4 - 2026-02-11
+### Added
+- Smart suggestions panel in onboarding with dynamic guidance based on runtime/login state.
+- One-click copy helpers for common policy snippets:
+  - ACL for self web UI access on port `5252`.
+  - `tagOwners` block example for `tag:ha`.
+- Optional auto-open flow to ingress Web UI once readiness is confirmed.
+
+### Changed
+- Runtime telemetry is richer for troubleshooting and UX decisions:
+  - include `webui_ready_streak`, `webui_probe_s`, `uptime_sec`, `direct_webui_url`.
+- Onboarding now relies on runtime telemetry for readiness (avoids redundant extra probe).
+- Polling is now adaptive during warmup for faster perceived response without noisy redirects.
+
 ## 3.0.0-beta3 - 2026-02-11
 ### Fixed
 - Fix runtime-status JSON serialization at startup:
