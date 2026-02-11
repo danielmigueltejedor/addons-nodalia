@@ -6,22 +6,25 @@
   <title>Tailscale Onboarding</title>
   <style>
     :root {
-      --bg: #f4f7fb;
+      --bg: #eef3fb;
       --card: #ffffff;
-      --text: #10213a;
-      --muted: #5a6a80;
-      --accent: #0b63ce;
-      --accent-2: #084a9b;
+      --text: #0f2138;
+      --muted: #52637b;
+      --accent: #0a63cf;
+      --accent-2: #084996;
       --ok: #157347;
       --warn: #9a3412;
-      --border: #dce5f0;
+      --border: #d6e1ef;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "Segoe UI", "Noto Sans", sans-serif;
       color: var(--text);
-      background: radial-gradient(circle at top right, #d8e9ff, var(--bg) 45%);
+      background:
+        radial-gradient(circle at 90% 0%, #d5e6ff 0%, rgba(213, 230, 255, 0) 45%),
+        radial-gradient(circle at 0% 100%, #dfe9ff 0%, rgba(223, 233, 255, 0) 40%),
+        var(--bg);
       min-height: 100vh;
       display: grid;
       place-items: center;
@@ -34,6 +37,28 @@
       border-radius: 14px;
       padding: 20px;
       box-shadow: 0 10px 30px rgba(16, 33, 58, 0.08);
+    }
+    .hero {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      width: fit-content;
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: #084996;
+      background: #e8f1ff;
+      border: 1px solid #c9dcfb;
+      border-radius: 999px;
+      padding: 4px 10px;
     }
     h1 { margin: 0 0 10px; font-size: 1.4rem; }
     p { margin: 0 0 14px; color: var(--muted); }
@@ -73,6 +98,11 @@
       color: #123;
     }
     .small { font-size: 0.86rem; color: var(--muted); margin-top: 12px; }
+    .quick {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
     .panel {
       border: 1px solid var(--border);
       border-radius: 10px;
@@ -161,12 +191,24 @@
       inline-size: 16px;
       block-size: 16px;
     }
+    @media (max-width: 640px) {
+      .card { padding: 14px; }
+      .kv { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <main class="card">
-    <h1>Asistente de inicio de sesion</h1>
-    <p>Completa el login inicial sin revisar los logs de la aplicacion.</p>
+    <section class="hero">
+      <span class="badge">Nodalia Control Center</span>
+      <h1>Asistente de inicio de sesion</h1>
+      <p>Gestiona Tailscale desde aqui sin depender del iframe, con acceso directo cuando quieras.</p>
+      <div class="quick">
+        <a id="go-webui-btn" class="btn ghost" href="webui">Ir al iframe de Tailscale</a>
+        <button id="hard-refresh-btn" type="button" class="ghost">Recargar panel</button>
+      </div>
+      <p class="small">Dentro del iframe veras un boton flotante para volver a este panel.</p>
+    </section>
     <div class="steps">
       <div id="step-auth" class="step">Paso 1: Autenticacion en tu tailnet</div>
       <div id="step-warmup" class="step">Paso 2: Inicializacion de Web UI</div>
@@ -281,6 +323,8 @@
     const openBtn = document.getElementById("open-btn");
     const openWebuiBtn = document.getElementById("open-webui-btn");
     const openDirectBtn = document.getElementById("open-direct-btn");
+    const goWebuiBtn = document.getElementById("go-webui-btn");
+    const hardRefreshBtn = document.getElementById("hard-refresh-btn");
     const refreshBtn = document.getElementById("refresh-btn");
     const refreshOkBtn = document.getElementById("refresh-ok-btn");
     const cancelRedirectBtn = document.getElementById("cancel-redirect-btn");
@@ -328,6 +372,10 @@
     let lastOnboarding = null;
     let lastRuntime = null;
     let lastSupportUrl = "";
+    let lastStateMessage = "";
+    let lastStateClass = "";
+    let isFirstRender = true;
+    const RUNTIME_CACHE_KEY = "nodalia_runtime_cache_v1";
     const aclWebUiSnippet = JSON.stringify({
       acls: [
         { action: "accept", src: ["autogroup:member"], dst: ["autogroup:self:5252"] }
@@ -348,6 +396,20 @@
         }
       } catch (_) {
         window.prompt("Copia este texto:", text);
+      }
+    }
+
+    async function fetchJsonWithTimeout(path, timeoutMs = 1200) {
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(path, { cache: "no-store", signal: controller.signal });
+        if (!response.ok) {
+          throw new Error("http_" + response.status);
+        }
+        return await response.json();
+      } finally {
+        clearTimeout(timeoutHandle);
       }
     }
 
@@ -377,6 +439,49 @@
       supportCopyUrlBtn.classList.toggle("disabled", !url);
     }
 
+    function applyRuntimeData(data) {
+      lastRuntime = data;
+      rtBackend.textContent = String(data.backend_state || "-");
+      rtWebUi.textContent = data.webui_ready ? "true" : "false";
+      rtWebUiStreak.textContent = Number(data.webui_ready_streak || 0).toString();
+      rtWebUiProbe.textContent = String(data.webui_probe_s || "-");
+      rtReadonly.textContent = data.webui_readonly ? "true" : "false";
+      rtOnline.textContent = data.self_online ? "true" : "false";
+      rtProfile.textContent = String(data.setup_profile || "-");
+      rtShare.textContent = String(data.share_mode || "-");
+      rtDnsName.textContent = String(data.self_dns_name || "-");
+      rtHostName.textContent = String(data.self_host_name || "-");
+      rtIpv4.textContent = Array.isArray(data.ipv4) && data.ipv4.length ? data.ipv4.join(", ") : "-";
+      rtIpv6.textContent = Array.isArray(data.ipv6) && data.ipv6.length ? data.ipv6.join(", ") : "-";
+      rtUptime.textContent = Number(data.uptime_sec || 0).toString();
+      rtUpdated.textContent = String(data.updated_at || "-");
+      renderSupportFromRuntime(data);
+      if (typeof data.direct_webui_url === "string" && data.direct_webui_url.length > 0) {
+        openDirectBtn.href = data.direct_webui_url;
+        openDirectBtn.classList.remove("disabled");
+      } else {
+        openDirectBtn.classList.add("disabled");
+      }
+      try {
+        localStorage.setItem(RUNTIME_CACHE_KEY, JSON.stringify(data));
+      } catch (_) {
+      }
+    }
+
+    function hydrateRuntimeFromCache() {
+      try {
+        const raw = localStorage.getItem(RUNTIME_CACHE_KEY);
+        if (!raw) {
+          return;
+        }
+        const data = JSON.parse(raw);
+        if (data && typeof data === "object") {
+          applyRuntimeData(data);
+        }
+      } catch (_) {
+      }
+    }
+
     async function callSupportApi(action, method = "GET") {
       const response = await fetch("support-api?action=" + encodeURIComponent(action) + "&_ts=" + Date.now(), {
         method,
@@ -399,7 +504,21 @@
       if (pollHandle) {
         clearTimeout(pollHandle);
       }
+      if (document.visibilityState === "hidden") {
+        delayMs = Math.max(delayMs, 3000);
+      }
       pollHandle = setTimeout(loadState, delayMs);
+    }
+
+    function updateStateView(message, cssClass) {
+      if (lastStateMessage !== message) {
+        stateEl.textContent = message;
+        lastStateMessage = message;
+      }
+      if (lastStateClass !== cssClass) {
+        stateEl.className = "state" + (cssClass ? " " + cssClass : "");
+        lastStateClass = cssClass;
+      }
     }
 
     function cancelAutoRedirect() {
@@ -487,20 +606,18 @@
     }
 
     async function loadState() {
-      let nextDelayMs = 1000;
-      stateEl.className = "state";
-      stateEl.textContent = "Cargando estado...";
-      loginBox.hidden = true;
-      okBox.hidden = true;
+      let nextDelayMs = 1200;
+      if (isFirstRender) {
+        updateStateView("Cargando estado...", "");
+      }
       cancelAutoRedirect();
       try {
-        const response = await fetch("onboarding.json?_ts=" + Date.now(), { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error("onboarding state not available");
-        }
-        const data = await response.json();
+        const ts = Date.now();
+        const onboardingPromise = fetchJsonWithTimeout("onboarding.json?_ts=" + ts, 1500);
+        const runtimePromise = refreshRuntime(900);
+        const data = await onboardingPromise;
         lastOnboarding = data;
-        await refreshRuntime();
+        await runtimePromise;
         const runtimeBackendState = String(lastRuntime?.backend_state || "");
         const onboardingBackendState = String(data.backend_state || "Unknown");
         const backendState = runtimeBackendState || onboardingBackendState;
@@ -512,91 +629,73 @@
           setActiveStep("auth");
           openWebuiBtn.classList.add("disabled");
           openDirectBtn.classList.add("disabled");
-          stateEl.classList.add("login");
-          stateEl.textContent = "Estado: login requerido (" + backendState + ")";
+          updateStateView("Estado: login requerido (" + backendState + ")", "login");
           if (authUrl) {
             loginUrlInput.value = authUrl;
             openBtn.href = authUrl;
             loginBox.hidden = false;
+            okBox.hidden = true;
           } else {
             okBox.hidden = false;
+            loginBox.hidden = true;
           }
           renderSuggestions();
+          nextDelayMs = 1500;
+          isFirstRender = false;
           return;
         }
 
         if (backendState !== "Running") {
           setActiveStep("warmup");
           openWebuiBtn.classList.add("disabled");
-          stateEl.classList.add("login");
-          stateEl.textContent = "Estado: iniciando (" + backendState + ")";
+          updateStateView("Estado: iniciando (" + backendState + ")", "login");
           okBox.hidden = false;
+          loginBox.hidden = true;
           renderSuggestions();
+          nextDelayMs = 900;
+          isFirstRender = false;
           return;
         }
 
-        stateEl.classList.add("running");
-        stateEl.textContent = "Estado: conectado (" + backendState + "). Verificando Web UI...";
+        updateStateView("Estado: conectado (" + backendState + "). Verificando Web UI...", "running");
         okBox.hidden = false;
+        loginBox.hidden = true;
         const webUiReady = Boolean(lastRuntime?.webui_ready);
         const streak = Number(lastRuntime?.webui_ready_streak || 0);
         if (webUiReady && streak >= 2) {
           setActiveStep("access");
-          stateEl.textContent = "Estado: conectado (" + backendState + "). Web UI lista.";
+          updateStateView("Estado: conectado (" + backendState + "). Web UI lista.", "running");
           openWebuiBtn.classList.remove("disabled");
           startAutoRedirect();
         } else {
           setActiveStep("warmup");
           openWebuiBtn.classList.add("disabled");
           if (webUiReady) {
-            stateEl.textContent = "Estado: conectado (" + backendState + "). Confirmando disponibilidad de Web UI...";
+            updateStateView("Estado: conectado (" + backendState + "). Confirmando disponibilidad de Web UI...", "running");
           } else {
-            stateEl.textContent = "Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...";
+            updateStateView("Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...", "running");
           }
-          nextDelayMs = 700;
+          nextDelayMs = 600;
         }
         renderSuggestions();
+        isFirstRender = false;
         return;
       } catch (error) {
-        stateEl.classList.add("login");
-        stateEl.textContent = "Estado no disponible. La aplicacion puede seguir arrancando.";
+        updateStateView("Estado no disponible. La aplicacion puede seguir arrancando.", "login");
         okBox.hidden = false;
+        loginBox.hidden = true;
         renderSuggestions();
+        nextDelayMs = 1800;
       } finally {
         schedulePoll(nextDelayMs);
       }
     }
 
-    async function refreshRuntime() {
+    async function refreshRuntime(timeoutMs = 1200) {
       try {
-        const response = await fetch("runtime.json?_ts=" + Date.now(), { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error("runtime state not available");
-        }
-        const data = await response.json();
-        lastRuntime = data;
-        rtBackend.textContent = String(data.backend_state || "-");
-        rtWebUi.textContent = data.webui_ready ? "true" : "false";
-        rtWebUiStreak.textContent = Number(data.webui_ready_streak || 0).toString();
-        rtWebUiProbe.textContent = String(data.webui_probe_s || "-");
-        rtReadonly.textContent = data.webui_readonly ? "true" : "false";
-        rtOnline.textContent = data.self_online ? "true" : "false";
-        rtProfile.textContent = String(data.setup_profile || "-");
-        rtShare.textContent = String(data.share_mode || "-");
-        rtDnsName.textContent = String(data.self_dns_name || "-");
-        rtHostName.textContent = String(data.self_host_name || "-");
-        rtIpv4.textContent = Array.isArray(data.ipv4) && data.ipv4.length ? data.ipv4.join(", ") : "-";
-        rtIpv6.textContent = Array.isArray(data.ipv6) && data.ipv6.length ? data.ipv6.join(", ") : "-";
-        rtUptime.textContent = Number(data.uptime_sec || 0).toString();
-        rtUpdated.textContent = String(data.updated_at || "-");
-        renderSupportFromRuntime(data);
-
-        if (typeof data.direct_webui_url === "string" && data.direct_webui_url.length > 0) {
-          openDirectBtn.href = data.direct_webui_url;
-          openDirectBtn.classList.remove("disabled");
-        } else {
-          openDirectBtn.classList.add("disabled");
-        }
+        const data = await fetchJsonWithTimeout("runtime.json?_ts=" + Date.now(), timeoutMs);
+        applyRuntimeData(data);
+        return data;
       } catch (_) {
         rtBackend.textContent = "n/a";
         rtWebUi.textContent = "n/a";
@@ -615,6 +714,7 @@
         supportEnableBtn.classList.add("disabled");
         supportDisableBtn.classList.add("disabled");
         supportCopyUrlBtn.classList.add("disabled");
+        return null;
       }
     }
 
@@ -741,6 +841,25 @@
       event.preventDefault();
       window.location.replace("webui");
     });
+    goWebuiBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      window.location.replace("webui");
+    });
+    hardRefreshBtn.addEventListener("click", () => {
+      if (pollHandle) {
+        clearTimeout(pollHandle);
+      }
+      cancelAutoRedirect();
+      loadState();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        if (pollHandle) {
+          clearTimeout(pollHandle);
+        }
+        loadState();
+      }
+    });
     openDirectBtn.addEventListener("click", (event) => {
       if (openDirectBtn.classList.contains("disabled")) {
         event.preventDefault();
@@ -748,6 +867,7 @@
     });
     diagBtn.addEventListener("click", runDiagnostics);
     copyReportBtn.addEventListener("click", copyReport);
+    hydrateRuntimeFromCache();
     loadState();
   </script>
 </body>

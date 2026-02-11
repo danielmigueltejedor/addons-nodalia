@@ -4,6 +4,30 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta13 - 2026-02-11
+### Changed
+- Reduced UI flicker on onboarding page:
+  - incremental render updates instead of full visual reset on each poll.
+  - only updates state text/class when values actually change.
+  - avoids repeatedly hiding/showing main sections while polling.
+- Better polling ergonomics:
+  - slower polling when tab is not visible.
+  - immediate refresh when returning to the tab.
+
+## 3.0.0-beta12 - 2026-02-11
+### Added
+- Two-way navigation between onboarding panel and Tailscale iframe:
+  - new quick access button to open iframe from onboarding.
+  - floating "Volver al panel Nodalia" button injected in iframe view to return anytime.
+
+### Changed
+- Faster perceived onboarding load:
+  - parallel fetch of onboarding/runtime state.
+  - timeout-aware runtime reads.
+  - local runtime cache hydration for immediate first paint.
+  - adaptive polling cadence for warmup vs stable states.
+- Refreshed onboarding visual design (clearer hero section, quick actions, improved layout on mobile).
+
 ## 3.0.0-beta11 - 2026-02-11
 ### Fixed
 - Fix onboarding getting stuck in `NeedsLogin` after successful authentication.
