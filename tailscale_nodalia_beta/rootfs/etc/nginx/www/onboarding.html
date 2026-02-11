@@ -6,84 +6,103 @@
   <title>Tailscale Onboarding</title>
   <style>
     :root {
-      --bg: #eef3fb;
-      --card: #ffffff;
-      --text: #0f2138;
-      --muted: #52637b;
-      --accent: #0a63cf;
-      --accent-2: #084996;
-      --ok: #157347;
-      --warn: #9a3412;
-      --border: #d6e1ef;
+      --bg: #e8eef9;
+      --bg-2: #dbe7fb;
+      --card: #fdfefe;
+      --text: #0b1c34;
+      --muted: #4d6180;
+      --accent: #1262d4;
+      --accent-2: #0b4daa;
+      --ok: #0f7f4f;
+      --warn: #9b3a13;
+      --border: #ccdbf0;
+      --line: rgba(18, 56, 102, 0.08);
+      --shadow: 0 20px 50px rgba(11, 28, 52, 0.13);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Segoe UI", "Noto Sans", sans-serif;
+      font-family: "Avenir Next", "Segoe UI", "Noto Sans", sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at 90% 0%, #d5e6ff 0%, rgba(213, 230, 255, 0) 45%),
-        radial-gradient(circle at 0% 100%, #dfe9ff 0%, rgba(223, 233, 255, 0) 40%),
-        var(--bg);
+        radial-gradient(900px 480px at -10% -20%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0)),
+        radial-gradient(920px 520px at 110% 0%, rgba(198, 218, 255, 0.65), rgba(198, 218, 255, 0)),
+        linear-gradient(160deg, var(--bg), var(--bg-2) 48%, #dbe6f7 100%);
       min-height: 100vh;
       display: grid;
       place-items: center;
-      padding: 20px;
+      padding: 24px;
+      position: relative;
+      overflow-x: hidden;
     }
     .card {
-      width: min(760px, 100%);
-      background: var(--card);
+      width: min(840px, 100%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 253, 255, 0.96));
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 20px;
-      box-shadow: 0 10px 30px rgba(16, 33, 58, 0.08);
+      border-radius: 20px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(2px);
+      animation: fade-in 260ms ease-out;
     }
     .hero {
       display: grid;
-      gap: 8px;
-      margin-bottom: 10px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--border);
+      gap: 9px;
+      margin-bottom: 12px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
     }
     .brand {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       width: fit-content;
     }
     .brand img {
-      width: 42px;
-      height: 42px;
+      width: 46px;
+      height: 46px;
       object-fit: contain;
-      border-radius: 10px;
+      border-radius: 12px;
       border: 1px solid var(--border);
       background: #fff;
-      padding: 3px;
+      padding: 2px;
+      box-shadow: 0 6px 16px rgba(11, 28, 52, 0.1);
     }
     .brand-name {
-      font-size: 0.92rem;
+      font-size: 1.02rem;
       font-weight: 700;
-      color: #0f2138;
-      letter-spacing: 0.02em;
+      color: #0a1f3c;
+      letter-spacing: 0.01em;
     }
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       width: fit-content;
-      font-size: 0.76rem;
-      font-weight: 700;
-      letter-spacing: 0.02em;
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
-      color: #084996;
-      background: #e8f1ff;
-      border: 1px solid #c9dcfb;
+      color: #0c4ea6;
+      background: linear-gradient(180deg, #ecf3ff, #e2eeff);
+      border: 1px solid #c2d7fa;
       border-radius: 999px;
-      padding: 4px 10px;
+      padding: 5px 11px;
     }
-    h1 { margin: 0 0 10px; font-size: 1.4rem; }
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.45rem, 1.3rem + 0.6vw, 1.9rem);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+    }
     p { margin: 0 0 14px; color: var(--muted); }
-    .state { font-weight: 700; margin-bottom: 12px; }
+    .state {
+      font-weight: 800;
+      margin-bottom: 12px;
+      font-size: 1.06rem;
+      letter-spacing: -0.01em;
+    }
     .state.running { color: var(--ok); }
     .state.login { color: var(--warn); }
     .url-wrap {
@@ -94,31 +113,53 @@
     input[type="text"] {
       width: 100%;
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 12px;
+      border-radius: 12px;
+      padding: 11px 13px;
       font-size: 0.95rem;
+      color: var(--text);
+      background: #f7fbff;
+      box-shadow: inset 0 1px 2px rgba(11, 28, 52, 0.05);
     }
     .actions {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
+      align-items: center;
     }
     button, a.btn {
-      border: 0;
-      border-radius: 10px;
+      border: 1px solid transparent;
+      border-radius: 12px;
       padding: 10px 14px;
-      font-weight: 600;
+      font-weight: 700;
+      font-size: 0.96rem;
       text-decoration: none;
       cursor: pointer;
-      background: var(--accent);
+      background: linear-gradient(180deg, var(--accent), var(--accent-2));
       color: #fff;
+      box-shadow: 0 8px 18px rgba(18, 98, 212, 0.2);
+      transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease, background 120ms ease;
     }
-    button:hover, a.btn:hover { background: var(--accent-2); }
+    button:hover, a.btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 20px rgba(18, 98, 212, 0.27);
+      filter: saturate(1.03);
+    }
+    button:active, a.btn:active { transform: translateY(0); }
     .ghost {
-      background: #e9eff7;
-      color: #123;
+      background: linear-gradient(180deg, #f5f8fd, #e8eef8);
+      border-color: #cfdbeb;
+      color: #142844;
+      box-shadow: none;
     }
-    .small { font-size: 0.86rem; color: var(--muted); margin-top: 12px; }
+    .ghost:hover {
+      box-shadow: 0 6px 16px rgba(11, 28, 52, 0.12);
+    }
+    .small {
+      font-size: 0.87rem;
+      color: var(--muted);
+      margin-top: 12px;
+      line-height: 1.45;
+    }
     .quick {
       display: flex;
       flex-wrap: wrap;
@@ -132,14 +173,16 @@
     }
     .panel {
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
+      border-radius: 14px;
+      padding: 14px;
       margin-top: 14px;
-      background: #f8fbff;
+      background: linear-gradient(180deg, #f9fcff, #f4f9ff);
+      box-shadow: 0 6px 18px rgba(11, 28, 52, 0.05);
     }
     .panel h2 {
       margin: 0 0 8px;
-      font-size: 1rem;
+      font-size: 1.03rem;
+      letter-spacing: -0.01em;
     }
     .kv {
       display: grid;
@@ -153,12 +196,14 @@
       padding-left: 18px;
       color: var(--muted);
       font-size: 0.9rem;
+      line-height: 1.45;
     }
     .diag-ok { color: var(--ok); }
     .diag-ko { color: var(--warn); }
     .disabled {
       opacity: 0.55;
       pointer-events: none;
+      filter: grayscale(0.1);
     }
     .steps {
       display: grid;
@@ -167,17 +212,18 @@
     }
     .step {
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 8px 10px;
-      font-size: 0.9rem;
+      border-radius: 12px;
+      padding: 9px 11px;
+      font-size: 0.92rem;
       color: var(--muted);
       background: #f7fafc;
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
     }
     .step.active {
-      border-color: #7fb1f4;
+      border-color: #78acef;
       color: var(--text);
-      background: #eef5ff;
-      font-weight: 600;
+      background: #e9f2ff;
+      font-weight: 700;
     }
     .grid-2 {
       display: grid;
@@ -186,9 +232,10 @@
     }
     .profile {
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px;
+      border-radius: 12px;
+      padding: 11px;
       background: #fff;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
     }
     .profile h3 {
       margin: 0 0 6px;
@@ -201,11 +248,13 @@
     .mono {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.84rem;
-      background: #f3f7fb;
-      border-radius: 8px;
-      padding: 6px 8px;
+      background: #f1f6fd;
+      border: 1px solid #d9e6f7;
+      border-radius: 10px;
+      padding: 7px 9px;
       margin: 0 0 8px;
       overflow-wrap: anywhere;
+      color: #223d5e;
     }
     .check {
       display: inline-flex;
@@ -217,6 +266,7 @@
     .check input {
       inline-size: 16px;
       block-size: 16px;
+      accent-color: var(--accent);
     }
     .score-row {
       display: flex;
@@ -229,20 +279,27 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-weight: 700;
+      font-weight: 800;
       border-radius: 999px;
       padding: 6px 10px;
       border: 1px solid var(--border);
-      background: #eef4ff;
+      background: #eaf2ff;
       color: #0d2a50;
       font-size: 0.85rem;
     }
-    .score-ok { background: #e8f7ef; border-color: #b7e3c8; color: #0f5f37; }
+    .score-ok { background: #e7f7ef; border-color: #b7e3c8; color: #0f5f37; }
     .score-warn { background: #fff2e8; border-color: #ffd0b0; color: #8a3a10; }
     .score-bad { background: #fdecec; border-color: #f7c2c2; color: #8e1f1f; }
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     @media (max-width: 640px) {
-      .card { padding: 14px; }
+      body { padding: 14px; }
+      .card { padding: 14px; border-radius: 14px; }
       .kv { grid-template-columns: 1fr; }
+      button, a.btn { width: 100%; justify-content: center; text-align: center; }
+      .actions { display: grid; grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -282,7 +339,7 @@
     <div id="ok-box" hidden>
       <div class="actions">
         <a id="open-webui-btn" class="btn disabled" href="./webui">Entrar Web UI (ingress)</a>
-        <a id="open-direct-btn" class="btn ghost disabled" href="#" target="_blank" rel="noopener noreferrer">Abrir Web UI directa (tailnet)</a>
+        <a id="open-direct-btn" class="btn ghost disabled" href="#" target="_blank" rel="noopener noreferrer">Acceso directo tailnet (no disponible en esta app)</a>
         <button id="refresh-ok-btn" type="button" class="ghost">Actualizar estado</button>
         <button id="cancel-redirect-btn" type="button" class="ghost" hidden>Cancelar auto-entrada</button>
       </div>
@@ -479,6 +536,7 @@
     let opBusy = false;
     let opCanLogout = false;
     let liveWebUiReadyStreak = 0;
+    let liveWebUiSeenAtMs = 0;
     let runningSinceMs = 0;
     const RUNTIME_CACHE_KEY = "nodalia_runtime_cache_v1";
     const UI_PREFS_KEY = "nodalia_ui_prefs_v1";
@@ -956,7 +1014,7 @@
         suggestions.push("Modo readonly activo: para logout/cambios avanzados pon webui_readonly=false.");
       }
       if (!isReadonly && hasTailnetIp) {
-        suggestions.push("Si ves 'Viewing', revisa ACL y usa acceso directo por tailnet para control total.");
+        suggestions.push("Si ves 'Viewing', revisa ACL/tagOwners y usa la Web UI via ingress.");
       }
       if (!hasTailnetIp) {
         suggestions.push("Sin IP tailnet detectada: revisa conectividad y estado de inicio de sesion.");
@@ -1024,6 +1082,7 @@
         }
 
         if (backendState !== "Running") {
+          liveWebUiSeenAtMs = 0;
           runningSinceMs = 0;
           cancelAutoRedirect();
           liveWebUiReadyStreak = 0;
@@ -1049,13 +1108,15 @@
         const liveWebUiReady = await probeIngressWebUiReady(2200);
         if (liveWebUiReady) {
           liveWebUiReadyStreak += 1;
+          liveWebUiSeenAtMs = Date.now();
         } else {
           liveWebUiReadyStreak = 0;
         }
         const runtimeStable = runtimeWebUiReady && runtimeStreak >= 2;
         const liveStable = liveWebUiReadyStreak >= 2;
         const webUiReady = runtimeStable || liveStable;
-        const allowManualOpen = (Date.now() - runningSinceMs) >= 12000;
+        const runningForMs = Date.now() - runningSinceMs;
+        const allowManualOpen = webUiReady || runningForMs >= 15000;
         if (webUiReady) {
           setActiveStep("access");
           updateStateView("Estado: conectado (" + backendState + "). Web UI lista.", "running");
@@ -1068,9 +1129,9 @@
           if (runtimeWebUiReady || liveWebUiReady) {
             updateStateView("Estado: conectado (" + backendState + "). Confirmando disponibilidad de Web UI...", "running");
           } else if (allowManualOpen) {
-            updateStateView("Estado: conectado (" + backendState + "). La deteccion automatica sigue en warmup; ya puedes entrar manualmente en Web UI.", "running");
+            updateStateView("Estado: conectado (" + backendState + "). Puedes intentar abrir Web UI manualmente mientras termina la verificacion.", "running");
           } else {
-            updateStateView("Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...", "running");
+            updateStateView("Estado: conectado (" + backendState + "). La Web UI aun no esta accesible por ingress. Reintentando...", "running");
           }
           nextDelayMs = 900;
         }
@@ -1366,14 +1427,32 @@
         startAutoRedirect();
       }
     });
-    openWebuiBtn.addEventListener("click", (event) => {
+    openWebuiBtn.addEventListener("click", async (event) => {
       if (isUiDisabled(openWebuiBtn)) {
         event.preventDefault();
         return;
       }
-      cancelAutoRedirect();
       event.preventDefault();
-      window.location.replace("./webui");
+      cancelAutoRedirect();
+      beginUiAction();
+      try {
+        updateStateView("Comprobando disponibilidad de Web UI...", "running");
+        const preflightOk = await probeIngressWebUiReady(2500);
+        if (preflightOk) {
+          window.location.replace("./webui");
+          return;
+        }
+        const backendState = String(lastRuntime?.backend_state || lastOnboarding?.backend_state || "Unknown");
+        if (backendState === "Running") {
+          updateStateView("La comprobacion previa fallo, pero backend esta Running. Abriendo Web UI igualmente...", "running");
+          window.location.replace("./webui");
+          return;
+        }
+        updateStateView("Web UI no accesible todavia por ingress. Espera unos segundos y vuelve a intentar.", "login");
+        return;
+      } finally {
+        endUiAction();
+      }
     });
     goStatusBtn.addEventListener("click", (event) => {
       event.preventDefault();
@@ -1403,6 +1482,7 @@
     openDirectBtn.addEventListener("click", (event) => {
       if (isUiDisabled(openDirectBtn)) {
         event.preventDefault();
+        updateStateView("El acceso directo por tailnet no aplica a esta app. Usa 'Entrar Web UI (ingress)'.", "login");
       }
     });
     diagBtn.addEventListener("click", runDiagnostics);

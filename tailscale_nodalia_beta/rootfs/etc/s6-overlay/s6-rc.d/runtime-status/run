@@ -95,13 +95,9 @@ do
     webui_readonly=false
   fi
   share_mode=$(bashio::config "share_homeassistant" "disabled")
+  # In this add-on architecture, Web UI is served via ingress/web proxy.
+  # Publishing a direct tailnet :5252 URL causes false expectations on many setups.
   direct_webui_url=""
-  if [[ "${ipv4_list}" != "[]" ]]; then
-    direct_webui_url=$(jq -r '.[0] // empty' <<< "${ipv4_list}" 2>/dev/null || true)
-    if [[ -n "${direct_webui_url}" ]]; then
-      direct_webui_url="http://${direct_webui_url}:5252"
-    fi
-  fi
 
   support_json="$(support-tunnel status 2>/dev/null || echo '{}')"
   support_enabled="$(jq -r '.support_enabled // false' <<< "${support_json}" 2>/dev/null || echo "false")"

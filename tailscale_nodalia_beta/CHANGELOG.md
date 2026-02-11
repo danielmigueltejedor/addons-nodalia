@@ -4,6 +4,41 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta39 - 2026-02-11
+### Fixed
+- Restored practical access to iframe Web UI when backend is already `Running`.
+- Removed over-restrictive manual open gating that could block access forever.
+- New behavior:
+  - manual `Entrar Web UI` is enabled after short running warmup window (15s),
+  - preflight check is still attempted first,
+  - if preflight fails but backend is `Running`, it opens Web UI anyway (no hard lockout).
+
+## 3.0.0-beta38 - 2026-02-11
+### Fixed
+- Removed misleading direct Web UI tailnet URL behavior (`http://<tailscale-ip>:5252`) for this add-on architecture.
+- `runtime.json` no longer publishes `direct_webui_url` to avoid exposing a path that is typically unreachable here.
+- Onboarding messaging updated:
+  - direct tailnet button clearly marked as unavailable in this app.
+  - guidance now points to ingress Web UI path as the supported control route.
+
+## 3.0.0-beta37 - 2026-02-11
+### Fixed
+- Removed false-positive manual access message for Web UI ingress.
+- Manual `Entrar Web UI` is now enabled only when there was a recent real live-ready signal.
+- Added ingress preflight on manual open:
+  - before redirecting to `./webui`, onboarding checks `webui-ready`.
+  - if preflight fails, it stays in panel and shows a clear message instead of redirecting to a broken UI.
+- Updated warmup status text to explicitly indicate ingress accessibility state.
+
+## 3.0.0-beta36 - 2026-02-11
+### Changed
+- Visual refresh of Nodalia onboarding panel (no functional logic changes):
+  - refined color system, gradients and spacing.
+  - stronger card/panel hierarchy with cleaner contrast and borders.
+  - improved button styles (primary/ghost), hover feedback and consistency.
+  - updated typography scale for better readability in desktop/mobile.
+  - smoother first paint animation and better mobile action layout.
+
 ## 3.0.0-beta35 - 2026-02-11
 ### Fixed
 - Onboarding no longer gets hard-stuck in warmup when backend is already `Running`.
