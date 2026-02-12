@@ -4,6 +4,23 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta62 - 2026-02-12
+### Fixed
+- Endurecido el criterio de `Web UI lista` para evitar falsos positivos:
+  - onboarding ahora se considera listo únicamente con señal en vivo estable por ingress (2 probes consecutivos),
+  - se mantiene apertura manual tras warmup, pero sin marcar estado listo prematuramente.
+- Mejorada robustez de rutas en ingress para evitar errores por slash final:
+  - añadido manejo explícito de `/onboarding/` y `/webui/` hacia sus rutas canónicas.
+- Corregido `support-api?action=audit` para devolver `Content-Type` de texto plano coherente con su payload.
+
+### Changed
+- Optimizado el polling del frontend:
+  - onboarding deja de consultar `onboarding.json` en cada ciclo y lo refresca solo cuando es necesario (fallback/arranque),
+  - reduce carga y latencia acumulada en sesiones largas.
+- Optimizado `runtime-status`:
+  - `setup_profile`, `webui_readonly` y `share_mode` pasan a lectura inicial (no se recalculan cada ciclo),
+  - resolvers DNS se refrescan de forma periódica en lugar de cada iteración.
+
 ## 3.0.0-beta61 - 2026-02-12
 ### Fixed
 - Corregida señal falsa de `Web UI lista=true` en onboarding:

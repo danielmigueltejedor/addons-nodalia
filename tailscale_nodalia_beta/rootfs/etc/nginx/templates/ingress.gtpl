@@ -10,6 +10,10 @@ server {
         try_files /onboarding.html =404;
     }
 
+    location = /onboarding/ {
+        return 302 /onboarding;
+    }
+
     location = /onboarding.json {
         alias /data/tailscale-onboarding.json;
         default_type application/json;
@@ -57,6 +61,10 @@ server {
         sub_filter_once off;
         sub_filter 'document.location.href = url' 'window.top.location.href = url';
         sub_filter '</body>' '<script>(function(){try{if(document.getElementById("nodalia-back-btn"))return;var a=document.createElement("a");a.id="nodalia-back-btn";var p=window.location.pathname||"/";var i=p.indexOf("/webui");var b=i>=0?p.slice(0,i+1):(p.endsWith("/")?p:p.slice(0,p.lastIndexOf("/")+1));a.href=b+"onboarding";a.textContent="Volver al panel Nodalia";a.style.cssText="position:fixed;left:16px;bottom:16px;z-index:2147483647;background:#0b63ce;color:#fff;padding:10px 12px;border-radius:10px;text-decoration:none;font:700 13px/1.1 Segoe UI,Noto Sans,sans-serif;box-shadow:0 8px 22px rgba(0,0,0,.25)";document.body.appendChild(a);}catch(e){}})();</script></body>';
+    }
+
+    location = /webui/ {
+        return 302 /webui;
     }
 
     location = /webui-ready {

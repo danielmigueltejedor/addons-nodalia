@@ -23,12 +23,17 @@ payload="$(support-tunnel "${action}" 2>&1)"
 rc=$?
 set -e
 
+content_type="application/json"
+if [[ "${action}" == "audit" ]]; then
+  content_type="text/plain; charset=utf-8"
+fi
+
 if (( rc == 0 )); then
   echo "Status: 200 OK"
 else
   echo "Status: 400 Bad Request"
 fi
-echo "Content-Type: application/json"
+echo "Content-Type: ${content_type}"
 echo "Cache-Control: no-store"
 echo
 printf '%s\n' "${payload}"

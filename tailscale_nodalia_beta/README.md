@@ -9,9 +9,17 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta61`
+`3.0.0-beta62`
 
 Cambios destacados:
+- Hardening de `Web UI lista`:
+  - el estado listo ahora exige señal en vivo estable por ingress y evita positivos prematuros.
+  - se mantiene acceso manual tras warmup sin bloquear operación.
+- Rutas ingress más robustas:
+  - manejo explícito de `/onboarding/` y `/webui/` para evitar errores por slash final.
+- Optimización real de carga:
+  - onboarding ya no consulta `onboarding.json` en cada ciclo (solo cuando hace falta).
+  - `runtime-status` reduce trabajo por iteración (configs estáticas + refresh periódico de resolvers DNS).
 - Corregida señal falsa de `Web UI lista`:
   - onboarding ya no se desbloquea solo por `runtime.webui_ready`; exige confirmación real reciente por preflight ingress.
   - el preflight vuelve a filtrar el banner de no disponibilidad con análisis de texto visible (evita falsos positivos por scripts).

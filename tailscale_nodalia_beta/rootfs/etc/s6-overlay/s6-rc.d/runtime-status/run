@@ -8,6 +8,7 @@
 readonly RUNTIME_STATE_FILE="/data/tailscale-runtime.json"
 readonly POLL_INTERVAL=3
 readonly LOG_HEARTBEAT_EVERY_LOOPS=20
+readonly DNS_RESOLVERS_REFRESH_EVERY_LOOPS=20
 
 declare status_json
 declare backend_state
@@ -60,6 +61,14 @@ declare prev_support_eligible="__init__"
 declare prev_support_active="__init__"
 
 start_epoch=$(date +%s)
+setup_profile=$(bashio::config "setup_profile" "custom")
+if ! bashio::config.has_value "webui_readonly" || bashio::config.true "webui_readonly"; then
+  webui_readonly=true
+else
+  webui_readonly=false
+fi
+share_mode=$(bashio::config "share_homeassistant" "disabled")
+dns_resolvers='[]'
 
 while true
 do
@@ -102,13 +111,6 @@ do
     webui_reason="http-${webui_http_code}"
   fi
 
-  setup_profile=$(bashio::config "setup_profile" "custom")
-  if ! bashio::config.has_value "webui_readonly" || bashio::config.true "webui_readonly"; then
-    webui_readonly=true
-  else
-    webui_readonly=false
-  fi
-  share_mode=$(bashio::config "share_homeassistant" "disabled")
   # In this add-on architecture, Web UI is served via ingress/web proxy.
   # Publishing a direct tailnet :5252 URL causes false expectations on many setups.
   direct_webui_url=""
@@ -124,7 +126,9 @@ do
   support_reason="$(jq -r '.reason // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_expires_at="$(jq -r '.expires_at // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_ttl_minutes="$(jq -r '.ttl_minutes // 0' <<< "${support_json}" 2>/dev/null || echo "0")"
-  dns_resolvers="$(awk '/^[[:space:]]*nameserver[[:space:]]+/ {print $2}' /etc/resolv.conf 2>/dev/null | jq -Rsc 'split("\n") | map(select(length>0))' || echo '[]')"
+  if (( loop_count == 0 || loop_count % DNS_RESOLVERS_REFRESH_EVERY_LOOPS == 0 )); then
+    dns_resolvers="$(awk '/^[[:space:]]*nameserver[[:space:]]+/ {print $2}' /etc/resolv.conf 2>/dev/null | jq -Rsc 'split("\n") | map(select(length>0))' || echo '[]')"
+  fi
   dns_warning="$(jq -r '
     (.Health // [])
     | map(select(type=="string"))

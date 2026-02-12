@@ -545,6 +545,7 @@
     let liveWebUiSeenAtMs = 0;
     let lastWebUiProbeAtMs = 0;
     let lastWebUiProbeOk = false;
+    let lastOnboardingFetchAtMs = 0;
     let runningSinceMs = 0;
     const RUNTIME_CACHE_KEY = "nodalia_runtime_cache_v1";
     const UI_PREFS_KEY = "nodalia_ui_prefs_v1";
@@ -599,6 +600,17 @@
       } finally {
         clearTimeout(timeoutHandle);
       }
+    }
+
+    async function refreshOnboarding(timeoutMs = 1500, force = false) {
+      const now = Date.now();
+      if (!force && lastOnboarding && (now - lastOnboardingFetchAtMs) < 10000) {
+        return lastOnboarding;
+      }
+      const data = await fetchJsonWithTimeout("onboarding.json?_ts=" + now, timeoutMs);
+      lastOnboarding = data;
+      lastOnboardingFetchAtMs = now;
+      return data;
     }
 
     function hasUnavailableWebUiBanner(html) {
@@ -1113,18 +1125,29 @@
         updateStateView("Cargando estado...", "");
       }
       try {
-        const ts = Date.now();
-        const onboardingPromise = fetchJsonWithTimeout("onboarding.json?_ts=" + ts, 1500);
-        const runtimePromise = refreshRuntime(900);
-        const data = await onboardingPromise;
-        lastOnboarding = data;
-        await runtimePromise;
+        const runtimeData = await refreshRuntime(900);
+        let data = lastOnboarding;
+        const runtimeStateForFallback = String(runtimeData?.backend_state || "");
+        const runtimeNeedsFallbackOnboarding = (
+          runtimeStateForFallback === "NeedsLogin" ||
+          runtimeStateForFallback === "NeedsMachineAuth"
+        ) && !String(runtimeData?.auth_url || "").length;
+        if (!data || !runtimeData || runtimeNeedsFallbackOnboarding || isFirstRender) {
+          try {
+            data = await refreshOnboarding(1500, true);
+          } catch (_) {
+            data = lastOnboarding;
+          }
+        }
+        if (!data) {
+          data = {};
+        }
         const runtimeBackendState = String(lastRuntime?.backend_state || "");
-        const onboardingBackendState = String(data.backend_state || "Unknown");
+        const onboardingBackendState = String(data?.backend_state || "Unknown");
         const backendState = runtimeBackendState || onboardingBackendState;
         const runtimeNeedsLogin = runtimeBackendState === "NeedsLogin" || runtimeBackendState === "NeedsMachineAuth";
-        const needsLogin = runtimeBackendState ? runtimeNeedsLogin : Boolean(data.needs_login);
-        const authUrl = String(lastRuntime?.auth_url || data.auth_url || "");
+        const needsLogin = runtimeBackendState ? runtimeNeedsLogin : Boolean(data?.needs_login);
+        const authUrl = String(lastRuntime?.auth_url || data?.auth_url || "");
 
         if (needsLogin) {
           cancelAutoRedirect();
@@ -1181,10 +1204,9 @@
         }
         const runtimeStable = runtimeWebUiReady && runtimeStreak >= 2;
         const liveStable = liveWebUiReadyStreak >= 2;
-        const hasRecentLiveSuccess = liveWebUiSeenAtMs > 0 && (Date.now() - liveWebUiSeenAtMs) <= 20000;
-        const webUiReady = liveStable || (runtimeStable && hasRecentLiveSuccess);
+        const webUiReady = liveStable;
         const runningForMs = Date.now() - runningSinceMs;
-        const allowManualOpen = webUiReady || runningForMs >= 15000;
+        const allowManualOpen = liveWebUiReady || runningForMs >= 15000;
         if (webUiReady) {
           setActiveStep("access");
           updateStateView("Estado: conectado (" + backendState + "). Web UI lista.", "running");
@@ -1195,7 +1217,7 @@
           cancelAutoRedirect();
           setActiveStep("warmup");
           setUiDisabled(openWebuiBtn, !allowManualOpen);
-          if (runtimeWebUiReady || liveWebUiReady) {
+          if (runtimeStable || liveWebUiReady) {
             updateStateView("Estado: conectado (" + backendState + "). Confirmando disponibilidad de Web UI...", "running");
           } else if (allowManualOpen) {
             updateStateView("Estado: conectado (" + backendState + "). Puedes intentar abrir Web UI manualmente mientras termina la verificacion.", "running");
