@@ -4,6 +4,13 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta55 - 2026-02-12
+### Fixed
+- Corregido el flujo de acceso a Web UI desde la nueva interfaz de onboarding en beta:
+  - el botón y las redirecciones de onboarding vuelven a abrir la raíz ingress (`./`) en lugar de `./webui`.
+  - `/webui` y `/webui-ready` ahora proxifican explícitamente a la raíz real del backend (`proxy_pass http://backend/`).
+- Se elimina el bucle donde el panel quedaba mostrando `Tailscale web interface is unavailable` al entrar desde el botón de la nueva UI.
+
 ## 3.0.0-beta54 - 2026-02-12
 ### Fixed
 - Corregido falso positivo de “Web UI lista=true” cuando el backend seguía devolviendo banner de no disponibilidad.

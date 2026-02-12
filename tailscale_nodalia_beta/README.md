@@ -9,9 +9,13 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta54`
+`3.0.0-beta55`
 
 Cambios destacados:
+- Corrección crítica del acceso Web UI desde onboarding (beta):
+  - el botón "Entrar Web UI (ingress)" y autoentrada ahora abren la raíz ingress (`./`), igual que el flujo estable.
+  - `/webui` y `/webui-ready` se enrutan al backend real en raíz (`proxy_pass http://backend/`) para evitar falsos "unavailable".
+- Se corrige el caso reportado donde desde la nueva interfaz beta el iframe nunca llegaba a cargar y quedaba en `Tailscale web interface is unavailable`.
 - Nuevo soporte remoto guiado en onboarding:
   - boton para activar/desactivar tunel temporal de soporte.
   - URL temporal copiable para asistencia remota.
