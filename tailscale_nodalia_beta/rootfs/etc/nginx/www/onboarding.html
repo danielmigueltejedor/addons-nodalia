@@ -631,8 +631,6 @@
     let supportRules = { enable: false, disable: false, copy: false, audit: false };
     let opBusy = false;
     let opCanLogout = false;
-    let logoutArmedUntilMs = 0;
-    let logoutArmHandle = null;
     let liveWebUiReadyStreak = 0;
     let liveWebUiSeenAtMs = 0;
     let lastWebUiProbeAtMs = 0;
@@ -863,9 +861,6 @@
     }
 
     function renderOpButtons() {
-      if (opBusy || !opCanLogout) {
-        clearLogoutArm();
-      }
       setUiDisabled(opReconnectBtn, opBusy);
       setUiDisabled(opRefreshBtn, opBusy);
       setUiDisabled(opLogoutBtn, opBusy || !opCanLogout);
@@ -1028,40 +1023,94 @@
       }
     }
 
-    async function callSupportApi(action, method = "GET") {
-      const response = await fetch(ingressUrl("support-api?action=" + encodeURIComponent(action) + "&_ts=" + Date.now()), {
-        method,
-        cache: "no-store",
-      });
-      const payload = await response.text();
-      let data;
-      try {
-        data = JSON.parse(payload);
-      } catch (_) {
-        data = { ok: false, raw: payload };
+    async function callSupportApi(action, method = "GET", allowGetFallback = false) {
+      const request = async (httpMethod) => {
+        try {
+          const response = await fetch(ingressUrl("support-api?action=" + encodeURIComponent(action) + "&_ts=" + Date.now()), {
+            method: httpMethod,
+            cache: "no-store",
+          });
+          const payload = await response.text();
+          let data;
+          try {
+            data = JSON.parse(payload);
+          } catch (_) {
+            data = { ok: false, raw: payload };
+          }
+          return { response, data, error: null };
+        } catch (error) {
+          return { response: null, data: null, error };
+        }
+      };
+
+      const first = await request(method);
+      const firstStatus = Number(first.response?.status || 0);
+      const firstError = String(first.data?.error || "");
+      const shouldRetryAsGet = allowGetFallback && method === "POST" && (
+        !first.response ||
+        firstStatus === 405 ||
+        firstError === "method_not_allowed"
+      );
+      if (shouldRetryAsGet) {
+        const second = await request("GET");
+        if (second.response?.ok) {
+          return second.data;
+        }
+        throw new Error(
+          String(second.data?.error || second.error?.message || "support_api_failed")
+        );
       }
-      if (!response.ok) {
-        throw new Error(data?.error || "support_api_failed");
+      if (first.response?.ok) {
+        return first.data;
       }
-      return data;
+      throw new Error(
+        String(first.data?.error || first.error?.message || "support_api_failed")
+      );
     }
 
-    async function callControlApi(action, method = "POST") {
-      const response = await fetch(ingressUrl("control-api?action=" + encodeURIComponent(action) + "&_ts=" + Date.now()), {
-        method,
-        cache: "no-store",
-      });
-      const payload = await response.text();
-      let data;
-      try {
-        data = JSON.parse(payload);
-      } catch (_) {
-        data = { ok: false, raw: payload };
+    async function callControlApi(action, method = "POST", allowGetFallback = false) {
+      const request = async (httpMethod) => {
+        try {
+          const response = await fetch(ingressUrl("control-api?action=" + encodeURIComponent(action) + "&_ts=" + Date.now()), {
+            method: httpMethod,
+            cache: "no-store",
+          });
+          const payload = await response.text();
+          let data;
+          try {
+            data = JSON.parse(payload);
+          } catch (_) {
+            data = { ok: false, raw: payload };
+          }
+          return { response, data, error: null };
+        } catch (error) {
+          return { response: null, data: null, error };
+        }
+      };
+
+      const first = await request(method);
+      const firstStatus = Number(first.response?.status || 0);
+      const firstError = String(first.data?.error || "");
+      const shouldRetryAsGet = allowGetFallback && method === "POST" && (
+        !first.response ||
+        firstStatus === 405 ||
+        firstError === "method_not_allowed"
+      );
+      if (shouldRetryAsGet) {
+        const second = await request("GET");
+        if (second.response?.ok) {
+          return second.data;
+        }
+        throw new Error(
+          String(second.data?.output || second.data?.error || second.error?.message || "control_api_failed")
+        );
       }
-      if (!response.ok) {
-        throw new Error(data?.output || data?.error || "control_api_failed");
+      if (first.response?.ok) {
+        return first.data;
       }
-      return data;
+      throw new Error(
+        String(first.data?.output || first.data?.error || first.error?.message || "control_api_failed")
+      );
     }
 
     async function waitForBackendTransition(targetStates, timeoutMs = 7000, stepMs = 700) {
@@ -1148,27 +1197,6 @@
     function setOpButtonsBusy(busy) {
       opBusy = busy;
       renderOpButtons();
-    }
-
-    function clearLogoutArm() {
-      logoutArmedUntilMs = 0;
-      if (logoutArmHandle) {
-        clearTimeout(logoutArmHandle);
-        logoutArmHandle = null;
-      }
-      opLogoutBtn.textContent = "Cerrar sesion";
-    }
-
-    function armLogoutConfirm(windowMs = 8000) {
-      clearLogoutArm();
-      logoutArmedUntilMs = Date.now() + windowMs;
-      opLogoutBtn.textContent = "Confirmar cierre";
-      logoutArmHandle = setTimeout(() => {
-        clearLogoutArm();
-        if (!opBusy) {
-          opMessage.textContent = "Confirmacion expirada. Pulsa otra vez para cerrar sesion.";
-        }
-      }, windowMs + 100);
     }
 
     function cancelAutoRedirect() {
@@ -1489,7 +1517,7 @@
       setSupportButtonState(true);
       supportMessage.textContent = "Activando tunel de soporte...";
       try {
-        const data = await callSupportApi("enable", "POST");
+        const data = await callSupportApi("enable", "POST", true);
         supportMessage.textContent = data.url
           ? "Tunel activo. URL temporal lista."
           : "Tunel activado, esperando URL temporal...";
@@ -1509,7 +1537,7 @@
       setSupportButtonState(true);
       supportMessage.textContent = "Desactivando tunel de soporte...";
       try {
-        await callSupportApi("disable", "POST");
+        await callSupportApi("disable", "POST", true);
         supportMessage.textContent = "Tunel de soporte desactivado.";
         await refreshRuntime(1500);
       } catch (error) {
@@ -1570,19 +1598,13 @@
         opMessage.textContent = "Logout no disponible: el backend no esta en Running.";
         return;
       }
-      if (Date.now() > logoutArmedUntilMs) {
-        armLogoutConfirm(8000);
-        opMessage.textContent = "Pulsa otra vez en menos de 8s para confirmar cierre de sesion.";
-        return;
-      }
-      clearLogoutArm();
       beginUiAction();
       setOpButtonsBusy(true);
       opMessage.textContent = "Cerrando sesion...";
       opOutput.hidden = true;
       let logoutRequestOk = false;
       try {
-        const data = await callControlApi("logout", "POST");
+        const data = await callControlApi("logout", "POST", true);
         logoutRequestOk = Boolean(data?.ok);
         opMessage.textContent = logoutRequestOk
           ? "Logout solicitado. Confirmando estado real..."
@@ -1612,7 +1634,6 @@
         if (finalMessage) {
           opMessage.textContent = finalMessage;
         }
-        clearLogoutArm();
         setOpButtonsBusy(false);
       }
     });

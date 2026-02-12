@@ -4,6 +4,12 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta72 - 2026-02-12
+### Fixed
+- `Cerrar sesion` vuelve a ejecutarse en un solo clic (sin doble confirmacion temporal en UI).
+- `control-api` y `support-api` aceptan `GET` y `POST` para evitar bloqueos por método en algunos entornos ingress.
+- Frontend añade fallback automático `POST -> GET` para `logout` y acciones de soporte si detecta `method_not_allowed` o `405`.
+
 ## 3.0.0-beta71 - 2026-02-12
 ### Fixed
 - `Cerrar sesion` en onboarding ya no depende de `window.confirm` (puede quedar bloqueado en iframes/sandbox).
