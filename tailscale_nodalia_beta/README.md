@@ -9,123 +9,28 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta62`
+`3.0.0-beta79`
 
-Cambios destacados:
-- Hardening de `Web UI lista`:
-  - el estado listo ahora exige señal en vivo estable por ingress y evita positivos prematuros.
-  - se mantiene acceso manual tras warmup sin bloquear operación.
-- Rutas ingress más robustas:
-  - manejo explícito de `/onboarding/` y `/webui/` para evitar errores por slash final.
-- Optimización real de carga:
-  - onboarding ya no consulta `onboarding.json` en cada ciclo (solo cuando hace falta).
-  - `runtime-status` reduce trabajo por iteración (configs estáticas + refresh periódico de resolvers DNS).
-- Corregida señal falsa de `Web UI lista`:
-  - onboarding ya no se desbloquea solo por `runtime.webui_ready`; exige confirmación real reciente por preflight ingress.
-  - el preflight vuelve a filtrar el banner de no disponibilidad con análisis de texto visible (evita falsos positivos por scripts).
-- Optimización de eficiencia:
-  - `runtime-status` reutiliza el JSON de `tailscale status` al consultar soporte y evita sondeo duplicado por ciclo.
-  - polling de onboarding más liviano cuando la WebUI ya está estable.
-- Corregido falso `tailscale web is unavailable` en beta:
-  - se elimina la validación por texto del banner HTML en runtime/frontend.
-  - la disponibilidad WebUI vuelve a evaluarse por estado HTTP/redirect (comportamiento alineado con estable).
-- Corregido flujo Web UI/iframe para evitar `Page not found`:
-  - la apertura desde onboarding ya no entra por ruta SPA inválida (`/webui`), ahora va a la raíz real del addon.
-  - el botón de volver desde iframe calcula el prefijo ingress y evita `404`.
-- Corregida señal de coincidencia DNS en soporte:
-  - `DNS coincide` se evalúa siempre por DNS real del nodo, incluso si `support_tunnel_enabled=false`.
-- Corregida validación DNS de soporte para nodos con formato real de Tailscale:
-  - ahora detecta correctamente valores como `homeassistant-4.tail37b857.ts.net.` (con punto final).
-  - la comprobación normaliza DNS y valida por sufijo `nombre-nodo + dns de tailnet`.
-- Corregido acceso a Web UI desde onboarding bajo ingress con slash final:
-  - rutas frontend convertidas a ingress-safe (resuelven bien con `/onboarding` y `/onboarding/`).
-  - botón/redirecciones de Web UI apuntan al prefijo real de ingress en lugar de una ruta frágil.
-- Soporte remoto ahora validado solo por DNS de tailnet:
-  - se elimina la comprobacion por `support_tailnet_id` para elegibilidad.
-  - el control usa exclusivamente `support_tailnet_dns_suffix`, que es el dato verificable en logs.
-  - `support_tailnet_id` se mantiene solo por compatibilidad y no afecta el bloqueo/desbloqueo.
-- Corrección crítica del acceso Web UI desde onboarding (beta):
-  - el botón "Entrar Web UI (ingress)" y autoentrada ahora abren la raíz ingress (`./`), igual que el flujo estable.
-  - `/webui` y `/webui-ready` se enrutan al backend real en raíz (`proxy_pass http://backend/`) para evitar falsos "unavailable".
-- Se corrige el caso reportado donde desde la nueva interfaz beta el iframe nunca llegaba a cargar y quedaba en `Tailscale web interface is unavailable`.
-- Nuevo soporte remoto guiado en onboarding:
-  - boton para activar/desactivar tunel temporal de soporte.
-  - URL temporal copiable para asistencia remota.
-  - controlado por validacion de DNS de tailnet y estado de Tailscale.
-- Nueva configuracion de seguridad para soporte:
-  - `support_tunnel_enabled` (default `false`),
-  - `support_tailnet_dns_suffix`,
-  - `support_target_url`.
-- Onboarding reforzado para un flujo mas autonomo:
-  - sugerencias inteligentes segun estado real (login, warmup, readonly, ACL).
-  - snippets copiable de ACL (`autogroup:self:5252`) y `tagOwners`.
-  - auto-entrada opcional a Web UI cuando se confirma disponibilidad.
-- Telemetria runtime ampliada:
-  - `webui_ready_streak`,
-  - `webui_probe_s`,
-  - `uptime_sec`,
-  - `direct_webui_url`.
-- Deteccion de Web UI optimizada:
-  - onboarding usa telemetria runtime (sin sondeo extra redundante),
-  - polling adaptativo para reducir latencia percibida al estar en warmup.
-- Corrección de robustez en runtime-status:
-  - elimina error `jq --argjson` en arranque con datos transitorios.
-  - serialización más segura de `/runtime.json`.
-- Nuevo wizard de onboarding por pasos:
-  - Autenticacion -> Warmup Web UI -> Acceso operativo.
-- Asistentes de perfil con copia rapida:
-  - `setup_profile: home_access`
-  - `setup_profile: subnet_router`
-- Panel de control de sesion con comando de diagnostico copiable.
-- Panel runtime ampliado con `webui_readonly`, `setup_profile` y `share_mode`.
-- Entrada a Web UI más estable desde onboarding:
-  - se elimina la redirección automática.
-  - solo habilita acceso ingress cuando detecta 2 comprobaciones consecutivas de `webui-ready`.
-- Nuevo acceso directo por tailnet:
-  - botón "Abrir Web UI directa (tailnet)" con URL `http://<tailscale-ip>:5252` cuando está disponible.
-- Nueva base "major" para el canal beta:
-  - panel de estado en vivo en onboarding (backend, webui_ready, online, DNS/host, IPs, timestamp).
-  - endpoint interno `/runtime.json` para telemetría runtime sin revisar logs.
-  - botón de diagnóstico rápido y copia de reporte técnico en JSON.
-- Fix crítico de arranque de Web UI:
-  - se asegura el arranque del servicio `web` en el bundle `user` de s6.
-  - evita bucles de `connection refused` a `127.0.0.1:25899` en ingress.
-- Web UI más rápida tras el arranque:
-  - polling de onboarding más frecuente (1s) y reintento rápido (500ms) cuando ya está `Running`.
-  - timeouts ajustados en `/webui-ready` y `/webui` para reducir esperas visibles.
-- Menos 502 al entrar en Web UI tras onboarding:
-  - nueva comprobación técnica `/webui-ready` para validar backend.
-  - `/webui` hace fallback a onboarding si el backend aún no responde.
-- Onboarding más robusto antes de entrar en Web UI:
-  - ahora comprueba que `webui` responde antes de redirigir.
-  - añade botón explícito "Abrir Web UI".
-- Menos ruido de errores HTTP en arranque:
-  - solo se intenta cerrar notificación persistente si antes se creó.
-- Fix de redirección final a Web UI:
-  - nuevo endpoint `/webui` para proxy directo al backend Tailscale.
-  - onboarding redirige a `/webui` al detectar `Running`.
-- Fix para Home Assistant Ingress:
-  - onboarding usa rutas relativas para evitar errores de carga en iframe (`Estado no disponible`).
-- Arranque de Web UI más rápido en Home Assistant:
-  - NGINX ya no espera al servicio `web` para iniciar.
-  - fallback más agresivo a `/onboarding` con timeouts de proxy más cortos.
-- Onboarding más fluido:
-  - refresco automático del estado cada 3 segundos.
-  - redirección automática a la Web UI cuando Tailscale pasa a `Running`.
-- Menos ruido en logs de Taildrop cuando aún no hay almacenamiento disponible.
-- Nuevas métricas de tiempo de arranque en logs para diagnóstico fino.
-- Web UI más reactiva en primer acceso: timeout corto de proxy y fallback rápido a `/onboarding` si el backend web tarda en responder.
-- Arranque inicial más rápido en instalaciones/actualizaciones nuevas:
-  - menor espera de `local-network` en startup.
-  - timeout de espera de `post-tailscaled` reducido y paso a modo degradado (sin bloquear la Web UI).
-- Carga inicial de Web UI más rápida: NGINX ya no espera al backend y muestra onboarding como fallback si el web interno aún no está listo.
-- Nueva opción `webui_readonly` para elegir entre Web UI en solo lectura (seguro) o modo con control completo de tailnet.
-- Nuevo onboarding sin logs: página `/onboarding` con URL de login, botón copiar y abrir enlace.
-- Notificación persistente en Home Assistant cuando el estado es `NeedsLogin`/`NeedsMachineAuth`.
-- Ajuste del proxy de Ingress para la Web UI con redirección segura fuera del iframe de Home Assistant.
-- Mejoras de estabilidad en arranque y diagnóstico de estado.
-- Comprobación de integridad (SHA256) del binario de Tailscale en build.
-- Mejora de CI para validar scripts y build multi-arquitectura.
+Cambios destacados (resumen de betas recientes):
+- Flujo de Web UI por ingress estabilizado:
+  - el botón `Entrar Web UI (ingress)` abre la raíz real del ingress (`.../`) y evita el `Page not found`.
+  - normalización de rutas para soportar correctamente URLs con y sin slash final.
+  - verificación de disponibilidad de Web UI más robusta para evitar falsos bloqueos.
+- Onboarding más predecible:
+  - detección de estado basada en señales runtime + preflight real de ingress.
+  - auto-entrada a Web UI desactivada por defecto (activable desde el panel).
+  - feedback de estado y diagnóstico en vivo mantenido en una sola pantalla.
+- `Logauth` local reforzado:
+  - el flujo de logout pasa a reset local de identidad (`logauth`) sin depender de token API de tailnet.
+  - doble confirmación en UI con feedback visual claro (estado armado, cuenta atrás y resultado).
+  - mejora de compatibilidad de llamadas de control (`POST` con fallback a `GET` cuando aplica).
+- Soporte remoto y APIs internas más robustas:
+  - validación de elegibilidad de soporte alineada al DNS real de tailnet (`support_tailnet_dns_suffix`).
+  - timeouts y comportamiento de `control-api`/`support-api` afinados para evitar cortes prematuros.
+- UI beta renovada:
+  - tema oscuro por defecto.
+  - selector claro/oscuro en modo icon-only (`☀`/`🌙`).
+  - limpieza de acciones redundantes en onboarding (se elimina `Control rapido`).
 
 Estrategia de versionado a partir de esta versión:
 - `X`: cambios mayores.
@@ -157,7 +62,7 @@ También puedes crear la cuenta durante el proceso de autenticación de la aplic
    https://github.com/danielmigueltejedor/apps-nodalia
 
 4. Menú (⋮) → **Reload**
-5. Instala la aplicación **Tailscale (Nodalia)**.
+5. Instala la aplicación **Tailscale (Nodalia Beta)**.
 6. Inicia la aplicación.
 7. Abre el **Web UI** de la aplicación para completar la autenticación.
 
@@ -415,7 +320,49 @@ Controla si la Web UI embebida se ejecuta en modo solo lectura.
 - `false`: habilita control completo de tailnet en la Web UI (por ejemplo, gestionar sesión desde la propia Web UI).
 
 Recomendación: mantener `true` salvo que necesites gestionar tailnet directamente desde la Web UI.
-El panel `/onboarding` mantiene controles locales de máquina (como `logout` y `reconnect`) incluso en modo readonly.
+El panel `/onboarding` mantiene controles locales de máquina (como `logauth`) incluso en modo readonly.
+
+---
+
+### `support_tunnel_enabled`
+
+Activa el módulo de túnel temporal de soporte remoto.
+
+- `false` (por defecto): desactivado.
+- `true`: habilitado, sujeto a elegibilidad de DNS/configuración.
+
+---
+
+### `support_tailnet_dns_suffix`
+
+Sufijo DNS de la tailnet autorizada para soporte remoto (ejemplo: `tail37b857.ts.net`).
+
+La elegibilidad del soporte se valida con este valor.
+
+---
+
+### `support_tailnet_id`
+
+Campo legacy de compatibilidad.
+
+Actualmente no se usa para decidir elegibilidad; se mantiene para no romper configuraciones antiguas.
+
+---
+
+### `support_target_url`
+
+URL interna objetivo a la que apuntará el túnel de soporte cuando esté activo.
+
+Por defecto: `http://127.0.0.1:8123`
+
+---
+
+### `support_tunnel_ttl_minutes`
+
+Tiempo de vida (TTL) del túnel temporal de soporte en minutos.
+
+Rango permitido: `5` a `180`.
+Por defecto: `30`.
 
 ---
 
