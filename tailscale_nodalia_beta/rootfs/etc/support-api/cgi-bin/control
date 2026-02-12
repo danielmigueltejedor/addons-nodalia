@@ -128,6 +128,9 @@ run_action() {
           sync 2>/dev/null || true
 
           daemon_pids="$(pidof tailscaled 2>/dev/null || true)"
+          if [[ -z "${daemon_pids}" ]] && command -v pgrep > /dev/null 2>&1; then
+            daemon_pids="$(pgrep -x tailscaled 2>/dev/null | tr '\n' ' ' || true)"
+          fi
           if [[ -n "${daemon_pids}" ]]; then
             echo "[logout] stopping tailscaled pids=${daemon_pids}"
             kill ${daemon_pids}
@@ -153,6 +156,7 @@ run_action() {
           rm -rf /data/state
           rm -f /data/tailscale-onboarding.json /data/tailscale-runtime.json /data/tailscale-login-notified
           rm -rf /var/lib/tailscale 2>/dev/null || true
+          mkdir -p /var/lib/tailscale 2>/dev/null || true
           mkdir -p /data/state
           chmod 0700 /data/state
           reset_state_rc=$?
