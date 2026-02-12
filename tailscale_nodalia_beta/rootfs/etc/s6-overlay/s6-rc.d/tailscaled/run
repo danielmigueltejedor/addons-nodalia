@@ -11,6 +11,27 @@ declare userspace_networking_enabled
 
 bashio::log.info 'Starting Tailscale...'
 
+# When performing a local identity reset (logauth/logout), we need a brief window
+# where tailscaled is kept from immediately restarting while state files are
+# wiped. The control-api creates this lock file during the critical section.
+readonly RESET_LOCK_FILE="/data/tailscale-reset.lock"
+if [[ -f "${RESET_LOCK_FILE}" ]]; then
+  bashio::log.warning \
+    "Reset lock detected (${RESET_LOCK_FILE}); delaying tailscaled start..."
+  for ((i=0; i<60; i++)); do
+    if [[ ! -f "${RESET_LOCK_FILE}" ]]; then
+      break
+    fi
+    sleep 1
+  done
+  if [[ -f "${RESET_LOCK_FILE}" ]]; then
+    bashio::log.warning \
+      "Reset lock still present after 60s; starting tailscaled anyway."
+  else
+    bashio::log.info "Reset lock cleared; continuing tailscaled startup."
+  fi
+fi
+
 options+=(--state=/data/tailscaled.state)
 options+=(--statedir=/data/state)
 

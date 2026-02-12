@@ -4,6 +4,19 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta85 - 2026-02-12
+### Fixed
+- `Logauth` ahora evita la carrera de reinicio de `tailscaled`:
+  - se introduce el lock `/data/tailscale-reset.lock` y `tailscaled/run` retrasa el arranque cuando está presente,
+  - el `control-api` hace stop de `tailscaled`, limpia estado y libera el lock antes de re-lanzar el flujo.
+- Hard reset más fiable:
+  - borra estado persistido (`/data/tailscaled.state`, `/data/state`) y limpia flags de onboarding,
+  - re-ejecuta `post-tailscaled` para aplicar la configuración y regenerar `AuthURL` si hace falta.
+
+### Changed
+- `control-api` añade auditoría best-effort a `/data/control-api.log`.
+- Marcador visual actualizado a `UI build: 3.0.0-beta85`.
+
 ## 3.0.0-beta84 - 2026-02-12
 ### Fixed
 - `Estado en vivo` (modo no avanzado): si `runtime.json` no está disponible, ahora fuerza `HostName/IPv4/IPv6` a `n/a` para evitar valores obsoletos.
