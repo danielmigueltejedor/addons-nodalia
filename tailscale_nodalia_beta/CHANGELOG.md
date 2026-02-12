@@ -4,6 +4,13 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta79 - 2026-02-12
+### Changed
+- Selector de tema en onboarding pasa a modo icon-only (`☀`/`🌙`) sin texto visible, manteniendo `title`/`aria-label`.
+- Se elimina la sección `Control rapido` y la acción redundante de `Reintentar conexion` del panel.
+- El feedback de operaciones (`op-message` y `op-output`) se mantiene dentro del bloque principal de acciones de conexión.
+- Marcador visual actualizado a `UI build: 3.0.0-beta79`.
+
 ## 3.0.0-beta78 - 2026-02-12
 ### Fixed
 - Corregido el feedback del botón de power para que se perciba claramente la interacción:
