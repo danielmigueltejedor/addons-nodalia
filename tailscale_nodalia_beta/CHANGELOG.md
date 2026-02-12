@@ -4,6 +4,24 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta65 - 2026-02-12
+### Fixed
+- `Cerrar sesión` ahora intenta primero un logout local directo contra `tailscaled` (`/localapi/v0/logout`) desde el propio add-on, sin depender de token de API de tailnet.
+- Ajustado el mensaje de onboarding en modo `readonly` para aclarar el comportamiento real:
+  - bloquea cambios de Tailnet en la Web UI,
+  - mantiene disponibles los controles locales de máquina (por ejemplo, `logout` y `reconnect`) desde el panel.
+
+### Changed
+- El valor por defecto de `webui_readonly` en beta vuelve a `true` para priorizar controles locales del dispositivo sin exponer controles de Tailnet desde la Web UI embebida.
+
+## 3.0.0-beta64 - 2026-02-12
+### Fixed
+- Corregido bloqueo/percepción de inacción en `Cerrar sesión` por latencias acumuladas del endpoint de control:
+  - `control-api` deja de ejecutar comprobaciones DNS pesadas en acciones normales (`status`, `logout`, `reconnect`),
+  - los checks intensivos quedan solo para `diag`/`dnsdiag`.
+- Aumentado `proxy_read_timeout` de `control-api` a `120s` para cubrir secuencias de logout forzado sin corte prematuro.
+- Añadida traza operativa de `control-api` para acciones no `status` en el log del add-on (`request`/`response`) para facilitar diagnóstico en campo.
+
 ## 3.0.0-beta63 - 2026-02-12
 ### Fixed
 - Corregidos timeouts demasiado agresivos en APIs de operación de onboarding:

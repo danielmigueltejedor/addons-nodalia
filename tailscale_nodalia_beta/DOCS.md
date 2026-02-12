@@ -274,9 +274,10 @@ Más info: https://tailscale.com/kb/1112/userspace-networking
 Controla si la Web UI embebida se ejecuta en modo solo lectura.
 
 - `true` (por defecto): modo seguro, sin acciones destructivas.
-- `false`: habilita control completo en la Web UI (por ejemplo, `logout`).
+- `false`: habilita control completo de tailnet en la Web UI (por ejemplo, gestionar sesión desde la propia Web UI).
 
-Recomendación: mantener `true` salvo que necesites gestionar sesión directamente desde la Web UI.
+Recomendación: mantener `true` salvo que necesites gestionar tailnet directamente desde la Web UI.
+El panel `/onboarding` mantiene controles locales de máquina (como `logout` y `reconnect`) incluso en modo readonly.
 
 ---
 

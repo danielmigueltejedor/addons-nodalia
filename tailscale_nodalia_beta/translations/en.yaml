@@ -117,7 +117,8 @@ configuration:
     description: >-
       Enables readonly mode for the embedded Tailscale Web UI.
       Keep this enabled for safer operation.
-      Disable it only if you need full UI actions such as logout.
+      Disable it only if you need full tailnet actions in the Web UI.
+      The onboarding panel keeps local machine controls (logout/reconnect) in readonly mode.
       When not set, this option is enabled by default.
   support_tunnel_enabled:
     name: Support tunnel button

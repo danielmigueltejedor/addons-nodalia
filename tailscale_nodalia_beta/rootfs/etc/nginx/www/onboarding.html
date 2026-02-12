@@ -1087,7 +1087,7 @@
         suggestions.push("La sonda local de Web UI devuelve " + webUiReason + ": revisa salud de tailscale web y vuelve a intentar.");
       }
       if (isReadonly) {
-        suggestions.push("Modo readonly activo: para logout/cambios avanzados pon webui_readonly=false.");
+        suggestions.push("Modo readonly activo: los cambios de Tailnet quedan bloqueados; usa este panel para controles locales (logout/reconnect).");
       }
       if (!isReadonly && hasTailnetIp) {
         suggestions.push("Si ves 'Viewing', revisa ACL/tagOwners y usa la Web UI via ingress.");

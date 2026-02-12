@@ -114,7 +114,8 @@ configuration:
     description: >-
       Activa el modo solo lectura para la Web UI embebida de Tailscale.
       Mantenlo activado para un uso mas seguro.
-      Desactivalo solo si necesitas acciones completas en la UI, como cerrar sesion.
+      Desactivalo solo si necesitas acciones completas de tailnet en la Web UI.
+      El panel onboarding mantiene controles locales (logout/reconnect) en modo readonly.
       Si no se configura, esta opcion esta activada por defecto.
   support_tunnel_enabled:
     name: Boton de tunel de soporte
