@@ -592,7 +592,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta87</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta88</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -1706,6 +1706,8 @@
       if (Date.now() > logoutConfirmUntilMs) {
         armLogoutConfirm(8000);
         opMessage.textContent = "Pulsa otra vez en menos de 8s para confirmar Logauth (reset tailnet).";
+        opOutput.textContent = "Listo para ejecutar Logauth.\nEndpoint: " + ingressUrl("control-api?action=logout");
+        opOutput.hidden = false;
         return;
       }
       clearLogoutConfirm();
@@ -1716,18 +1718,46 @@
       setOpButtonsBusy(true);
       opMessage.textContent = "Reseteando identidad local de Tailscale...";
       showLogoutHint("Ejecutando reset...", 0);
-      opOutput.hidden = true;
+      opOutput.textContent = "";
+      opOutput.hidden = false;
       let logoutRequestOk = false;
       try {
-        const data = await callControlApi("logout", "POST", true);
+        const url = ingressUrl("control-api?action=logout&_ts=" + Date.now());
+        let response = null;
+        let payload = "";
+        let data = null;
+        const attempt = async (method) => {
+          opOutput.textContent += method + " " + url + "\n";
+          response = await fetch(url, { method, cache: "no-store" });
+          payload = await response.text();
+          opOutput.textContent += "HTTP " + response.status + "\n";
+          opOutput.textContent += (payload || "(empty)") + "\n";
+          try {
+            data = JSON.parse(payload);
+          } catch (_) {
+            data = { ok: false, raw: payload };
+          }
+          return { response, data };
+        };
+
+        let result = null;
+        try {
+          result = await attempt("POST");
+        } catch (error) {
+          // Network failure or ingress disruption: surface it plainly.
+          throw new Error("fetch_failed: " + String(error?.message || "unknown"));
+        }
+        const firstStatus = Number(result.response?.status || 0);
+        const firstError = String(result.data?.error || "");
+        if (firstStatus === 405 || firstError === "method_not_allowed") {
+          // Some ingress setups can block POST; retry as GET.
+          result = await attempt("GET");
+        }
+        data = result.data || {};
         logoutRequestOk = Boolean(data?.ok);
         opMessage.textContent = logoutRequestOk
           ? "Logout solicitado. Confirmando estado real..."
           : "Logout no confirmado. Estado actual: " + String(data.backend_state || "Unknown");
-        if (data.output) {
-          opOutput.textContent = data.output;
-          opOutput.hidden = false;
-        }
       } catch (error) {
         opMessage.textContent = "Error al cerrar sesion: " + error.message;
         opOutput.textContent = String(error?.message || "logout_error");
