@@ -175,7 +175,13 @@
       padding: 5px 11px;
     }
     .theme-toggle {
-      min-width: 152px;
+      min-width: 48px;
+      width: 48px;
+      padding: 10px 0;
+      font-size: 1.08rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
       justify-content: center;
       text-align: center;
       white-space: nowrap;
@@ -433,7 +439,7 @@
       button, a.btn { width: 100%; justify-content: center; text-align: center; }
       .actions { display: grid; grid-template-columns: 1fr; }
       .hero-head { align-items: center; }
-      .theme-toggle { width: auto; min-width: 0; }
+      .theme-toggle { width: 48px; min-width: 48px; }
       .hero-actions { width: 100%; }
       .power-btn { min-width: 0; }
       .logout-hint { width: 100%; justify-content: center; }
@@ -450,7 +456,7 @@
         </div>
         <div class="hero-actions">
           <button id="op-logout-btn" type="button" class="power-btn" aria-label="Logauth y reset de identidad local" title="Logauth (reset tailnet)">&#x23FB;</button>
-          <button id="theme-toggle-btn" type="button" class="ghost theme-toggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">☀ Modo claro</button>
+          <button id="theme-toggle-btn" type="button" class="ghost theme-toggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">☀</button>
           <span id="logout-hint" class="logout-hint" hidden></span>
         </div>
       </div>
@@ -492,6 +498,8 @@
         Abrir Web UI automaticamente cuando este lista
       </label>
       <p id="redirect-state" class="small"></p>
+      <p id="op-message" class="small" aria-live="polite"></p>
+      <div id="op-output" class="mono" hidden></div>
     </div>
     <section class="panel">
       <h2>Estado en vivo</h2>
@@ -518,15 +526,6 @@
         <button id="copy-report-btn" type="button" class="ghost">Copiar reporte</button>
       </div>
       <ul id="diag-list" class="diag-list"></ul>
-    </section>
-    <section class="panel">
-      <h2>Control rapido</h2>
-      <p class="small">Acciones locales no destructivas.</p>
-      <div class="actions">
-        <button id="op-reconnect-btn" type="button">Reintentar conexion</button>
-      </div>
-      <p id="op-message" class="small"></p>
-      <div id="op-output" class="mono" hidden></div>
     </section>
     <section class="panel">
       <h2>Salud y diagnostico</h2>
@@ -657,7 +656,6 @@
     const copyProfileSubnet = document.getElementById("copy-profile-subnet");
     const sessionDiagBtn = document.getElementById("session-diag-btn");
     const sessionDownloadBtn = document.getElementById("session-download-btn");
-    const opReconnectBtn = document.getElementById("op-reconnect-btn");
     const opLogoutBtn = document.getElementById("op-logout-btn");
     const opMessage = document.getElementById("op-message");
     const opOutput = document.getElementById("op-output");
@@ -841,7 +839,7 @@
         return;
       }
       const nextTheme = isLight ? "dark" : "light";
-      const nextLabel = nextTheme === "light" ? "☀ Modo claro" : "🌙 Modo oscuro";
+      const nextLabel = nextTheme === "light" ? "☀" : "🌙";
       const nextAria = nextTheme === "light" ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
       themeToggleBtn.textContent = nextLabel;
       themeToggleBtn.setAttribute("aria-label", nextAria);
@@ -924,7 +922,6 @@
       if (opBusy) {
         clearLogoutConfirm();
       }
-      setUiDisabled(opReconnectBtn, opBusy);
       setUiDisabled(opLogoutBtn, opBusy);
     }
 
@@ -1396,7 +1393,7 @@
         suggestions.push("La sonda local de Web UI devuelve " + webUiReason + ": revisa salud de tailscale web y vuelve a intentar.");
       }
       if (isReadonly) {
-        suggestions.push("Modo readonly activo: los cambios de Tailnet quedan bloqueados; usa este panel para controles locales (logout/reconnect).");
+        suggestions.push("Modo readonly activo: los cambios de Tailnet quedan bloqueados; usa este panel para controles locales (logout).");
       }
       if (!isReadonly && hasTailnetIp) {
         suggestions.push("Si ves 'Viewing', revisa ACL/tagOwners y usa la Web UI via ingress.");
@@ -1695,29 +1692,6 @@
         supportAuditOutput.textContent = "No se pudo cargar auditoria: " + error.message;
       } finally {
         endUiAction();
-      }
-    });
-    opReconnectBtn.addEventListener("click", async () => {
-      beginUiAction();
-      setOpButtonsBusy(true);
-      opMessage.textContent = "Reintentando conexion con Tailscale...";
-      opOutput.hidden = true;
-      try {
-        const data = await callControlApi("reconnect", "POST");
-        opMessage.textContent = data.ok
-          ? "Accion completada. Estado: " + String(data.backend_state || "Unknown")
-          : "No se pudo completar reconnect.";
-        if (data.output) {
-          opOutput.textContent = data.output;
-          opOutput.hidden = false;
-        }
-      } catch (error) {
-        opMessage.textContent = "Error al reconectar: " + error.message;
-      } finally {
-        endUiAction();
-        await refreshRuntime(1800);
-        await loadState();
-        setOpButtonsBusy(false);
       }
     });
     opLogoutBtn.addEventListener("click", async () => {
