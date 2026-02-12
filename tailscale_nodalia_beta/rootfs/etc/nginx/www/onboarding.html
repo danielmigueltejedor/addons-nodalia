@@ -181,9 +181,12 @@
       white-space: nowrap;
     }
     .power-btn {
-      min-width: 156px;
+      min-width: 48px;
+      width: 48px;
+      padding: 10px 0;
+      font-size: 1.18rem;
+      line-height: 1;
       justify-content: center;
-      white-space: nowrap;
       border-color: #a14a4a;
       background: linear-gradient(180deg, #5d1f2a, #4a1420);
       color: #ffe9e9;
@@ -192,6 +195,28 @@
     .power-btn:hover {
       box-shadow: 0 10px 20px rgba(95, 27, 41, 0.55);
       filter: saturate(1.07);
+    }
+    .power-btn.armed {
+      border-color: #d77777;
+      background: linear-gradient(180deg, #8a2b39, #6a1b2a);
+      box-shadow: 0 10px 22px rgba(138, 43, 57, 0.55);
+      filter: saturate(1.08);
+      animation: power-pulse 700ms ease-in-out infinite alternate;
+    }
+    .logout-hint {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #a45d5d;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #ffd6d6;
+      background: rgba(95, 27, 41, 0.22);
+      white-space: nowrap;
+    }
+    .logout-hint[hidden] {
+      display: none;
     }
     h1 {
       margin: 0 0 10px;
@@ -397,6 +422,10 @@
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    @keyframes power-pulse {
+      from { transform: scale(1); }
+      to { transform: scale(1.08); }
+    }
     @media (max-width: 640px) {
       body { padding: 14px; }
       .card { padding: 14px; border-radius: 14px; }
@@ -407,6 +436,7 @@
       .theme-toggle { width: auto; min-width: 0; }
       .hero-actions { width: 100%; }
       .power-btn { min-width: 0; }
+      .logout-hint { width: 100%; justify-content: center; }
     }
   </style>
 </head>
@@ -419,8 +449,9 @@
           <span class="brand-name">Nodalia</span>
         </div>
         <div class="hero-actions">
-          <button id="op-logout-btn" type="button" class="power-btn" aria-label="Logauth y reset de identidad local">&#x23FB; Logauth</button>
+          <button id="op-logout-btn" type="button" class="power-btn" aria-label="Logauth y reset de identidad local" title="Logauth (reset tailnet)">&#x23FB;</button>
           <button id="theme-toggle-btn" type="button" class="ghost theme-toggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">☀ Modo claro</button>
+          <span id="logout-hint" class="logout-hint" hidden></span>
         </div>
       </div>
       <span class="badge">Nodalia Control Center</span>
@@ -562,7 +593,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta76</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta78</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -577,6 +608,7 @@
     const hardRefreshBtn = document.getElementById("hard-refresh-btn");
     const toggleAdvancedBtn = document.getElementById("toggle-advanced-btn");
     const themeToggleBtn = document.getElementById("theme-toggle-btn");
+    const logoutHint = document.getElementById("logout-hint");
     const refreshBtn = document.getElementById("refresh-btn");
     const refreshOkBtn = document.getElementById("refresh-ok-btn");
     const cancelRedirectBtn = document.getElementById("cancel-redirect-btn");
@@ -655,6 +687,8 @@
     let opCanLogout = false;
     let logoutConfirmUntilMs = 0;
     let logoutConfirmHandle = null;
+    let logoutConfirmTickHandle = null;
+    let logoutHintHideHandle = null;
     let liveWebUiReadyStreak = 0;
     let liveWebUiSeenAtMs = 0;
     let lastWebUiProbeAtMs = 0;
@@ -673,8 +707,8 @@
         "tag:ha": ["autogroup:admin"]
       }
     }, null, 2);
-    const LOGAUTH_IDLE_LABEL = "&#x23FB; Logauth";
-    const LOGAUTH_CONFIRM_LABEL = "Confirmar &#x23FB;";
+    const LOGAUTH_IDLE_LABEL = "&#x23FB;";
+    const LOGAUTH_CONFIRM_LABEL = "&#9888;";
 
     async function copyText(text, targetButton, okLabel, defaultLabel) {
       try {
@@ -1227,23 +1261,67 @@
       renderOpButtons();
     }
 
+    function showLogoutHint(message, autoHideMs = 0) {
+      if (!logoutHint) {
+        return;
+      }
+      if (logoutHintHideHandle) {
+        clearTimeout(logoutHintHideHandle);
+        logoutHintHideHandle = null;
+      }
+      if (!message) {
+        logoutHint.hidden = true;
+        logoutHint.textContent = "";
+        return;
+      }
+      logoutHint.hidden = false;
+      logoutHint.textContent = message;
+      if (autoHideMs > 0) {
+        logoutHintHideHandle = setTimeout(() => {
+          logoutHint.hidden = true;
+          logoutHint.textContent = "";
+          logoutHintHideHandle = null;
+        }, autoHideMs);
+      }
+    }
+
     function clearLogoutConfirm() {
       logoutConfirmUntilMs = 0;
       if (logoutConfirmHandle) {
         clearTimeout(logoutConfirmHandle);
         logoutConfirmHandle = null;
       }
+      if (logoutConfirmTickHandle) {
+        clearTimeout(logoutConfirmTickHandle);
+        logoutConfirmTickHandle = null;
+      }
+      opLogoutBtn.classList.remove("armed");
       opLogoutBtn.innerHTML = LOGAUTH_IDLE_LABEL;
+      opLogoutBtn.title = "Logauth (reset tailnet)";
+      opLogoutBtn.setAttribute("aria-label", "Logauth y reset de identidad local");
+      showLogoutHint("");
     }
 
     function armLogoutConfirm(windowMs = 8000) {
       clearLogoutConfirm();
       logoutConfirmUntilMs = Date.now() + windowMs;
+      opLogoutBtn.classList.add("armed");
       opLogoutBtn.innerHTML = LOGAUTH_CONFIRM_LABEL;
+      opLogoutBtn.title = "Confirmar logauth (reset tailnet)";
+      opLogoutBtn.setAttribute("aria-label", "Confirmar logauth y reset de identidad local");
+      const tick = () => {
+        const remain = Math.max(0, Math.ceil((logoutConfirmUntilMs - Date.now()) / 1000));
+        showLogoutHint("Confirma reset: " + remain + "s");
+        if (remain > 0 && Date.now() <= logoutConfirmUntilMs) {
+          logoutConfirmTickHandle = setTimeout(tick, 300);
+        }
+      };
+      tick();
       logoutConfirmHandle = setTimeout(() => {
         clearLogoutConfirm();
         if (!opBusy) {
           opMessage.textContent = "Confirmacion expirada. Pulsa de nuevo para confirmar Logauth.";
+          showLogoutHint("Confirmacion expirada", 2200);
         }
       }, windowMs + 100);
     }
@@ -1658,6 +1736,7 @@
       beginUiAction();
       setOpButtonsBusy(true);
       opMessage.textContent = "Reseteando identidad local de Tailscale...";
+      showLogoutHint("Ejecutando reset...", 0);
       opOutput.hidden = true;
       let logoutRequestOk = false;
       try {
@@ -1677,9 +1756,11 @@
       } finally {
         endUiAction();
         let finalMessage = "";
+        let transitionMatched = false;
         if (logoutRequestOk) {
           const transition = await waitForBackendTransition(["NeedsLogin", "NeedsMachineAuth", "NoState", "Stopped"], 9000, 700);
           if (transition.matched) {
+            transitionMatched = true;
             finalMessage = "Reset de identidad confirmado. Ya puedes autenticar en otra tailnet desde esta pagina.";
           } else {
             const state = String(transition.status?.backend_state || "Unknown");
@@ -1688,11 +1769,14 @@
         }
         await refreshRuntime(1800);
         await loadState();
-        if (finalMessage) {
-          opMessage.textContent = finalMessage;
-        }
         clearLogoutConfirm();
         setOpButtonsBusy(false);
+        if (finalMessage) {
+          opMessage.textContent = finalMessage;
+          showLogoutHint(transitionMatched ? "Reset confirmado" : "Reset en progreso", 2600);
+        } else {
+          showLogoutHint("Operacion finalizada", 1800);
+        }
       }
     });
     runHealthBtn.addEventListener("click", async () => {

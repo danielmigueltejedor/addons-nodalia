@@ -4,6 +4,24 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta78 - 2026-02-12
+### Fixed
+- Corregido el feedback del botón de power para que se perciba claramente la interacción:
+  - estado armado visible con icono de advertencia y pulso,
+  - indicador de confirmación con cuenta atrás (`Confirma reset: Ns`),
+  - mensaje visible durante ejecución (`Ejecutando reset...`) y al finalizar.
+- Corregido bug JS de alcance en el flujo de resultado de `Logauth` que podía dejar la interacción sin feedback.
+
+### Changed
+- Se mantiene el botón `Logauth` en modo icon-only.
+- Marcador visual actualizado a `UI build: 3.0.0-beta78`.
+
+## 3.0.0-beta77 - 2026-02-12
+### Changed
+- El botón de `Logauth` en cabecera pasa a modo icono-only (solo símbolo de power, sin texto).
+- Se añade estado visual armado para la segunda confirmación de `Logauth` sin introducir texto en el botón.
+- Marcador visual actualizado a `UI build: 3.0.0-beta77`.
+
 ## 3.0.0-beta76 - 2026-02-12
 ### Changed
 - Rediseño de onboarding para mejorar jerarquía visual y disposición de acciones:
