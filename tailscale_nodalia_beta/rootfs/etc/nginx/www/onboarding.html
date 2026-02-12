@@ -406,11 +406,11 @@
     </section>
     <section class="panel advanced-only">
       <h2>Soporte remoto</h2>
-      <p class="small">Disponible solo si esta app esta en la tailnet de soporte configurada.</p>
+      <p class="small">Disponible solo si el DNS de esta app coincide con el DNS de soporte configurado.</p>
       <div class="kv">
         <div>Soporte habilitado:</div><div><code id="sup-enabled">-</code></div>
-        <div>Tailnet objetivo:</div><div><code id="sup-tailnet">-</code></div>
-        <div>Tailnet coincide:</div><div><code id="sup-match">-</code></div>
+        <div>DNS objetivo:</div><div><code id="sup-tailnet">-</code></div>
+        <div>DNS coincide:</div><div><code id="sup-match">-</code></div>
         <div>Elegible:</div><div><code id="sup-eligible">-</code></div>
         <div>Tunel activo:</div><div><code id="sup-active">-</code></div>
         <div>URL temporal:</div><div><code id="sup-url">-</code></div>
@@ -698,8 +698,10 @@
       const url = String(runtime?.support_url || runtime?.url || "");
       const expiresAt = String(runtime?.support_expires_at || runtime?.expires_at || "");
       const reason = String(runtime?.support_reason || runtime?.reason || "");
+      const targetDns = String(runtime?.support_tailnet_dns_suffix || runtime?.support_target_dns_suffix || "");
+      const targetId = String(runtime?.support_tailnet_id || runtime?.support_target_id || "");
       supportEnabled.textContent = enabled ? "true" : "false";
-      supportTailnet.textContent = String(runtime?.support_tailnet_id || runtime?.support_target_id || "-");
+      supportTailnet.textContent = targetDns || targetId || "-";
       supportMatch.textContent = match ? "true" : "false";
       supportEligible.textContent = eligible ? "true" : "false";
       supportActive.textContent = active ? "true" : "false";
@@ -777,6 +779,7 @@
         Array.isArray(data?.dns_resolvers) ? data.dns_resolvers.join(",") : "",
         data?.self_host_name,
         data?.support_enabled,
+        data?.support_tailnet_dns_suffix,
         data?.support_tailnet_match,
         data?.support_eligible,
         data?.support_active,
@@ -1039,7 +1042,7 @@
         suggestions.push("DNS tailnet degradado: si persiste, prueba accept_dns=false o revisa DNS en admin de Tailscale.");
       }
       if (lastRuntime?.support_enabled && !lastRuntime?.support_tailnet_match) {
-        suggestions.push("Soporte remoto bloqueado: esta instancia no coincide con la tailnet de soporte.");
+        suggestions.push("Soporte remoto bloqueado: el DNS de esta instancia no coincide con el DNS objetivo de soporte.");
       }
       if (!lastRuntime?.support_enabled) {
         suggestions.push("Soporte remoto desactivado en configuracion: activa support_tunnel_enabled si lo necesitas.");

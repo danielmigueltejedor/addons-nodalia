@@ -121,12 +121,17 @@ configuration:
     description: >-
       Habilita los controles de tunel de soporte en onboarding.
       El tunel temporal de Cloudflare solo puede abrirse cuando este nodo
-      coincide con el identificador de tailnet de soporte configurado.
+      coincide con el DNS de tailnet de soporte configurado.
   support_tailnet_id:
-    name: Identificador de tailnet de soporte
+    name: Identificador de tailnet (obsoleto)
     description: >-
-      Identificador/nombre de tailnet requerido para permitir activar el tunel
-      de soporte. Si el estado actual de Tailscale no coincide, el boton queda bloqueado.
+      Campo mantenido solo por compatibilidad con configuraciones antiguas.
+      Ya no se usa para validar el tunel de soporte.
+  support_tailnet_dns_suffix:
+    name: DNS de tailnet para soporte
+    description: >-
+      Sufijo DNS usado para validar soporte remoto (por ejemplo `tail37b857.ts.net`).
+      El tunel solo se habilita cuando el DNS de este nodo coincide con ese sufijo.
   support_target_url:
     name: URL interna objetivo del tunel
     description: >-

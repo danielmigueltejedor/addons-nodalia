@@ -93,14 +93,15 @@ write_meta() {
 }
 
 build_eligibility() {
-  local status_json support_enabled target_id target_url backend candidate_strings
+  local status_json support_enabled target_url backend candidate_strings
   local target_dns_suffix self_dns_name magic_dns_suffix token_lc
   support_enabled=false
   if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
     support_enabled=true
   fi
 
-  target_id="$(bashio::config "support_tailnet_id" "")"
+  # support_tailnet_id is kept for backward compatibility only.
+  # Eligibility is based exclusively on DNS suffix matching.
   target_dns_suffix="$(bashio::config "support_tailnet_dns_suffix" "tail37b857.ts.net")"
   target_dns_suffix="${target_dns_suffix#.}"
   target_dns_suffix="${target_dns_suffix%.}"
@@ -113,7 +114,7 @@ build_eligibility() {
   candidate_strings="$(jq -r '[.CurrentTailnet.Name,.CurrentTailnet.MagicDNSSuffix,.CurrentTailnet.Tailnet,.Self.DNSName,.Self.HostName,.Self.Tailnet] | map(select(type=="string" and length>0)) | .[]' <<< "${status_json}" 2>/dev/null || true)"
 
   SUPPORT_ENABLED="${support_enabled}"
-  SUPPORT_TARGET_ID="${target_id}"
+  SUPPORT_TARGET_ID=""
   SUPPORT_TARGET_DNS_SUFFIX="${target_dns_suffix}"
   SUPPORT_TARGET_URL="${target_url}"
   SUPPORT_BACKEND="${backend}"
@@ -124,8 +125,8 @@ build_eligibility() {
     SUPPORT_REASON="support_tunnel_enabled=false"
     return
   fi
-  if [[ -z "${target_id}" && -z "${target_dns_suffix}" ]]; then
-    SUPPORT_REASON="support_tailnet_id y support_tailnet_dns_suffix vacios"
+  if [[ -z "${target_dns_suffix}" ]]; then
+    SUPPORT_REASON="support_tailnet_dns_suffix vacio"
     return
   fi
   if [[ "${backend}" != "Running" ]]; then
@@ -133,18 +134,7 @@ build_eligibility() {
     return
   fi
 
-  if [[ -n "${target_id}" ]]; then
-    while IFS= read -r token; do
-      if [[ -n "${token}" && "${token}" == *"${target_id}"* ]]; then
-        SUPPORT_TAILNET_MATCH="true"
-        break
-      fi
-    done <<< "${candidate_strings}"
-    if [[ "${SUPPORT_TAILNET_MATCH}" != "true" ]] && grep -Fq "${target_id}" <<< "${status_json}"; then
-      SUPPORT_TAILNET_MATCH="true"
-    fi
-  fi
-  if [[ "${SUPPORT_TAILNET_MATCH}" != "true" ]] && [[ -n "${target_dns_suffix}" ]]; then
+  if [[ -n "${target_dns_suffix}" ]]; then
     self_dns_name="$(echo "${self_dns_name}" | tr '[:upper:]' '[:lower:]')"
     magic_dns_suffix="$(echo "${magic_dns_suffix}" | tr '[:upper:]' '[:lower:]')"
     if [[ -n "${self_dns_name}" && "${self_dns_name}" == *".${target_dns_suffix}" ]]; then
@@ -162,7 +152,7 @@ build_eligibility() {
     fi
   fi
   if [[ "${SUPPORT_TAILNET_MATCH}" != "true" ]]; then
-    SUPPORT_REASON="tailnet no coincide con soporte (id o dns suffix)"
+    SUPPORT_REASON="tailnet no coincide con dns suffix de soporte"
   fi
 }
 

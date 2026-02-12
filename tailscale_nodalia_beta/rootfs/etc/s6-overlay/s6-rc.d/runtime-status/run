@@ -34,6 +34,7 @@ declare direct_webui_url
 declare support_json
 declare support_enabled
 declare support_tailnet_id
+declare support_tailnet_dns_suffix
 declare support_tailnet_match
 declare support_eligible
 declare support_active
@@ -132,6 +133,7 @@ do
   support_json="$(support-tunnel status 2>/dev/null || echo '{}')"
   support_enabled="$(jq -r '.support_enabled // false' <<< "${support_json}" 2>/dev/null || echo "false")"
   support_tailnet_id="$(jq -r '.support_target_id // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_tailnet_dns_suffix="$(jq -r '.support_target_dns_suffix // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_tailnet_match="$(jq -r '.tailnet_match // false' <<< "${support_json}" 2>/dev/null || echo "false")"
   support_eligible="$(jq -r '.eligible // false' <<< "${support_json}" 2>/dev/null || echo "false")"
   support_active="$(jq -r '.active // false' <<< "${support_json}" 2>/dev/null || echo "false")"
@@ -172,6 +174,7 @@ do
     --argjson uptime_sec "${uptime_sec}" \
     --arg support_enabled "${support_enabled}" \
     --arg support_tailnet_id "${support_tailnet_id}" \
+    --arg support_tailnet_dns_suffix "${support_tailnet_dns_suffix}" \
     --arg support_tailnet_match "${support_tailnet_match}" \
     --arg support_eligible "${support_eligible}" \
     --arg support_active "${support_active}" \
@@ -198,6 +201,7 @@ do
       share_mode:$share_mode,
       support_enabled: ($support_enabled == "true"),
       support_tailnet_id:$support_tailnet_id,
+      support_tailnet_dns_suffix:$support_tailnet_dns_suffix,
       support_tailnet_match: ($support_tailnet_match == "true"),
       support_eligible: ($support_eligible == "true"),
       support_active: ($support_active == "true"),

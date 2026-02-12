@@ -124,13 +124,17 @@ configuration:
     description: >-
       Enables the support tunnel controls in onboarding.
       A temporary Cloudflare tunnel can be opened only when this node matches
-      the configured support tailnet identifier.
+      the configured support tailnet DNS suffix.
   support_tailnet_id:
-    name: Support tailnet identifier
+    name: Support tailnet identifier (deprecated)
     description: >-
-      Required tailnet identifier/name used to allow support tunnel activation.
-      If the current Tailscale status does not match this value, the support
-      tunnel button stays blocked.
+      Kept for backward compatibility with older configurations.
+      It is no longer used to validate support tunnel eligibility.
+  support_tailnet_dns_suffix:
+    name: Support tailnet DNS suffix
+    description: >-
+      DNS suffix used to validate support access (for example `tail37b857.ts.net`).
+      The tunnel is enabled only when this node DNS matches that suffix.
   support_target_url:
     name: Support tunnel target URL
     description: >-

@@ -9,9 +9,13 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta55`
+`3.0.0-beta56`
 
 Cambios destacados:
+- Soporte remoto ahora validado solo por DNS de tailnet:
+  - se elimina la comprobacion por `support_tailnet_id` para elegibilidad.
+  - el control usa exclusivamente `support_tailnet_dns_suffix`, que es el dato verificable en logs.
+  - `support_tailnet_id` se mantiene solo por compatibilidad y no afecta el bloqueo/desbloqueo.
 - Corrección crítica del acceso Web UI desde onboarding (beta):
   - el botón "Entrar Web UI (ingress)" y autoentrada ahora abren la raíz ingress (`./`), igual que el flujo estable.
   - `/webui` y `/webui-ready` se enrutan al backend real en raíz (`proxy_pass http://backend/`) para evitar falsos "unavailable".
@@ -19,10 +23,10 @@ Cambios destacados:
 - Nuevo soporte remoto guiado en onboarding:
   - boton para activar/desactivar tunel temporal de soporte.
   - URL temporal copiable para asistencia remota.
-  - controlado por validacion de tailnet y estado de Tailscale.
+  - controlado por validacion de DNS de tailnet y estado de Tailscale.
 - Nueva configuracion de seguridad para soporte:
   - `support_tunnel_enabled` (default `false`),
-  - `support_tailnet_id`,
+  - `support_tailnet_dns_suffix`,
   - `support_target_url`.
 - Onboarding reforzado para un flujo mas autonomo:
   - sugerencias inteligentes segun estado real (login, warmup, readonly, ACL).

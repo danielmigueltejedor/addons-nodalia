@@ -4,6 +4,15 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta56 - 2026-02-12
+### Changed
+- La elegibilidad del soporte remoto ya no usa `support_tailnet_id`.
+- La validación pasa a depender únicamente de `support_tailnet_dns_suffix` (DNS de tailnet observable en logs).
+- `support_tailnet_id` se mantiene solo por compatibilidad y deja de afectar el bloqueo/desbloqueo del túnel.
+
+### Fixed
+- Se alinea el estado runtime/onboarding para mostrar el DNS objetivo de soporte y evitar diagnósticos confusos cuando el campo ID está vacío.
+
 ## 3.0.0-beta55 - 2026-02-12
 ### Fixed
 - Corregido el flujo de acceso a Web UI desde la nueva interfaz de onboarding en beta:
