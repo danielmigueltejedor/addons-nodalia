@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta86 - 2026-02-12
+### Fixed
+- `Logauth` refactorizado a un script dedicado (`/usr/local/bin/tailscale-logauth-reset`) y el botón lo ejecuta vía `control-api`.
+- Timeouts ajustados para evitar cortes de ingress manteniendo el reset robusto.
+
+### Changed
+- Marcador visual actualizado a `UI build: 3.0.0-beta86`.
+
 ## 3.0.0-beta85 - 2026-02-12
 ### Fixed
 - `Logauth` ahora evita la carrera de reinicio de `tailscaled`:

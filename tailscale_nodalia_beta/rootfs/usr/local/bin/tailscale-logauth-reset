@@ -1,0 +1,139 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -euo pipefail
+
+# This script performs a local identity reset ("logauth") for the add-on.
+# Goal: make the node require login again so the user can join a different tailnet
+# without uninstalling/reinstalling the add-on.
+#
+# Important: we don't use tailscale.com public API here. Everything is local:
+# - tailscale localapi via the unix socket
+# - wiping /data state files (like uninstall)
+# - re-running post-tailscaled to regenerate AuthURL.
+
+SOCK="/var/run/tailscale/tailscaled.sock"
+STATE="/data/tailscaled.state"
+STATEDIR="/data/state"
+LOCK_FILE="/data/tailscale-reset.lock"
+
+log() {
+  printf '[logauth-reset] %s\n' "$*"
+}
+
+cleanup_lock() {
+  rm -f "${LOCK_FILE}" 2>/dev/null || true
+}
+trap cleanup_lock EXIT
+
+log "Acquiring reset lock: ${LOCK_FILE}"
+printf '%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "${LOCK_FILE}" 2>/dev/null || true
+chmod 0600 "${LOCK_FILE}" 2>/dev/null || true
+sync 2>/dev/null || true
+
+if [[ -S "${SOCK}" ]]; then
+  log "Bringing Tailscale down (best-effort)..."
+  timeout 8 /opt/tailscale --socket="${SOCK}" down 2>/dev/null || true
+
+  log "Logging out (best-effort)..."
+  timeout 8 /opt/tailscale --socket="${SOCK}" logout 2>/dev/null || true
+else
+  log "Socket not present yet; skipping tailscale down/logout pre-flight"
+fi
+
+daemon_pids="$(pidof tailscaled 2>/dev/null || true)"
+if [[ -z "${daemon_pids}" ]] && command -v pgrep > /dev/null 2>&1; then
+  daemon_pids="$(pgrep -x tailscaled 2>/dev/null | tr '\n' ' ' || true)"
+fi
+
+if [[ -n "${daemon_pids}" ]]; then
+  log "Stopping tailscaled pids=${daemon_pids}"
+  kill ${daemon_pids} 2>/dev/null || true
+else
+  log "tailscaled pid not found"
+fi
+
+# Wait briefly for socket to disappear so it can't rewrite state while we delete it.
+for ((i=0; i<12; i++)); do
+  if [[ ! -S "${SOCK}" ]]; then
+    break
+  fi
+  sleep 1
+done
+
+if [[ -S "${SOCK}" ]] && [[ -n "${daemon_pids}" ]]; then
+  log "tailscaled still running; sending SIGKILL pids=${daemon_pids}"
+  kill -9 ${daemon_pids} 2>/dev/null || true
+fi
+
+for ((i=0; i<6; i++)); do
+  if [[ ! -S "${SOCK}" ]]; then
+    break
+  fi
+  sleep 1
+done
+log "socket present after stop=$([[ -S "${SOCK}" ]] && echo true || echo false)"
+
+log "Removing local auth/state files"
+rm -f "${STATE}"
+rm -rf "${STATEDIR}"
+rm -f /data/tailscale-onboarding.json /data/tailscale-runtime.json /data/tailscale-login-notified
+rm -rf /var/lib/tailscale 2>/dev/null || true
+mkdir -p /var/lib/tailscale 2>/dev/null || true
+mkdir -p "${STATEDIR}"
+chmod 0700 "${STATEDIR}" 2>/dev/null || true
+
+log "Releasing reset lock"
+cleanup_lock
+
+log "Waiting for tailscaled socket to return..."
+for ((i=0; i<25; i++)); do
+  if [[ -S "${SOCK}" ]]; then
+    break
+  fi
+  sleep 1
+done
+log "socket present after restart=$([[ -S "${SOCK}" ]] && echo true || echo false)"
+
+log "Re-running post-tailscaled to apply config and regenerate AuthURL"
+set +e
+post_output="$(timeout 45 /etc/s6-overlay/s6-rc.d/post-tailscaled/run 2>&1)"
+post_rc=$?
+set -e
+log "post-tailscaled rc=${post_rc}"
+if [[ -n "${post_output}" ]]; then
+  printf '%s\n' "${post_output}" | tail -n 80
+fi
+
+status_json="$(/opt/tailscale status --json --self=true --peers=false 2>/dev/null || echo '{}')"
+backend_state="$(jq -r '.BackendState // "Unknown"' <<< "${status_json}" 2>/dev/null || echo "Unknown")"
+auth_url="$(jq -r '.AuthURL // .Self.AuthURL // empty' <<< "${status_json}" 2>/dev/null || true)"
+
+if [[ "${backend_state}" == "Running" ]] && [[ -z "${auth_url}" ]]; then
+  log "Backend still Running; forcing interactive reauth (tailscale up --force-reauth)"
+  set +e
+  reauth_output="$(timeout 15 /opt/tailscale up --force-reauth 2>&1)"
+  reauth_rc=$?
+  set -e
+  log "force-reauth rc=${reauth_rc}"
+  if [[ -n "${reauth_output}" ]]; then
+    printf '%s\n' "${reauth_output}" | tail -n 60
+  fi
+  status_json="$(/opt/tailscale status --json --self=true --peers=false 2>/dev/null || echo '{}')"
+  backend_state="$(jq -r '.BackendState // "Unknown"' <<< "${status_json}" 2>/dev/null || echo "Unknown")"
+  auth_url="$(jq -r '.AuthURL // .Self.AuthURL // empty' <<< "${status_json}" 2>/dev/null || true)"
+fi
+
+log "Final backend_state=${backend_state}"
+if [[ -n "${auth_url}" ]]; then
+  log "Final auth_url=${auth_url}"
+fi
+
+if [[ "${backend_state}" == "NeedsLogin" ]] || \
+  [[ "${backend_state}" == "NeedsMachineAuth" ]] || \
+  [[ "${backend_state}" == "Stopped" ]] || \
+  [[ "${backend_state}" == "NoState" ]] || \
+  [[ -n "${auth_url}" ]];
+then
+  exit 0
+fi
+exit 1
