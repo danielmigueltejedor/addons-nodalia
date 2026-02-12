@@ -4,6 +4,42 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta76 - 2026-02-12
+### Changed
+- Rediseño de onboarding para mejorar jerarquía visual y disposición de acciones:
+  - `Logauth` se mueve al header superior derecho como acción destacada con icono de power.
+  - El bloque `Control rapido` se simplifica para dejar solo acciones no duplicadas (`Reintentar conexion`).
+- Se elimina el botón redundante `Actualizar estado ahora` del bloque de control (ya existía actualización contextual en flujo login/acceso).
+- Marcador visual actualizado a `UI build: 3.0.0-beta76`.
+
+## 3.0.0-beta75 - 2026-02-12
+### Changed
+- `Logauth (reset tailnet)` vuelve a requerir doble confirmacion en onboarding:
+  - primer clic arma confirmacion durante 8s,
+  - segundo clic ejecuta el reset de identidad local.
+- Marcador visual actualizado a `UI build: 3.0.0-beta75`.
+
+## 3.0.0-beta74 - 2026-02-12
+### Changed
+- `logout` pasa a modo `logauth` (reset duro de identidad local):
+  - `tailscale down`,
+  - `tailscale logout`,
+  - limpieza de `/data/tailscaled.state` y `/data/state`,
+  - reinicio de `tailscaled` para forzar nuevo flujo de autenticacion.
+- La UI de onboarding refleja el nuevo comportamiento con el boton `Logauth (reset tailnet)`.
+
+### Fixed
+- Tras el reset, `control-api` espera brevemente a que el backend transicione a `NeedsLogin/NeedsMachineAuth/Stopped/NoState`, mejorando la deteccion inmediata en el panel.
+- Marcador visual actualizado a `UI build: 3.0.0-beta74` para validar version/caché cargada.
+
+## 3.0.0-beta73 - 2026-02-12
+### Fixed
+- `Cerrar sesion` deja de depender del estado `Running` en frontend: el botón permanece operativo (salvo mientras hay una acción en curso), evitando que quede aparentemente inactivo por desfases de `runtime.json`.
+- El flujo `logout` intenta ejecutarse siempre y reporta resultado real del backend.
+
+### Changed
+- Se añade marcador visual de build en onboarding (`UI build: 3.0.0-beta73`) para facilitar validación de caché/versión cargada.
+
 ## 3.0.0-beta72 - 2026-02-12
 ### Fixed
 - `Cerrar sesion` vuelve a ejecutarse en un solo clic (sin doble confirmacion temporal en UI).

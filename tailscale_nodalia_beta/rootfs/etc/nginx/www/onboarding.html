@@ -130,6 +130,13 @@
       gap: 12px;
       flex-wrap: wrap;
     }
+    .hero-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
     .brand {
       display: inline-flex;
       align-items: center;
@@ -172,6 +179,19 @@
       justify-content: center;
       text-align: center;
       white-space: nowrap;
+    }
+    .power-btn {
+      min-width: 156px;
+      justify-content: center;
+      white-space: nowrap;
+      border-color: #a14a4a;
+      background: linear-gradient(180deg, #5d1f2a, #4a1420);
+      color: #ffe9e9;
+      box-shadow: 0 8px 18px rgba(77, 18, 29, 0.45);
+    }
+    .power-btn:hover {
+      box-shadow: 0 10px 20px rgba(95, 27, 41, 0.55);
+      filter: saturate(1.07);
     }
     h1 {
       margin: 0 0 10px;
@@ -385,6 +405,8 @@
       .actions { display: grid; grid-template-columns: 1fr; }
       .hero-head { align-items: center; }
       .theme-toggle { width: auto; min-width: 0; }
+      .hero-actions { width: 100%; }
+      .power-btn { min-width: 0; }
     }
   </style>
 </head>
@@ -396,7 +418,10 @@
           <img id="brand-logo" src="nodalia-logo.png" alt="Nodalia logo">
           <span class="brand-name">Nodalia</span>
         </div>
-        <button id="theme-toggle-btn" type="button" class="ghost theme-toggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">☀ Modo claro</button>
+        <div class="hero-actions">
+          <button id="op-logout-btn" type="button" class="power-btn" aria-label="Logauth y reset de identidad local">&#x23FB; Logauth</button>
+          <button id="theme-toggle-btn" type="button" class="ghost theme-toggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">☀ Modo claro</button>
+        </div>
       </div>
       <span class="badge">Nodalia Control Center</span>
       <h1>Asistente de inicio de sesion</h1>
@@ -465,11 +490,9 @@
     </section>
     <section class="panel">
       <h2>Control rapido</h2>
-      <p class="small">Acciones operativas sin salir del panel principal.</p>
+      <p class="small">Acciones locales no destructivas.</p>
       <div class="actions">
         <button id="op-reconnect-btn" type="button">Reintentar conexion</button>
-        <button id="op-logout-btn" type="button" class="ghost">Cerrar sesion</button>
-        <button id="op-refresh-btn" type="button" class="ghost">Actualizar estado ahora</button>
       </div>
       <p id="op-message" class="small"></p>
       <div id="op-output" class="mono" hidden></div>
@@ -539,7 +562,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta76</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -604,7 +627,6 @@
     const sessionDownloadBtn = document.getElementById("session-download-btn");
     const opReconnectBtn = document.getElementById("op-reconnect-btn");
     const opLogoutBtn = document.getElementById("op-logout-btn");
-    const opRefreshBtn = document.getElementById("op-refresh-btn");
     const opMessage = document.getElementById("op-message");
     const opOutput = document.getElementById("op-output");
     const runHealthBtn = document.getElementById("run-health-btn");
@@ -631,6 +653,8 @@
     let supportRules = { enable: false, disable: false, copy: false, audit: false };
     let opBusy = false;
     let opCanLogout = false;
+    let logoutConfirmUntilMs = 0;
+    let logoutConfirmHandle = null;
     let liveWebUiReadyStreak = 0;
     let liveWebUiSeenAtMs = 0;
     let lastWebUiProbeAtMs = 0;
@@ -649,6 +673,8 @@
         "tag:ha": ["autogroup:admin"]
       }
     }, null, 2);
+    const LOGAUTH_IDLE_LABEL = "&#x23FB; Logauth";
+    const LOGAUTH_CONFIRM_LABEL = "Confirmar &#x23FB;";
 
     async function copyText(text, targetButton, okLabel, defaultLabel) {
       try {
@@ -861,9 +887,11 @@
     }
 
     function renderOpButtons() {
+      if (opBusy) {
+        clearLogoutConfirm();
+      }
       setUiDisabled(opReconnectBtn, opBusy);
-      setUiDisabled(opRefreshBtn, opBusy);
-      setUiDisabled(opLogoutBtn, opBusy || !opCanLogout);
+      setUiDisabled(opLogoutBtn, opBusy);
     }
 
     function setSupportButtonState(busy) {
@@ -1197,6 +1225,27 @@
     function setOpButtonsBusy(busy) {
       opBusy = busy;
       renderOpButtons();
+    }
+
+    function clearLogoutConfirm() {
+      logoutConfirmUntilMs = 0;
+      if (logoutConfirmHandle) {
+        clearTimeout(logoutConfirmHandle);
+        logoutConfirmHandle = null;
+      }
+      opLogoutBtn.innerHTML = LOGAUTH_IDLE_LABEL;
+    }
+
+    function armLogoutConfirm(windowMs = 8000) {
+      clearLogoutConfirm();
+      logoutConfirmUntilMs = Date.now() + windowMs;
+      opLogoutBtn.innerHTML = LOGAUTH_CONFIRM_LABEL;
+      logoutConfirmHandle = setTimeout(() => {
+        clearLogoutConfirm();
+        if (!opBusy) {
+          opMessage.textContent = "Confirmacion expirada. Pulsa de nuevo para confirmar Logauth.";
+        }
+      }, windowMs + 100);
     }
 
     function cancelAutoRedirect() {
@@ -1594,13 +1643,21 @@
       }
     });
     opLogoutBtn.addEventListener("click", async () => {
-      if (isUiDisabled(opLogoutBtn)) {
-        opMessage.textContent = "Logout no disponible: el backend no esta en Running.";
+      if (opBusy) {
         return;
+      }
+      if (Date.now() > logoutConfirmUntilMs) {
+        armLogoutConfirm(8000);
+        opMessage.textContent = "Pulsa otra vez en menos de 8s para confirmar Logauth (reset tailnet).";
+        return;
+      }
+      clearLogoutConfirm();
+      if (!opCanLogout) {
+        opMessage.textContent = "Backend no esta en Running, pero se intentara reset de identidad igualmente.";
       }
       beginUiAction();
       setOpButtonsBusy(true);
-      opMessage.textContent = "Cerrando sesion...";
+      opMessage.textContent = "Reseteando identidad local de Tailscale...";
       opOutput.hidden = true;
       let logoutRequestOk = false;
       try {
@@ -1623,10 +1680,10 @@
         if (logoutRequestOk) {
           const transition = await waitForBackendTransition(["NeedsLogin", "NeedsMachineAuth", "NoState", "Stopped"], 9000, 700);
           if (transition.matched) {
-            finalMessage = "Sesion cerrada confirmada. Vuelve a autenticar desde esta pagina.";
+            finalMessage = "Reset de identidad confirmado. Ya puedes autenticar en otra tailnet desde esta pagina.";
           } else {
             const state = String(transition.status?.backend_state || "Unknown");
-            finalMessage = "Logout solicitado, pero el backend sigue en " + state + ". Pulsa Actualizar o revisa logs.";
+            finalMessage = "Reset solicitado, pero el backend sigue en " + state + ". Pulsa Actualizar o revisa logs.";
           }
         }
         await refreshRuntime(1800);
@@ -1634,19 +1691,7 @@
         if (finalMessage) {
           opMessage.textContent = finalMessage;
         }
-        setOpButtonsBusy(false);
-      }
-    });
-    opRefreshBtn.addEventListener("click", async () => {
-      beginUiAction();
-      setOpButtonsBusy(true);
-      try {
-        opMessage.textContent = "Actualizando estado...";
-        await refreshRuntime(1800);
-        await loadState();
-        opMessage.textContent = "Estado actualizado.";
-      } finally {
-        endUiAction();
+        clearLogoutConfirm();
         setOpButtonsBusy(false);
       }
     });
