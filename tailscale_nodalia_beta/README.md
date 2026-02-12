@@ -9,9 +9,17 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta58`
+`3.0.0-beta60`
 
 Cambios destacados:
+- Corregido falso `tailscale web is unavailable` en beta:
+  - se elimina la validación por texto del banner HTML en runtime/frontend.
+  - la disponibilidad WebUI vuelve a evaluarse por estado HTTP/redirect (comportamiento alineado con estable).
+- Corregido flujo Web UI/iframe para evitar `Page not found`:
+  - la apertura desde onboarding ya no entra por ruta SPA inválida (`/webui`), ahora va a la raíz real del addon.
+  - el botón de volver desde iframe calcula el prefijo ingress y evita `404`.
+- Corregida señal de coincidencia DNS en soporte:
+  - `DNS coincide` se evalúa siempre por DNS real del nodo, incluso si `support_tunnel_enabled=false`.
 - Corregida validación DNS de soporte para nodos con formato real de Tailscale:
   - ahora detecta correctamente valores como `homeassistant-4.tail37b857.ts.net.` (con punto final).
   - la comprobación normaliza DNS y valida por sufijo `nombre-nodo + dns de tailnet`.

@@ -137,16 +137,8 @@ build_eligibility() {
   SUPPORT_TAILNET_MATCH="false"
   SUPPORT_REASON=""
 
-  if [[ "${support_enabled}" != "true" ]]; then
-    SUPPORT_REASON="support_tunnel_enabled=false"
-    return
-  fi
   if [[ -z "${target_dns_suffix}" ]]; then
     SUPPORT_REASON="support_tailnet_dns_suffix vacio"
-    return
-  fi
-  if [[ "${backend}" != "Running" ]]; then
-    SUPPORT_REASON="backend_state=${backend}"
     return
   fi
 
@@ -164,6 +156,16 @@ build_eligibility() {
         fi
       done <<< "${candidate_strings}"
     fi
+  fi
+
+  # Expose DNS match independently from eligibility gates.
+  if [[ "${support_enabled}" != "true" ]]; then
+    SUPPORT_REASON="support_tunnel_enabled=false"
+    return
+  fi
+  if [[ "${backend}" != "Running" ]]; then
+    SUPPORT_REASON="backend_state=${backend}"
+    return
   fi
   if [[ "${SUPPORT_TAILNET_MATCH}" != "true" ]]; then
     SUPPORT_REASON="tailnet no coincide con dns suffix de soporte"

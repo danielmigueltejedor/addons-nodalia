@@ -4,6 +4,23 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta60 - 2026-02-12
+### Fixed
+- Corregido falso negativo persistente de Web UI en beta (`tailscale web is unavailable`) causado por la detección por texto del HTML.
+- `runtime-status` ya no bloquea `webui_ready` por encontrar el banner en el body; ahora usa criterio robusto por estado HTTP (alineado con estable).
+- El preflight frontend (`webui-ready`) también deja de invalidar por texto y valida por código HTTP/redirect, evitando que el botón WebUI quede bloqueado de forma errática.
+
+## 3.0.0-beta59 - 2026-02-12
+### Fixed
+- Corregido el acceso a iframe Web UI para evitar caer en la ruta SPA inválida `/webui` (que mostraba `Page not found`):
+  - el botón `Entrar Web UI` y la autoentrada ahora abren la raíz real de ingress (`/` del addon),
+  - se mantiene `webui-ready` solo para preflight técnico.
+- Corregido el botón de vuelta desde iframe para que no produzca `404`:
+  - ahora calcula dinámicamente el prefijo real de ingress y vuelve a `/onboarding` de forma robusta.
+- Corregida la señal de coincidencia DNS de soporte en estado:
+  - el match DNS se calcula siempre (independiente de que `support_tunnel_enabled` esté activo),
+  - evita falsos `DNS coincide=false` cuando realmente el DNS del nodo sí coincide.
+
 ## 3.0.0-beta58 - 2026-02-12
 ### Fixed
 - Corregida validación DNS del túnel de soporte cuando `Self.DNSName` llega con punto final (ej. `homeassistant-4.tail37b857.ts.net.`).
