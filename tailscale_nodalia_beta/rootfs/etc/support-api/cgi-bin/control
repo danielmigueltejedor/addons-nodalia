@@ -35,6 +35,12 @@ run_action() {
           echo "[logout] localapi /localapi/v0/logout"
           timeout 15 curl -sS --max-time 12 --unix-socket /var/run/tailscale/tailscaled.sock \
             -X POST http://local-tailscaled.sock/localapi/v0/logout || true
+          echo "[logout] localapi prefs WantRunning=false"
+          timeout 10 curl -sS --max-time 8 --unix-socket /var/run/tailscale/tailscaled.sock \
+            -X PATCH \
+            -H "Content-Type: application/json" \
+            --data '{"WantRunning":false}' \
+            http://local-tailscaled.sock/localapi/v0/prefs || true
           echo "[logout] tailscale down"
           timeout 20 /opt/tailscale down
           echo "[logout] tailscale logout"
@@ -99,6 +105,12 @@ if [[ "${action}" == "logout" ]] && [[ "${backend_state}" == "Running" ]]; then
   force_output="$(
     {
       echo "[force] backend still Running, applying hard logout fallback"
+      echo "[force] localapi prefs WantRunning=false"
+      timeout 10 curl -sS --max-time 8 --unix-socket /var/run/tailscale/tailscaled.sock \
+        -X PATCH \
+        -H "Content-Type: application/json" \
+        --data '{"WantRunning":false}' \
+        http://local-tailscaled.sock/localapi/v0/prefs || true
       echo "[force] tailscale down"
       /opt/tailscale down
       daemon_pid="$(ps -eo pid,comm | awk '$2==\"tailscaled\"{print $1; exit}')"
@@ -118,6 +130,14 @@ if [[ "${action}" == "logout" ]] && [[ "${backend_state}" == "Running" ]]; then
       sleep 2
       echo "[force] post-restart logout probe"
       timeout 15 /opt/tailscale logout || true
+      echo "[force] post-restart tailscale down"
+      timeout 15 /opt/tailscale down || true
+      echo "[force] post-restart localapi prefs WantRunning=false"
+      timeout 10 curl -sS --max-time 8 --unix-socket /var/run/tailscale/tailscaled.sock \
+        -X PATCH \
+        -H "Content-Type: application/json" \
+        --data '{"WantRunning":false}' \
+        http://local-tailscaled.sock/localapi/v0/prefs || true
     } 2>&1
   )"
   force_rc=$?
@@ -252,6 +272,12 @@ if [[ "${action}" == "logout" ]] && \
   [[ "${backend_state}" != "NoState" ]];
 then
   ok="false"
+fi
+
+# For logout we treat command execution success as request accepted, even if
+# the state transition still needs a few seconds to be observed by polling.
+if [[ "${action}" == "logout" ]] && (( ACTION_RC == 0 )); then
+  ok="true"
 fi
 
 log_control_action "response action=${action} rc=${ACTION_RC} ok=${ok} backend=${backend_state} online=${online}"

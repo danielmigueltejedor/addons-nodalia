@@ -4,6 +4,26 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta69 - 2026-02-12
+### Fixed
+- Corregido cálculo de base ingress en onboarding para forzar siempre slash final.
+- `Entrar Web UI (ingress)` y autoapertura ahora resuelven de forma estable a `.../api/hassio_ingress/<token>/`, evitando aterrizar en `Page not found` por rutas sin slash.
+
+## 3.0.0-beta68 - 2026-02-12
+### Fixed
+- El botón `Entrar Web UI (ingress)` del panel onboarding vuelve a abrir la raíz del ingress (`.../`) en lugar de la ruta `.../webui`.
+- La autoapertura de Web UI usa también la raíz del ingress para mantener el mismo comportamiento esperado del panel principal.
+
+## 3.0.0-beta67 - 2026-02-12
+### Fixed
+- Onboarding: el toggle `Abrir Web UI automaticamente cuando este lista` deja de venir activo por defecto.
+- Onboarding: `Cancelar auto-entrada` ahora desactiva realmente la auto-entrada (desmarca el toggle y guarda preferencia).
+- Logout: reforzado el flujo de desconexión local:
+  - añade `PATCH /localapi/v0/prefs` con `WantRunning=false`,
+  - amplía fallback post-restart (`down` + `WantRunning=false`),
+  - el endpoint de control devuelve `logout` como solicitud aceptada cuando el comando ejecuta correctamente y deja que el frontend confirme transición real.
+- Logout UI: cuando hay error, se muestra detalle también en el panel de salida (`op-output`) para diagnóstico inmediato.
+
 ## 3.0.0-beta66 - 2026-02-12
 ### Fixed
 - Corregido acceso Web UI desde onboarding para evitar caer en rutas de ingress ambiguas:

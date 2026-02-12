@@ -344,7 +344,7 @@
         <button id="cancel-redirect-btn" type="button" class="ghost" hidden>Cancelar auto-entrada</button>
       </div>
       <label class="check" style="margin-top:10px;">
-        <input id="auto-open-check" type="checkbox" checked>
+        <input id="auto-open-check" type="checkbox">
         Abrir Web UI automaticamente cuando este lista
       </label>
       <p id="redirect-state" class="small"></p>
@@ -572,25 +572,30 @@
       }
     }
 
+    function ingressBasePath() {
+      let base = String(window.location.pathname || "/");
+      base = base.replace(/\/onboarding\/?$/, "/");
+      if (!base.endsWith("/")) {
+        base += "/";
+      }
+      return base.replace(/\/{2,}/g, "/");
+    }
+
     function ingressUrl(pathWithQuery = "") {
-      const base = window.location.pathname.replace(/\/onboarding\/?$/, "/");
+      const base = ingressBasePath();
       const clean = String(pathWithQuery || "").replace(/^\/+/, "");
-      return (base + clean).replace(/\/{2,}/g, "/");
+      return clean ? (base + clean) : base;
     }
 
     function ingressRootUrl() {
-      return ingressUrl("");
-    }
-
-    function ingressWebUiUrl() {
-      return ingressUrl("webui");
+      return ingressBasePath();
     }
 
     const brandLogoEl = document.getElementById("brand-logo");
     if (brandLogoEl) {
       brandLogoEl.src = ingressUrl("nodalia-logo.png");
     }
-    openWebuiBtn.href = ingressWebUiUrl();
+    openWebuiBtn.href = ingressRootUrl();
 
     async function fetchJsonWithTimeout(path, timeoutMs = 1200) {
       const controller = new AbortController();
@@ -677,17 +682,23 @@
       try {
         const raw = localStorage.getItem(UI_PREFS_KEY);
         if (!raw) {
+          autoOpenCheck.checked = false;
           return;
         }
         const prefs = JSON.parse(raw);
         advancedModeEnabled = prefs?.advanced_mode !== false;
+        autoOpenCheck.checked = prefs?.auto_open === true;
       } catch (_) {
+        autoOpenCheck.checked = false;
       }
     }
 
     function saveUiPrefs() {
       try {
-        localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ advanced_mode: advancedModeEnabled }));
+        localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
+          advanced_mode: advancedModeEnabled,
+          auto_open: autoOpenCheck.checked,
+        }));
       } catch (_) {
       }
     }
@@ -1049,7 +1060,7 @@
         const remaining = Math.max(0, Math.ceil((redirectDeadlineMs - Date.now()) / 1000));
         redirectState.textContent = "Redireccion automatica en " + remaining + "s...";
         if (remaining <= 0) {
-          window.location.replace(ingressWebUiUrl());
+          window.location.replace(ingressRootUrl());
           return;
         }
         redirectHandle = setTimeout(tick, 200);
@@ -1441,6 +1452,8 @@
         }
       } catch (error) {
         opMessage.textContent = "Error al cerrar sesion: " + error.message;
+        opOutput.textContent = String(error?.message || "logout_error");
+        opOutput.hidden = false;
       } finally {
         endUiAction();
         let finalMessage = "";
@@ -1550,13 +1563,19 @@
     refreshOkBtn.addEventListener("click", async () => {
       await handleManualRefresh(refreshOkBtn, "Actualizar estado");
     });
-    cancelRedirectBtn.addEventListener("click", cancelAutoRedirect);
+    cancelRedirectBtn.addEventListener("click", () => {
+      autoOpenCheck.checked = false;
+      cancelAutoRedirect();
+      redirectState.textContent = "Auto-entrada desactivada.";
+      saveUiPrefs();
+    });
     autoOpenCheck.addEventListener("change", () => {
       if (!autoOpenCheck.checked) {
         cancelAutoRedirect();
       } else if (!isUiDisabled(openWebuiBtn)) {
         startAutoRedirect();
       }
+      saveUiPrefs();
     });
     openWebuiBtn.addEventListener("click", async (event) => {
       if (isUiDisabled(openWebuiBtn)) {
@@ -1570,7 +1589,7 @@
         updateStateView("Comprobando disponibilidad de Web UI...", "running");
         const preflightOk = await probeIngressWebUiReady(2500, true);
         if (preflightOk) {
-          window.location.replace(ingressWebUiUrl());
+          window.location.replace(ingressRootUrl());
           return;
         }
         const backendState = String(lastRuntime?.backend_state || lastOnboarding?.backend_state || "Unknown");
