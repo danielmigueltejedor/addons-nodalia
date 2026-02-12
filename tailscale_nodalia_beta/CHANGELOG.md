@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta66 - 2026-02-12
+### Fixed
+- Corregido acceso Web UI desde onboarding para evitar caer en rutas de ingress ambiguas:
+  - el botón y la autoapertura ahora navegan a la ruta canónica `webui` en lugar de la raíz.
+- Normalización de rutas frontend para eliminar dobles slashes (`//`) al construir URLs de ingress.
+- Botón flotante “Volver al panel Nodalia” normaliza la ruta antes de generar `onboarding`, evitando enlaces con `//onboarding`.
+- El botón manual de Web UI ya no fuerza la apertura cuando el preflight detecta `unavailable`, evitando entrar en bucle de pantalla rota.
+
 ## 3.0.0-beta65 - 2026-02-12
 ### Fixed
 - `Cerrar sesión` ahora intenta primero un logout local directo contra `tailscaled` (`/localapi/v0/logout`) desde el propio add-on, sin depender de token de API de tailnet.

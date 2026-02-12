@@ -575,18 +575,22 @@
     function ingressUrl(pathWithQuery = "") {
       const base = window.location.pathname.replace(/\/onboarding\/?$/, "/");
       const clean = String(pathWithQuery || "").replace(/^\/+/, "");
-      return base + clean;
+      return (base + clean).replace(/\/{2,}/g, "/");
     }
 
     function ingressRootUrl() {
       return ingressUrl("");
     }
 
+    function ingressWebUiUrl() {
+      return ingressUrl("webui");
+    }
+
     const brandLogoEl = document.getElementById("brand-logo");
     if (brandLogoEl) {
       brandLogoEl.src = ingressUrl("nodalia-logo.png");
     }
-    openWebuiBtn.href = ingressRootUrl();
+    openWebuiBtn.href = ingressWebUiUrl();
 
     async function fetchJsonWithTimeout(path, timeoutMs = 1200) {
       const controller = new AbortController();
@@ -1045,7 +1049,7 @@
         const remaining = Math.max(0, Math.ceil((redirectDeadlineMs - Date.now()) / 1000));
         redirectState.textContent = "Redireccion automatica en " + remaining + "s...";
         if (remaining <= 0) {
-          window.location.replace(ingressRootUrl());
+          window.location.replace(ingressWebUiUrl());
           return;
         }
         redirectHandle = setTimeout(tick, 200);
@@ -1566,13 +1570,12 @@
         updateStateView("Comprobando disponibilidad de Web UI...", "running");
         const preflightOk = await probeIngressWebUiReady(2500, true);
         if (preflightOk) {
-          window.location.replace(ingressRootUrl());
+          window.location.replace(ingressWebUiUrl());
           return;
         }
         const backendState = String(lastRuntime?.backend_state || lastOnboarding?.backend_state || "Unknown");
         if (backendState === "Running") {
-          updateStateView("La comprobacion previa fallo, pero backend esta Running. Abriendo Web UI igualmente...", "running");
-          window.location.replace(ingressRootUrl());
+          updateStateView("Backend Running, pero Web UI sigue devolviendo unavailable por ingress. Se mantiene este panel para evitar bucle.", "login");
           return;
         }
         updateStateView("Web UI no accesible todavia por ingress. Espera unos segundos y vuelve a intentar.", "login");
