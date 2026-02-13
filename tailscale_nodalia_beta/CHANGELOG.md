@@ -4,6 +4,15 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta90 - 2026-02-12
+### Fixed
+- `Logauth` por ingress: se soporta `PATH_INFO` y el header `X-Nodalia-Action` en los CGI de `control-api`/`support-api` para que las acciones no dependan de query strings. Esto corrige casos donde `/control-api/logout` devolvía `action=status`.
+- Nginx: los endpoints tipo ruta ahora proxyean como `/cgi-bin/control/logout` y `/cgi-bin/support/enable`.
+
+### Changed
+- La UI detecta y avisa cuando una llamada a `/control-api/logout` no ejecutó realmente `logout` (p.ej. `action=status`).
+- Marcador visual actualizado a `UI build: 3.0.0-beta90`.
+
 ## 3.0.0-beta89 - 2026-02-12
 ### Fixed
 - Los endpoints de control (`control-api`) y soporte (`support-api`) ahora soportan rutas tipo `/control-api/logout` y `/support-api/enable` para evitar proxies de ingress que descartan query strings; esto hace que `Logauth` y el túnel de soporte funcionen desde la UI.

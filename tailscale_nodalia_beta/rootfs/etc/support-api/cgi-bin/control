@@ -2,14 +2,51 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-action="status"
+action_qs=""
 case "${QUERY_STRING:-}" in
-  *action=reconnect*) action="reconnect" ;;
-  *action=logout*) action="logout" ;;
-  *action=dnsdiag*) action="dnsdiag" ;;
-  *action=diag*) action="diag" ;;
-  *action=status*) action="status" ;;
+  *action=reconnect*) action_qs="reconnect" ;;
+  *action=logout*) action_qs="logout" ;;
+  *action=dnsdiag*) action_qs="dnsdiag" ;;
+  *action=diag*) action_qs="diag" ;;
+  *action=status*) action_qs="status" ;;
 esac
+
+action_path=""
+if [[ -n "${PATH_INFO:-}" ]]; then
+  candidate="${PATH_INFO#/}"
+  candidate="${candidate%%/*}"
+  case "${candidate}" in
+    reconnect|logout|dnsdiag|diag|status) action_path="${candidate}" ;;
+  esac
+fi
+
+if [[ -z "${action_path}" ]] && [[ -n "${REQUEST_URI:-}" ]]; then
+  uri_path="${REQUEST_URI%%\?*}"
+  case "${uri_path}" in
+    */control/*)
+      candidate="${uri_path##*/control/}"
+      candidate="${candidate%%/*}"
+      case "${candidate}" in
+        reconnect|logout|dnsdiag|diag|status) action_path="${candidate}" ;;
+      esac
+      ;;
+  esac
+fi
+
+action_hdr=""
+if [[ -n "${HTTP_X_NODALIA_ACTION:-}" ]]; then
+  case "${HTTP_X_NODALIA_ACTION}" in
+    reconnect|logout|dnsdiag|diag|status) action_hdr="${HTTP_X_NODALIA_ACTION}" ;;
+  esac
+fi
+
+action="${action_qs:-status}"
+if [[ -n "${action_hdr}" ]]; then
+  action="${action_hdr}"
+fi
+if [[ -n "${action_path}" ]]; then
+  action="${action_path}"
+fi
 
 if [[ "${REQUEST_METHOD:-GET}" != "POST" ]] && [[ "${REQUEST_METHOD:-GET}" != "GET" ]]; then
   echo "Status: 405 Method Not Allowed"
@@ -243,6 +280,11 @@ echo
 
 jq -nc \
   --arg action "${action}" \
+  --arg request_method "${REQUEST_METHOD:-}" \
+  --arg request_uri "${REQUEST_URI:-}" \
+  --arg query_string "${QUERY_STRING:-}" \
+  --arg path_info "${PATH_INFO:-}" \
+  --arg x_action "${HTTP_X_NODALIA_ACTION:-}" \
   --arg backend_state "${backend_state}" \
   --arg auth_url "${auth_url}" \
   --arg online "${online}" \
@@ -264,6 +306,13 @@ jq -nc \
   '{
     ok: $ok,
     action: $action,
+    _debug: {
+      request_method: $request_method,
+      request_uri: $request_uri,
+      query_string: $query_string,
+      path_info: $path_info,
+      x_nodalia_action: $x_action
+    },
     rc: $rc,
     backend_state: $backend_state,
     auth_url: $auth_url,
