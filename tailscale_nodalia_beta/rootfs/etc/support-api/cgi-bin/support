@@ -2,6 +2,26 @@
 # shellcheck shell=bash
 set -euo pipefail
 
+script_name="$(basename "${0:-support}")"
+action_script=""
+case "${script_name}" in
+  support-enable) action_script="enable" ;;
+  support-disable) action_script="disable" ;;
+  support-audit) action_script="audit" ;;
+  support-status) action_script="status" ;;
+esac
+
+action_arg=""
+for arg in "$@"
+do
+  case "${arg}" in
+    --action=enable) action_arg="enable" ;;
+    --action=disable) action_arg="disable" ;;
+    --action=audit) action_arg="audit" ;;
+    --action=status) action_arg="status" ;;
+  esac
+done
+
 extract_action_from_text() {
   local text="${1:-}"
   case "${text}" in
@@ -65,6 +85,12 @@ if [[ -n "${action_hdr}" ]]; then
 fi
 if [[ -n "${action_path}" ]]; then
   action="${action_path}"
+fi
+if [[ -n "${action_script}" ]]; then
+  action="${action_script}"
+fi
+if [[ -n "${action_arg}" ]]; then
+  action="${action_arg}"
 fi
 
 if [[ "${REQUEST_METHOD:-GET}" != "POST" ]] && [[ "${REQUEST_METHOD:-GET}" != "GET" ]]; then

@@ -2,6 +2,28 @@
 # shellcheck shell=bash
 set -euo pipefail
 
+script_name="$(basename "${0:-control}")"
+action_script=""
+case "${script_name}" in
+  control-reconnect) action_script="reconnect" ;;
+  control-logout) action_script="logout" ;;
+  control-diag) action_script="diag" ;;
+  control-dnsdiag) action_script="dnsdiag" ;;
+  control-status) action_script="status" ;;
+esac
+
+action_arg=""
+for arg in "$@"
+do
+  case "${arg}" in
+    --action=reconnect) action_arg="reconnect" ;;
+    --action=logout) action_arg="logout" ;;
+    --action=diag) action_arg="diag" ;;
+    --action=dnsdiag) action_arg="dnsdiag" ;;
+    --action=status) action_arg="status" ;;
+  esac
+done
+
 extract_action_from_text() {
   local text="${1:-}"
   case "${text}" in
@@ -66,6 +88,12 @@ if [[ -n "${action_hdr}" ]]; then
 fi
 if [[ -n "${action_path}" ]]; then
   action="${action_path}"
+fi
+if [[ -n "${action_script}" ]]; then
+  action="${action_script}"
+fi
+if [[ -n "${action_arg}" ]]; then
+  action="${action_arg}"
 fi
 
 request_body_preview="$(printf '%s' "${request_body}" | tr '\r\n' '  ')"
@@ -305,10 +333,13 @@ jq -nc \
   --arg action "${action}" \
   --arg request_method "${REQUEST_METHOD:-}" \
   --arg request_uri "${REQUEST_URI:-}" \
+  --arg script_name "${script_name}" \
   --arg query_string "${QUERY_STRING:-}" \
   --arg path_info "${PATH_INFO:-}" \
   --arg content_length "${content_length_raw}" \
   --arg request_body_preview "${request_body_preview}" \
+  --arg action_arg "${action_arg}" \
+  --arg action_script "${action_script}" \
   --arg action_qs "${action_qs}" \
   --arg action_body "${action_body}" \
   --arg action_hdr "${action_hdr}" \
@@ -338,10 +369,13 @@ jq -nc \
     _debug: {
       request_method: $request_method,
       request_uri: $request_uri,
+      script_name: $script_name,
       query_string: $query_string,
       path_info: $path_info,
       content_length: $content_length,
       request_body_preview: $request_body_preview,
+      action_arg: $action_arg,
+      action_script: $action_script,
       action_qs: $action_qs,
       action_body: $action_body,
       action_hdr: $action_hdr,

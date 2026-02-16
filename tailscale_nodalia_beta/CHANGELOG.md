@@ -4,6 +4,15 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta93 - 2026-02-16
+### Fixed
+- Entornos ingress donde el CGI no recibe variables HTTP (`REQUEST_METHOD`, `QUERY_STRING`, headers, etc.): las rutas de acción ahora llaman binarios dedicados por nombre (`/cgi-bin/control-logout`, `/cgi-bin/support-enable`, ...), evitando depender de ese entorno.
+- `control-api`/`support-api`: selección de acción reforzada con detección por nombre de script (`$0`) y `--action=...` como fallback adicional.
+- `Logauth`: `/control-api/logout` deja de caer en `action=status` en este escenario de entorno vacío.
+
+### Changed
+- Marcador visual actualizado a `UI build: 3.0.0-beta93`.
+
 ## 3.0.0-beta92 - 2026-02-16
 ### Fixed
 - `Logauth` dispatch endurecido: `control-api` y `support-api` ahora aceptan `action` también desde el body `POST` (form/json), además de query/path/header.
