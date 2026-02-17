@@ -554,9 +554,58 @@ audit_cmd() {
   fi
 }
 
+fallback_status_json() {
+  local reason cfg_dns cfg_user cfg_enabled
+  reason="${1:-support_status_failed}"
+  cfg_dns="$(bashio::config "support_tailnet_dns_suffix" 2>/dev/null || true)"
+  if [[ -z "${cfg_dns}" ]]; then
+    cfg_dns="tail37b857.ts.net"
+  fi
+  cfg_user="$(bashio::config "support_user" 2>/dev/null || true)"
+  if [[ -z "${cfg_user}" ]]; then
+    cfg_user="Nodalia"
+  fi
+  cfg_enabled=false
+  if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
+    cfg_enabled=true
+  fi
+  jq -nc \
+    --arg updated_at "$(now_utc)" \
+    --arg support_target_dns_suffix "${cfg_dns}" \
+    --arg support_user "${cfg_user}" \
+    --arg reason "${reason}" \
+    --argjson support_enabled "$(json_bool "${cfg_enabled}")" \
+    '{
+      updated_at:$updated_at,
+      support_enabled:$support_enabled,
+      support_target_id:"",
+      support_target_dns_suffix:$support_target_dns_suffix,
+      backend_state:"Unknown",
+      tailnet_match:false,
+      eligible:false,
+      active:false,
+      support_user:$support_user,
+      support_user_id:"",
+      support_user_exists:false,
+      support_user_active:false,
+      support_user_is_owner:false,
+      support_enable_service:"",
+      support_disable_service:"",
+      pid:"",
+      url:"",
+      reason:$reason,
+      expires_at:"",
+      expires_epoch:0,
+      ttl_minutes:0
+    }'
+}
+
 case "${1:-status}" in
   status)
-    status_cmd
+    if ! status_cmd; then
+      fallback_status_json "support_status_failed"
+      exit 0
+    fi
     ;;
   enable)
     enable_cmd

@@ -4,6 +4,13 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta99 - 2026-02-17
+### Fixed
+- Estado de soporte endurecido para evitar paneles con datos vacíos (`-`) cuando falla internamente `support-tunnel status`:
+  - `support-tunnel` ahora devuelve un JSON de fallback en `status` aunque ocurra un error interno.
+  - `runtime-status` valida la salida de `support-tunnel` y, si falla, publica un estado de fallback con `reason=support_status_failed` y `support_target_dns_suffix` cargado desde configuración.
+- Marcador visual actualizado a `UI build: 3.0.0-beta99`.
+
 ## 3.0.0-beta98 - 2026-02-17
 ### Changed
 - El botón de soporte ahora habilita/revoca realmente el usuario local configurado en `support_user` (por defecto `Nodalia`) usando la API interna de Home Assistant.

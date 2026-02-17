@@ -47,6 +47,10 @@ declare dns_warning
 declare dns_degraded
 declare webui_reason
 declare log_summary
+declare support_cmd_output
+declare support_cmd_rc
+declare support_fallback_dns
+declare support_fallback_user
 
 declare -i ready_streak=0
 declare -i start_epoch
@@ -116,7 +120,21 @@ do
   # Publishing a direct tailnet :5252 URL causes false expectations on many setups.
   direct_webui_url=""
 
-  support_json="$(SUPPORT_STATUS_JSON="${status_json}" support-tunnel status 2>/dev/null || echo '{}')"
+  set +e
+  support_cmd_output="$(SUPPORT_STATUS_JSON="${status_json}" support-tunnel status 2>&1)"
+  support_cmd_rc=$?
+  set -e
+  if (( support_cmd_rc == 0 )) && jq -e . > /dev/null 2>&1 <<< "${support_cmd_output}"; then
+    support_json="${support_cmd_output}"
+  else
+    support_fallback_dns="$(bashio::config "support_tailnet_dns_suffix" "tail37b857.ts.net")"
+    support_fallback_user="$(bashio::config "support_user" "Nodalia")"
+    support_json="$(jq -nc \
+      --arg support_target_dns_suffix "${support_fallback_dns}" \
+      --arg support_user "${support_fallback_user}" \
+      --arg reason "support_status_failed" \
+      '{support_enabled:false,support_target_dns_suffix:$support_target_dns_suffix,tailnet_match:false,eligible:false,active:false,reason:$reason,support_user:$support_user}')"
+  fi
   support_enabled="$(jq -r '.support_enabled // false' <<< "${support_json}" 2>/dev/null || echo "false")"
   support_tailnet_id="$(jq -r '.support_target_id // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_tailnet_dns_suffix="$(jq -r '.support_target_dns_suffix // empty' <<< "${support_json}" 2>/dev/null || true)"
