@@ -638,7 +638,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta118</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta119</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -1571,7 +1571,7 @@
         suggestions.push("Revocación parcial: se cambió password pero el usuario sigue activo. Tu versión de HA no permite desactivar is_active por API con este método.");
       }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_id_vacio")) {
-        suggestions.push("La API devolvio usuario sin ID. En beta118 se intenta fallback por login_name/password y rutas alternativas de API.");
+        suggestions.push("La API devolvio usuario sin ID. En beta119 se intenta fallback por login_name/password y rutas alternativas de API.");
       }
       if (String(lastRuntime?.support_reason || "").includes("support_status")) {
         suggestions.push("El backend de soporte devolvio fallo interno. Pulsa Recargar y revisa logs del add-on para ver el error exacto.");

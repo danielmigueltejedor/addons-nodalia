@@ -4,6 +4,17 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta119 - 2026-02-17
+### Fixed
+- Revocación soporte (sin `support_user_id`) con más compatibilidad:
+  - el lookup de usuarios por Auth ahora prueba múltiples rutas (`/auth/list`, `/auth/list?raw=true`, `/auth/users`, `/auth/users/list`).
+  - el lookup Core prueba `/core/api/config/users` y `/core/api/users`.
+  - activación/revocación intenta también mutaciones por rutas Auth (`/auth/users/<user>`, `/auth/user/<user>`, `/auth/<user>`, `/auth/update`) antes del fallback por password.
+- Diagnóstico ampliado:
+  - errores de enable/disable incluyen `op_path` (ruta/método usado).
+  - `support debug` añade endpoints de lookup usados (`core_users_endpoint`, `auth_users_endpoint`) y bloque `op` para facilitar trazas.
+- Marcador visual actualizado a `UI build: 3.0.0-beta119`.
+
 ## 3.0.0-beta118 - 2026-02-17
 ### Fixed
 - Revocación de soporte más estricta y real:
