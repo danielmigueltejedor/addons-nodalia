@@ -10,6 +10,7 @@ readonly STATE_FILE="/data/support-tunnel.json"
 readonly META_FILE="/data/support-tunnel-meta.json"
 readonly AUDIT_FILE="/data/support-tunnel-audit.log"
 readonly NOTIFY_FILE="/data/support-notify.json"
+readonly TELEGRAM_DEBUG_FILE="/data/support-telegram-debug.json"
 readonly TTL_DISABLE_RETRY_BACKOFF_SEC=30
 
 now_utc() {
@@ -190,6 +191,87 @@ normalize_telegram_chat_target() {
   printf '@%s' "${value}"
 }
 
+reset_telegram_debug_context() {
+  TELEGRAM_CONFIG_CHAT_ID_RAW=""
+  TELEGRAM_CONFIG_CHAT_ID_NORMALIZED=""
+  TELEGRAM_ATTEMPTED_CHAT_IDS=""
+  TELEGRAM_FINAL_CHAT_ID=""
+  TELEGRAM_LAST_DESCRIPTION=""
+  TELEGRAM_DISCOVERY_HINT=""
+  TELEGRAM_DISCOVERY_HTTP_STATUS=""
+  TELEGRAM_DISCOVERY_RESULT_COUNT="0"
+  TELEGRAM_DISCOVERY_CANDIDATE_IDS=""
+  TELEGRAM_DISCOVERY_MATCHED_CHAT_ID=""
+  TELEGRAM_DISCOVERY_REASON=""
+}
+
+append_telegram_attempted_chat_id() {
+  local chat_id
+  chat_id="${1:-}"
+  if [[ -z "${chat_id}" ]]; then
+    return 0
+  fi
+  case ",${TELEGRAM_ATTEMPTED_CHAT_IDS:-}," in
+    *",${chat_id},"*) ;;
+    *)
+      if [[ -n "${TELEGRAM_ATTEMPTED_CHAT_IDS:-}" ]]; then
+        TELEGRAM_ATTEMPTED_CHAT_IDS="${TELEGRAM_ATTEMPTED_CHAT_IDS},${chat_id}"
+      else
+        TELEGRAM_ATTEMPTED_CHAT_IDS="${chat_id}"
+      fi
+      ;;
+  esac
+}
+
+write_telegram_debug_state() {
+  local status reason
+  status="${1:-unknown}"
+  reason="${2:-}"
+  jq -nc \
+    --arg updated_at "$(now_utc)" \
+    --arg status "${status}" \
+    --arg reason "${reason}" \
+    --arg config_chat_id_raw "${TELEGRAM_CONFIG_CHAT_ID_RAW:-}" \
+    --arg config_chat_id_normalized "${TELEGRAM_CONFIG_CHAT_ID_NORMALIZED:-}" \
+    --arg attempted_chat_ids_csv "${TELEGRAM_ATTEMPTED_CHAT_IDS:-}" \
+    --arg final_chat_id "${TELEGRAM_FINAL_CHAT_ID:-}" \
+    --arg send_chat_id "${TELEGRAM_LAST_CHAT_ID:-}" \
+    --arg send_reason "${TELEGRAM_LAST_REASON:-}" \
+    --arg send_http_status "${TELEGRAM_LAST_HTTP_STATUS:-}" \
+    --arg send_description "${TELEGRAM_LAST_DESCRIPTION:-}" \
+    --arg send_response_body_preview "$(printf '%s' "${TELEGRAM_LAST_RESPONSE_BODY:-}" | head -c 500)" \
+    --arg discovery_hint "${TELEGRAM_DISCOVERY_HINT:-}" \
+    --arg discovery_http_status "${TELEGRAM_DISCOVERY_HTTP_STATUS:-}" \
+    --arg discovery_result_count "${TELEGRAM_DISCOVERY_RESULT_COUNT:-0}" \
+    --arg discovery_candidate_ids_csv "${TELEGRAM_DISCOVERY_CANDIDATE_IDS:-}" \
+    --arg discovery_matched_chat_id "${TELEGRAM_DISCOVERY_MATCHED_CHAT_ID:-}" \
+    --arg discovery_reason "${TELEGRAM_DISCOVERY_REASON:-}" \
+    '{
+      updated_at:$updated_at,
+      status:$status,
+      reason:$reason,
+      send:{
+        config_chat_id_raw:$config_chat_id_raw,
+        config_chat_id_normalized:$config_chat_id_normalized,
+        attempted_chat_ids:($attempted_chat_ids_csv|split(",")|map(select(length>0))),
+        final_chat_id:$final_chat_id,
+        last_chat_id:$send_chat_id,
+        last_reason:$send_reason,
+        last_http_status:$send_http_status,
+        last_description:$send_description,
+        last_response_body_preview:$send_response_body_preview
+      },
+      discovery:{
+        hint:$discovery_hint,
+        http_status:$discovery_http_status,
+        result_count:($discovery_result_count|tonumber? // 0),
+        candidate_chat_ids:($discovery_candidate_ids_csv|split(",")|map(select(length>0))),
+        matched_chat_id:$discovery_matched_chat_id,
+        reason:$discovery_reason
+      }
+    }' > "${TELEGRAM_DEBUG_FILE}"
+}
+
 telegram_send_message_once() {
   local bot_token chat_id message response_with_status response_body http_status rc
   bot_token="${1:-}"
@@ -220,6 +302,7 @@ telegram_send_message_once() {
   response_body="${response_with_status%$'\n'*}"
   TELEGRAM_LAST_HTTP_STATUS="${http_status}"
   TELEGRAM_LAST_RESPONSE_BODY="${response_body}"
+  TELEGRAM_LAST_DESCRIPTION="$(jq -r '.description // empty' <<< "${response_body}" 2>/dev/null || true)"
   if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
     TELEGRAM_LAST_REASON="$(telegram_http_reason "${http_status}" "${response_body}")"
     return 1
@@ -242,6 +325,12 @@ telegram_discover_chat_id_from_updates() {
   hint="${hint#@}"
   hint="${hint%%/*}"
   hint_lc="$(normalize_lc "${hint}")"
+  TELEGRAM_DISCOVERY_HINT="${hint}"
+  TELEGRAM_DISCOVERY_HTTP_STATUS=""
+  TELEGRAM_DISCOVERY_RESULT_COUNT="0"
+  TELEGRAM_DISCOVERY_CANDIDATE_IDS=""
+  TELEGRAM_DISCOVERY_MATCHED_CHAT_ID=""
+  TELEGRAM_DISCOVERY_REASON=""
 
   set +e
   response_with_status="$(curl -sS --connect-timeout 5 --max-time 15 \
@@ -251,17 +340,39 @@ telegram_discover_chat_id_from_updates() {
   set -e
 
   if (( rc != 0 )); then
+    TELEGRAM_DISCOVERY_REASON="getupdates_request_failed"
     return 1
   fi
 
   http_status="${response_with_status##*$'\n'}"
   response_body="${response_with_status%$'\n'*}"
+  TELEGRAM_DISCOVERY_HTTP_STATUS="${http_status}"
   if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
+    TELEGRAM_DISCOVERY_REASON="getupdates_http_${http_status}"
     return 1
   fi
   if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response_body}"; then
+    TELEGRAM_DISCOVERY_REASON="getupdates_api_not_ok"
     return 1
   fi
+  TELEGRAM_DISCOVERY_RESULT_COUNT="$(jq -r '.result|length // 0' <<< "${response_body}" 2>/dev/null || echo "0")"
+  TELEGRAM_DISCOVERY_CANDIDATE_IDS="$(jq -r '
+    [
+      .result[]? |
+      (
+        .message.chat?,
+        .edited_message.chat?,
+        .channel_post.chat?,
+        .edited_channel_post.chat?,
+        .my_chat_member.chat?,
+        .chat_member.chat?,
+        .chat_join_request.chat?,
+        .callback_query.message.chat?
+      ) |
+      select(type=="object") |
+      .id | tostring
+    ] | unique | .[0:20] | join(",")
+  ' <<< "${response_body}" 2>/dev/null || true)"
 
   if [[ -n "${hint_lc}" && ! "${hint_lc}" =~ ^-?[0-9]+$ ]]; then
     candidate="$(jq -r --arg hint "${hint_lc}" '
@@ -281,6 +392,8 @@ telegram_discover_chat_id_from_updates() {
       ] | last | .id // empty
     ' <<< "${response_body}" 2>/dev/null || true)"
     if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+      TELEGRAM_DISCOVERY_MATCHED_CHAT_ID="${candidate}"
+      TELEGRAM_DISCOVERY_REASON="matched_chat_username"
       printf '%s' "${candidate}"
       return 0
     fi
@@ -315,6 +428,8 @@ telegram_discover_chat_id_from_updates() {
       ] | map(select(. != null and . != "")) | last // empty
     ' <<< "${response_body}" 2>/dev/null || true)"
     if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+      TELEGRAM_DISCOVERY_MATCHED_CHAT_ID="${candidate}"
+      TELEGRAM_DISCOVERY_REASON="matched_from_username"
       printf '%s' "${candidate}"
       return 0
     fi
@@ -329,6 +444,8 @@ telegram_discover_chat_id_from_updates() {
       ] | last | .id // empty
     ' <<< "${response_body}" 2>/dev/null || true)"
     if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+      TELEGRAM_DISCOVERY_MATCHED_CHAT_ID="${candidate}"
+      TELEGRAM_DISCOVERY_REASON="matched_chat_id_exact"
       printf '%s' "${candidate}"
       return 0
     fi
@@ -352,9 +469,12 @@ telegram_discover_chat_id_from_updates() {
     ] | last // empty
   ' <<< "${response_body}" 2>/dev/null || true)"
   if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+    TELEGRAM_DISCOVERY_MATCHED_CHAT_ID="${candidate}"
+    TELEGRAM_DISCOVERY_REASON="fallback_last_chat"
     printf '%s' "${candidate}"
     return 0
   fi
+  TELEGRAM_DISCOVERY_REASON="no_chat_candidates"
   return 1
 }
 
@@ -369,9 +489,11 @@ send_support_notification_telegram() {
   local bot_token chat_id_cfg chat_id login_url host_label ttl_minutes token_name message resolved_chat_id alt_chat_id
   SUPPORT_NOTIFY_STATUS="disabled"
   SUPPORT_NOTIFY_REASON=""
+  reset_telegram_debug_context
 
   if ! telegram_notify_enabled; then
     write_notify_state "disabled" "" "${SUPPORT_VK_TOKEN_NAME:-}" "${SUPPORT_VK_LOGIN_URL:-}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "disabled" "support_notify_disabled"
     return 0
   fi
 
@@ -380,10 +502,13 @@ send_support_notification_telegram() {
   bot_token="$(trim_spaces "$(bashio::config "support_notify_telegram_bot_token" "" 2>/dev/null || true)")"
   chat_id_cfg="$(trim_spaces "$(bashio::config "support_notify_telegram_chat_id" "" 2>/dev/null || true)")"
   chat_id="$(normalize_telegram_chat_target "${chat_id_cfg}")"
+  TELEGRAM_CONFIG_CHAT_ID_RAW="${chat_id_cfg}"
+  TELEGRAM_CONFIG_CHAT_ID_NORMALIZED="${chat_id}"
   if [[ -z "${bot_token}" || -z "${chat_id}" ]]; then
     SUPPORT_NOTIFY_STATUS="error"
     SUPPORT_NOTIFY_REASON="support_notify_telegram_config_incomplete"
     write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${SUPPORT_VK_LOGIN_URL:-}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
     return 1
   fi
 
@@ -404,6 +529,7 @@ send_support_notification_telegram() {
     SUPPORT_NOTIFY_STATUS="error"
     SUPPORT_NOTIFY_REASON="support_notify_login_url_empty"
     write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${SUPPORT_VK_LOGIN_URL:-}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
     return 1
   fi
 
@@ -411,6 +537,7 @@ send_support_notification_telegram() {
     SUPPORT_NOTIFY_STATUS="error"
     SUPPORT_NOTIFY_REASON="support_notify_curl_missing"
     write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${SUPPORT_VK_LOGIN_URL:-}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
     return 1
   fi
 
@@ -428,24 +555,31 @@ Login URL: ${login_url}
 EOF
   )
 
+  append_telegram_attempted_chat_id "${chat_id}"
   if ! telegram_send_message_once "${bot_token}" "${chat_id}" "${message}"; then
     if [[ "${TELEGRAM_LAST_REASON:-}" == "support_notify_telegram_chat_not_found" ]]; then
       # Heurística frecuente: ID de supergrupo/canal sin prefijo -100.
       if [[ "${chat_id}" =~ ^[0-9]+$ ]]; then
         alt_chat_id="-100${chat_id}"
+        append_telegram_attempted_chat_id "${alt_chat_id}"
         if telegram_send_message_once "${bot_token}" "${alt_chat_id}" "${message}"; then
           SUPPORT_NOTIFY_STATUS="sent"
           SUPPORT_NOTIFY_REASON=""
+          TELEGRAM_FINAL_CHAT_ID="${alt_chat_id}"
           write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+          write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
           return 0
         fi
       fi
       resolved_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
       if [[ -n "${resolved_chat_id}" && "${resolved_chat_id}" != "${chat_id}" ]]; then
+        append_telegram_attempted_chat_id "${resolved_chat_id}"
         if telegram_send_message_once "${bot_token}" "${resolved_chat_id}" "${message}"; then
           SUPPORT_NOTIFY_STATUS="sent"
           SUPPORT_NOTIFY_REASON=""
+          TELEGRAM_FINAL_CHAT_ID="${resolved_chat_id}"
           write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+          write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
           return 0
         fi
       fi
@@ -453,12 +587,15 @@ EOF
     SUPPORT_NOTIFY_STATUS="error"
     SUPPORT_NOTIFY_REASON="${TELEGRAM_LAST_REASON:-support_notify_telegram_api_failed}"
     write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
     return 1
   fi
 
   SUPPORT_NOTIFY_STATUS="sent"
   SUPPORT_NOTIFY_REASON=""
+  TELEGRAM_FINAL_CHAT_ID="${chat_id}"
   write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+  write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
   return 0
 }
 
@@ -2127,7 +2264,7 @@ disable_cmd() {
 }
 
 notify_test_cmd() {
-  local test_token_name login_base
+  local test_token_name login_base telegram_debug_snapshot
   build_eligibility
 
   test_token_name="nodalia_support_notify_test_$(date +%s)"
@@ -2141,17 +2278,20 @@ notify_test_cmd() {
 
   if send_support_notification_telegram; then
     audit_event "notify_test" "ok" "status=${SUPPORT_NOTIFY_STATUS:-sent}"
+    telegram_debug_snapshot="$(read_json_file_or_empty "${TELEGRAM_DEBUG_FILE}")"
     jq -nc \
       --arg action "notifytest" \
       --arg status "${SUPPORT_NOTIFY_STATUS:-sent}" \
       --arg reason "${SUPPORT_NOTIFY_REASON:-}" \
       --arg token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
       --arg login_url "${SUPPORT_VK_LOGIN_URL:-}" \
-      '{ok:true,action:$action,status:$status,reason:$reason,token_name:$token_name,login_url:$login_url}'
+      --argjson telegram_debug "${telegram_debug_snapshot}" \
+      '{ok:true,action:$action,status:$status,reason:$reason,token_name:$token_name,login_url:$login_url,telegram_debug:$telegram_debug}'
     return 0
   fi
 
   audit_event "notify_test" "${SUPPORT_NOTIFY_REASON:-support_notify_failed}" "status=${SUPPORT_NOTIFY_STATUS:-error}"
+  telegram_debug_snapshot="$(read_json_file_or_empty "${TELEGRAM_DEBUG_FILE}")"
   jq -nc \
     --arg action "notifytest" \
     --arg status "${SUPPORT_NOTIFY_STATUS:-error}" \
@@ -2159,7 +2299,8 @@ notify_test_cmd() {
     --arg error "telegram_notify_failed" \
     --arg token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
     --arg login_url "${SUPPORT_VK_LOGIN_URL:-}" \
-    '{ok:false,action:$action,status:$status,reason:$reason,error:$error,token_name:$token_name,login_url:$login_url}'
+    --argjson telegram_debug "${telegram_debug_snapshot}" \
+    '{ok:false,action:$action,status:$status,reason:$reason,error:$error,token_name:$token_name,login_url:$login_url,telegram_debug:$telegram_debug}'
   return 1
 }
 
@@ -2176,12 +2317,12 @@ debug_cmd() {
   local cfg_enable_service cfg_disable_service
   local cfg_temp_mode cfg_temp_prefix cfg_temp_password_length
   local cfg_virtual_keys_mode cfg_virtual_keys_token_prefix cfg_target_url cfg_target_domain_suffix
-  local cfg_notify_telegram_enabled cfg_notify_telegram_bot_token cfg_notify_telegram_chat_id
+  local cfg_notify_telegram_enabled cfg_notify_telegram_bot_token cfg_notify_telegram_chat_id cfg_notify_telegram_chat_id_normalized
   local cfg_notify_telegram_bot_token_set cfg_notify_telegram_chat_id_set
   local status_json self_dns_name self_host_name magic_dns_suffix current_tailnet_name
   local lookup_forced lookup_rc lookup_hint
   local debug_eligible now_epoch debug_active
-  local state_snapshot meta_snapshot notify_snapshot
+  local state_snapshot meta_snapshot notify_snapshot telegram_debug_snapshot
 
   cfg_enabled=false
   if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
@@ -2211,6 +2352,7 @@ debug_cmd() {
   fi
   cfg_notify_telegram_bot_token="$(trim_spaces "$(bashio::config "support_notify_telegram_bot_token" "" 2>/dev/null || true)")"
   cfg_notify_telegram_chat_id="$(trim_spaces "$(bashio::config "support_notify_telegram_chat_id" "" 2>/dev/null || true)")"
+  cfg_notify_telegram_chat_id_normalized="$(normalize_telegram_chat_target "${cfg_notify_telegram_chat_id}")"
   cfg_notify_telegram_bot_token_set=false
   if [[ -n "${cfg_notify_telegram_bot_token}" ]]; then
     cfg_notify_telegram_bot_token_set=true
@@ -2281,6 +2423,7 @@ debug_cmd() {
   state_snapshot="$(read_json_file_or_empty "${STATE_FILE}")"
   meta_snapshot="$(read_json_file_or_empty "${META_FILE}")"
   notify_snapshot="$(read_json_file_or_empty "${NOTIFY_FILE}")"
+  telegram_debug_snapshot="$(read_json_file_or_empty "${TELEGRAM_DEBUG_FILE}")"
 
   jq -nc \
     --arg generated_at "$(now_utc)" \
@@ -2293,6 +2436,8 @@ debug_cmd() {
     --arg cfg_virtual_keys_token_prefix "${cfg_virtual_keys_token_prefix}" \
     --arg cfg_target_url "${cfg_target_url}" \
     --arg cfg_target_domain_suffix "${cfg_target_domain_suffix}" \
+    --arg cfg_notify_telegram_chat_id "${cfg_notify_telegram_chat_id}" \
+    --arg cfg_notify_telegram_chat_id_normalized "${cfg_notify_telegram_chat_id_normalized}" \
     --arg backend_state "${SUPPORT_BACKEND:-Unknown}" \
     --arg support_reason "${SUPPORT_REASON:-}" \
     --arg support_user "${SUPPORT_USER:-}" \
@@ -2337,6 +2482,7 @@ debug_cmd() {
     --argjson state_snapshot "${state_snapshot}" \
     --argjson meta_snapshot "${meta_snapshot}" \
     --argjson notify_snapshot "${notify_snapshot}" \
+    --argjson telegram_debug_snapshot "${telegram_debug_snapshot}" \
     '{
       ok:true,
       action:"debug",
@@ -2357,7 +2503,9 @@ debug_cmd() {
         support_target_domain_suffix:$cfg_target_domain_suffix,
         support_notify_telegram_enabled:$cfg_notify_telegram_enabled,
         support_notify_telegram_bot_token_set:$cfg_notify_telegram_bot_token_set,
-        support_notify_telegram_chat_id_set:$cfg_notify_telegram_chat_id_set
+        support_notify_telegram_chat_id_set:$cfg_notify_telegram_chat_id_set,
+        support_notify_telegram_chat_id:$cfg_notify_telegram_chat_id,
+        support_notify_telegram_chat_id_normalized:$cfg_notify_telegram_chat_id_normalized
       },
       tailscale:{
         backend_state:$backend_state,
@@ -2405,7 +2553,8 @@ debug_cmd() {
       },
       state_snapshot:$state_snapshot,
       meta_snapshot:$meta_snapshot,
-      notify_snapshot:$notify_snapshot
+      notify_snapshot:$notify_snapshot,
+      telegram_debug:$telegram_debug_snapshot
     }'
 }
 

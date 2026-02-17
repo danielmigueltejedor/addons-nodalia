@@ -4,6 +4,23 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta132 - 2026-02-17
+### Added
+- Debug avanzado de Telegram en soporte:
+  - nuevo snapshot persistente en `support debug` bajo `telegram_debug` con:
+    - `config_chat_id_raw` y `config_chat_id_normalized`.
+    - lista de `attempted_chat_ids`.
+    - `final_chat_id` usado cuando hay éxito.
+    - `last_http_status`, `last_reason`, `last_description` y preview de respuesta.
+    - datos de descubrimiento por `getUpdates` (`result_count`, `candidate_chat_ids`, `matched_chat_id`, `reason`).
+  - `notify-test` ahora devuelve también `telegram_debug` para diagnóstico rápido desde UI/API.
+
+### Fixed
+- Telegram:
+  - mejor trazabilidad para `support_notify_telegram_chat_not_found` y errores de resolución de chat.
+  - soporte de fallback adicional al resolver `@username` y diferentes tipos de update.
+- Marcador visual actualizado a `UI build: 3.0.0-beta132`.
+
 ## 3.0.0-beta131 - 2026-02-17
 ### Fixed
 - Telegram notificaciones de soporte más robustas:
