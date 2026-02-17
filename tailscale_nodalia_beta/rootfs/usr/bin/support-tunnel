@@ -10,6 +10,7 @@ readonly STATE_FILE="/data/support-tunnel.json"
 readonly META_FILE="/data/support-tunnel-meta.json"
 readonly AUDIT_FILE="/data/support-tunnel-audit.log"
 readonly NOTIFY_FILE="/data/support-notify.json"
+readonly TTL_DISABLE_RETRY_BACKOFF_SEC=30
 
 now_utc() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
@@ -266,9 +267,52 @@ telegram_discover_chat_id_from_updates() {
     candidate="$(jq -r --arg hint "${hint_lc}" '
       [
         .result[]? |
-        (.message.chat?, .edited_message.chat?, .channel_post.chat?, .edited_channel_post.chat?) |
+        (
+          .message.chat?,
+          .edited_message.chat?,
+          .channel_post.chat?,
+          .edited_channel_post.chat?,
+          .my_chat_member.chat?,
+          .chat_member.chat?,
+          .chat_join_request.chat?,
+          .callback_query.message.chat?
+        ) |
         select(type=="object" and ((.username // "") | ascii_downcase) == $hint)
       ] | last | .id // empty
+    ' <<< "${response_body}" 2>/dev/null || true)"
+    if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+
+    # Fallback para chats de usuario donde se haya configurado @username.
+    # En privados, chat.id suele coincidir con from.id.
+    candidate="$(jq -r --arg hint "${hint_lc}" '
+      [
+        .result[]? as $u |
+        (
+          (
+            ($u.message? // {}) as $m |
+            select((($m.from.username // "") | ascii_downcase) == $hint) |
+            ($m.chat.id // $m.from.id // empty)
+          ),
+          (
+            ($u.callback_query? // {}) as $c |
+            select((($c.from.username // "") | ascii_downcase) == $hint) |
+            ($c.message.chat.id // $c.from.id // empty)
+          ),
+          (
+            ($u.my_chat_member? // {}) as $mc |
+            select((($mc.from.username // "") | ascii_downcase) == $hint) |
+            ($mc.chat.id // $mc.from.id // empty)
+          ),
+          (
+            ($u.chat_member? // {}) as $cm |
+            select((($cm.from.username // "") | ascii_downcase) == $hint) |
+            ($cm.chat.id // $cm.from.id // empty)
+          )
+        )
+      ] | map(select(. != null and . != "")) | last // empty
     ' <<< "${response_body}" 2>/dev/null || true)"
     if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
       printf '%s' "${candidate}"
@@ -293,7 +337,16 @@ telegram_discover_chat_id_from_updates() {
   candidate="$(jq -r '
     [
       .result[]? |
-      (.message.chat?, .edited_message.chat?, .channel_post.chat?, .edited_channel_post.chat?) |
+      (
+        .message.chat?,
+        .edited_message.chat?,
+        .channel_post.chat?,
+        .edited_channel_post.chat?,
+        .my_chat_member.chat?,
+        .chat_member.chat?,
+        .chat_join_request.chat?,
+        .callback_query.message.chat?
+      ) |
       select(type=="object") |
       .id
     ] | last // empty
@@ -313,7 +366,7 @@ telegram_notify_enabled() {
 }
 
 send_support_notification_telegram() {
-  local bot_token chat_id_cfg chat_id login_url host_label ttl_minutes token_name message resolved_chat_id
+  local bot_token chat_id_cfg chat_id login_url host_label ttl_minutes token_name message resolved_chat_id alt_chat_id
   SUPPORT_NOTIFY_STATUS="disabled"
   SUPPORT_NOTIFY_REASON=""
 
@@ -332,6 +385,15 @@ send_support_notification_telegram() {
     SUPPORT_NOTIFY_REASON="support_notify_telegram_config_incomplete"
     write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${SUPPORT_VK_LOGIN_URL:-}" "${SUPPORT_SELF_HOST_NAME:-}"
     return 1
+  fi
+
+  # Si se configuró @username, intentamos resolverlo a chat_id numérico
+  # para soportar chats privados (Telegram solo acepta @channelusername).
+  if [[ "${chat_id}" == @* ]]; then
+    resolved_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
+    if [[ -n "${resolved_chat_id}" ]]; then
+      chat_id="${resolved_chat_id}"
+    fi
   fi
 
   login_url="${SUPPORT_VK_LOGIN_URL:-}"
@@ -368,6 +430,16 @@ EOF
 
   if ! telegram_send_message_once "${bot_token}" "${chat_id}" "${message}"; then
     if [[ "${TELEGRAM_LAST_REASON:-}" == "support_notify_telegram_chat_not_found" ]]; then
+      # Heurística frecuente: ID de supergrupo/canal sin prefijo -100.
+      if [[ "${chat_id}" =~ ^[0-9]+$ ]]; then
+        alt_chat_id="-100${chat_id}"
+        if telegram_send_message_once "${bot_token}" "${alt_chat_id}" "${message}"; then
+          SUPPORT_NOTIFY_STATUS="sent"
+          SUPPORT_NOTIFY_REASON=""
+          write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+          return 0
+        fi
+      fi
       resolved_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
       if [[ -n "${resolved_chat_id}" && "${resolved_chat_id}" != "${chat_id}" ]]; then
         if telegram_send_message_once "${bot_token}" "${resolved_chat_id}" "${message}"; then
@@ -1481,6 +1553,8 @@ read_meta() {
   META_SUPPORT_MODE=""
   META_SUPPORT_TOKEN_ID=""
   META_SUPPORT_TOKEN_NAME=""
+  META_DISABLE_RETRY_AFTER_EPOCH=0
+  META_DISABLE_RETRY_REASON=""
   if [[ -f "${META_FILE}" ]]; then
     raw_epoch="$(jq -r '.expires_epoch // 0' "${META_FILE}" 2>/dev/null || echo "0")"
     META_EXPIRES_EPOCH="$(sanitize_uint "${raw_epoch}")"
@@ -1491,6 +1565,8 @@ read_meta() {
     META_SUPPORT_MODE="$(jq -r '.support_mode // empty' "${META_FILE}" 2>/dev/null || true)"
     META_SUPPORT_TOKEN_ID="$(jq -r '.support_token_id // empty' "${META_FILE}" 2>/dev/null || true)"
     META_SUPPORT_TOKEN_NAME="$(jq -r '.support_token_name // empty' "${META_FILE}" 2>/dev/null || true)"
+    META_DISABLE_RETRY_AFTER_EPOCH="$(sanitize_uint "$(jq -r '.disable_retry_after_epoch // 0' "${META_FILE}" 2>/dev/null || echo "0")")"
+    META_DISABLE_RETRY_REASON="$(jq -r '.disable_retry_reason // empty' "${META_FILE}" 2>/dev/null || true)"
   fi
 }
 
@@ -1510,6 +1586,8 @@ prepare_meta() {
   META_NEW_EXPIRES_EPOCH="${expires_epoch}"
   META_NEW_EXPIRES_AT="${expires_at}"
   META_NEW_TTL_MIN="${ttl}"
+  META_NEW_DISABLE_RETRY_AFTER_EPOCH=0
+  META_NEW_DISABLE_RETRY_REASON=""
 }
 
 write_meta() {
@@ -1522,7 +1600,28 @@ write_meta() {
     --arg support_token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
     --argjson expires_epoch "${META_NEW_EXPIRES_EPOCH}" \
     --argjson ttl_minutes "${META_NEW_TTL_MIN}" \
-    '{created_at:$created_at,expires_at:$expires_at,expires_epoch:$expires_epoch,ttl_minutes:$ttl_minutes,support_user:$support_user,support_mode:$support_mode,support_token_id:$support_token_id,support_token_name:$support_token_name}' > "${META_FILE}"
+    --argjson disable_retry_after_epoch "${META_NEW_DISABLE_RETRY_AFTER_EPOCH:-0}" \
+    --arg disable_retry_reason "${META_NEW_DISABLE_RETRY_REASON:-}" \
+    '{created_at:$created_at,expires_at:$expires_at,expires_epoch:$expires_epoch,ttl_minutes:$ttl_minutes,support_user:$support_user,support_mode:$support_mode,support_token_id:$support_token_id,support_token_name:$support_token_name,disable_retry_after_epoch:$disable_retry_after_epoch,disable_retry_reason:$disable_retry_reason}' > "${META_FILE}"
+}
+
+set_meta_disable_retry_backoff() {
+  local reason retry_after_epoch tmp_file
+  reason="${1:-disable_failed}"
+  if [[ ! -f "${META_FILE}" ]]; then
+    return 0
+  fi
+  retry_after_epoch=$(( $(date +%s) + TTL_DISABLE_RETRY_BACKOFF_SEC ))
+  tmp_file="$(mktemp)"
+  if jq \
+    --argjson retry_after_epoch "${retry_after_epoch}" \
+    --arg reason "${reason}" \
+    '.disable_retry_after_epoch = $retry_after_epoch | .disable_retry_reason = $reason' \
+    "${META_FILE}" > "${tmp_file}" 2>/dev/null; then
+    mv -f "${tmp_file}" "${META_FILE}"
+  else
+    rm -f "${tmp_file}"
+  fi
 }
 
 clear_meta() {
@@ -1817,11 +1916,15 @@ status_cmd() {
   now_epoch="$(date +%s)"
   if [[ "${META_EXPIRES_EPOCH:-0}" -gt 0 ]]; then
     if (( now_epoch >= META_EXPIRES_EPOCH )); then
-      if disable_running_access "ttl_expired" >/dev/null 2>&1; then
+      if (( "${META_DISABLE_RETRY_AFTER_EPOCH:-0}" > now_epoch )); then
+        SUPPORT_REASON="ttl_expired_disable_retry_wait:${META_DISABLE_RETRY_REASON:-disable_failed}"
+        active=true
+      elif disable_running_access "ttl_expired" >/dev/null 2>&1; then
         SUPPORT_REASON="ttl_expired"
         active=false
       else
         SUPPORT_REASON="ttl_expired_disable_failed:${USER_OP_REASON:-disable_failed}"
+        set_meta_disable_retry_backoff "${USER_OP_REASON:-disable_failed}"
         active=true
       fi
     elif [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
@@ -1959,7 +2062,11 @@ enable_cmd() {
     if ! send_support_notification_telegram; then
       audit_event "notify_failed" "${SUPPORT_NOTIFY_REASON:-support_notify_failed}" "token=${SUPPORT_VK_TOKEN_NAME:-}"
     else
-      audit_event "notify_sent" "support_notify_telegram_sent" "token=${SUPPORT_VK_TOKEN_NAME:-}"
+      if [[ "${SUPPORT_NOTIFY_STATUS:-disabled}" == "sent" ]]; then
+        audit_event "notify_sent" "support_notify_telegram_sent" "token=${SUPPORT_VK_TOKEN_NAME:-}"
+      else
+        audit_event "notify_skipped" "support_notify_disabled" "token=${SUPPORT_VK_TOKEN_NAME:-}"
+      fi
     fi
   fi
 

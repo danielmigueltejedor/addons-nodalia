@@ -4,6 +4,19 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta131 - 2026-02-17
+### Fixed
+- Telegram notificaciones de soporte más robustas:
+  - si `support_notify_telegram_chat_id` usa `@username`, se intenta resolver automáticamente a `chat_id` numérico usando `getUpdates`.
+  - fallback ampliado de descubrimiento de chat (`message`, `callback_query`, `my_chat_member`, `chat_member`, etc.).
+  - heurística adicional para IDs de supergrupo/canal sin prefijo `-100`.
+- Evitado bucle de auditoría `disable_failed` al expirar TTL:
+  - cuando falla la revocación automática por TTL, se aplica backoff (`30s`) antes de reintentar, reduciendo spam en logs.
+  - nuevo estado intermedio `ttl_expired_disable_retry_wait:*` mientras espera reintento.
+- Auditoría de Telegram más precisa:
+  - si Telegram está desactivado, ahora se registra `notify_skipped` en lugar de `notify_sent`.
+- Marcador visual actualizado a `UI build: 3.0.0-beta131`.
+
 ## 3.0.0-beta130 - 2026-02-17
 ### Added
 - Modo de soporte temporal completo (`support_temp_account_mode`):
