@@ -136,17 +136,17 @@ configuration:
   support_user:
     name: Usuario local de soporte
     description: >-
-      Nombre de usuario local que se habilita para soporte (ejemplo `Nodalia`).
-      Este valor se reenvia como metadato a los servicios de habilitar/revocar soporte.
+      Nombre del usuario local de Home Assistant que se habilita/revoca para soporte (ejemplo `Nodalia`).
+      Debe ser un usuario local dedicado de soporte y no owner.
   support_enable_service:
-    name: Servicio HA para habilitar soporte
+    name: Hook HA al habilitar soporte (opcional)
     description: >-
-      Servicio de Home Assistant que se ejecuta al activar soporte.
+      Servicio opcional de Home Assistant que se ejecuta al activar soporte.
       Formato: `dominio.servicio` (ejemplo `script.nodalia_support_enable`).
   support_disable_service:
-    name: Servicio HA para revocar soporte
+    name: Hook HA al revocar soporte (opcional)
     description: >-
-      Servicio de Home Assistant que se ejecuta al revocar soporte
+      Servicio opcional de Home Assistant que se ejecuta al revocar soporte
       o cuando expira el TTL.
       Formato: `dominio.servicio` (ejemplo `script.nodalia_support_disable`).
   support_target_url:

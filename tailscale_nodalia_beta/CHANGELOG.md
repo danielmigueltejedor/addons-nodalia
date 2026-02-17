@@ -4,6 +4,15 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta98 - 2026-02-17
+### Changed
+- El botón de soporte ahora habilita/revoca realmente el usuario local configurado en `support_user` (por defecto `Nodalia`) usando la API interna de Home Assistant.
+- Se mantiene la ventana temporal de soporte con TTL, auditoría y validación por DNS de tailnet.
+- `support_enable_service` y `support_disable_service` pasan a ser hooks opcionales (no requisito para que funcione el control real del usuario).
+- Onboarding:
+  - sugerencias actualizadas para avisar cuando `support_user` no existe o es un usuario owner no permitido.
+- Marcador visual actualizado a `UI build: 3.0.0-beta98`.
+
 ## 3.0.0-beta97 - 2026-02-17
 ### Changed
 - Soporte remoto refactorizado a `acceso soporte Nodalia`:

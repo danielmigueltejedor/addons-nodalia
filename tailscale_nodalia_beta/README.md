@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta97`
+`3.0.0-beta98`
 
 Cambios destacados (resumen de betas recientes):
 - Flujo de Web UI por ingress estabilizado:
@@ -28,9 +28,9 @@ Cambios destacados (resumen de betas recientes):
   - el botón power prueba primero `POST /control-api` con `action=logout` en body y mantiene fallbacks, para no depender de una sola vía de enrutado.
   - fallback definitivo: rutas de acción apuntan a CGI dedicados por nombre (`control-logout`, etc.), sin depender de variables CGI que algunos entornos no propagan.
 - Soporte Nodalia orientado a acceso local:
-  - el botón de soporte deja de depender de túnel Cloudflare y pasa a ejecutar servicios de Home Assistant configurables.
+  - el botón de soporte deja de depender de túnel Cloudflare y controla directamente un usuario local de Home Assistant.
   - nueva ventana temporal con TTL, auditoría y elegibilidad por DNS de tailnet (`support_tailnet_dns_suffix`).
-  - nuevo metadato de usuario de soporte (`support_user`, por defecto `Nodalia`).
+  - el usuario de soporte se define en `support_user` (por defecto `Nodalia`).
 - UI beta renovada:
   - tema oscuro por defecto.
   - selector claro/oscuro en modo icon-only (`☀`/`🌙`).
@@ -362,29 +362,26 @@ Actualmente no se usa para decidir elegibilidad; se mantiene para no romper conf
 
 Usuario local de soporte (por defecto: `Nodalia`).
 
-Se envía como metadato a los servicios de Home Assistant que habilitan/revocan el acceso temporal.
+El add-on habilita/revoca este usuario directamente desde la API interna de Home Assistant.
+Recomendación: que sea un usuario local dedicado de soporte (no owner).
+Para crearlo: `Ajustes -> Personas -> Usuarios -> Añadir usuario`.
 
 ---
 
 ### `support_enable_service`
 
-Servicio de Home Assistant que se ejecuta al activar soporte.
+Hook opcional de Home Assistant que se ejecuta al activar soporte.
 
 Formato: `dominio.servicio` (ejemplo: `script.nodalia_support_enable`).
-Si está vacío, el botón de soporte quedará no elegible.
+Si está vacío, no pasa nada: el control real del usuario igualmente se ejecuta.
 
 ---
 
 ### `support_disable_service`
 
-Servicio de Home Assistant que se ejecuta al revocar soporte (manual o por expiración TTL).
+Hook opcional de Home Assistant que se ejecuta al revocar soporte (manual o por expiración TTL).
 
 Formato: `dominio.servicio` (ejemplo: `script.nodalia_support_disable`).
-
-Recomendación práctica:
-- crea dos scripts en Home Assistant (`script.nodalia_support_enable` y `script.nodalia_support_disable`),
-- en esos scripts aplica la lógica que uses para habilitar/revocar acceso del usuario local `Nodalia`,
-- configura estos dos nombres en el add-on.
 
 ---
 

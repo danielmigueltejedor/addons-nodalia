@@ -637,7 +637,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta97</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta98</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -1508,11 +1508,11 @@
       if (lastRuntime?.support_enabled && !lastRuntime?.support_tailnet_match) {
         suggestions.push("Acceso de soporte bloqueado: el DNS de esta instancia no coincide con el DNS objetivo de soporte.");
       }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_enable_service")) {
-        suggestions.push("Configura support_enable_service (dominio.servicio) para que el botón de soporte ejecute una acción real en Home Assistant.");
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_no_encontrado")) {
+        suggestions.push("Crea un usuario local con el nombre configurado en support_user (por defecto: Nodalia).");
       }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_disable_service")) {
-        suggestions.push("Revisa support_disable_service: el formato debe ser dominio.servicio o dejarse vacío.");
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_es_owner_no_permitido")) {
+        suggestions.push("El usuario de soporte no puede ser owner/admin principal. Usa un usuario local dedicado.");
       }
       if (!lastRuntime?.support_enabled) {
         suggestions.push("Acceso de soporte desactivado en configuracion: activa support_tunnel_enabled si lo necesitas.");
