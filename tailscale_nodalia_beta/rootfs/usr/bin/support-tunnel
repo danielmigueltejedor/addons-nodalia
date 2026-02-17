@@ -82,30 +82,11 @@ unwrap_supervisor_data() {
   jq -c 'if type=="object" and (.result?=="ok") and has("data") then .data else . end' <<< "${input}" 2>/dev/null || echo 'null'
 }
 
-lookup_support_user() {
-  local users_raw users_data candidate needle owner
-
-  SUPPORT_USER_EXISTS="false"
-  SUPPORT_USER_ACTIVE="false"
-  SUPPORT_USER_IS_OWNER="false"
-  SUPPORT_USER_ID=""
-  SUPPORT_USER_LOGIN_NAME=""
-  USER_LOOKUP_REASON=""
-
-  if [[ -z "${SUPPORT_USER:-}" ]]; then
-    USER_LOOKUP_REASON="support_user_vacio"
-    return 1
-  fi
-
-  if ! api_call GET "/auth/list"; then
-    USER_LOOKUP_REASON="ha_users_api_error"
-    return 1
-  fi
-
-  users_raw="${API_LAST_JSON}"
-  users_data="$(unwrap_supervisor_data "${users_raw}")"
-  needle="$(normalize_lc "${SUPPORT_USER}")"
-  candidate="$(jq -c --arg needle "${needle}" '
+extract_support_candidate() {
+  local users_data needle
+  users_data="${1:-null}"
+  needle="$(normalize_lc "${2:-}")"
+  jq -c --arg needle "${needle}" '
     if type=="object" and (.users? | type=="array") then
       .users
       | map(select(
@@ -124,8 +105,12 @@ lookup_support_user() {
     else
       empty
     end
-  ' <<< "${users_data}" 2>/dev/null || true)"
+  ' <<< "${users_data}" 2>/dev/null || true
+}
 
+populate_support_user_from_candidate() {
+  local candidate owner active_field active_value login_name
+  candidate="${1:-}"
   if [[ -z "${candidate}" ]]; then
     USER_LOOKUP_REASON="support_user_no_encontrado"
     return 1
@@ -136,18 +121,100 @@ lookup_support_user() {
     USER_LOOKUP_REASON="support_user_id_vacio"
     return 1
   fi
-  SUPPORT_USER_LOGIN_NAME="$(jq -r '.username // .name // empty' <<< "${candidate}" 2>/dev/null || true)"
-  if [[ -z "${SUPPORT_USER_LOGIN_NAME}" ]]; then
-    USER_LOOKUP_REASON="support_user_username_vacio"
-    return 1
+
+  login_name="$(jq -r '.username // ([.credentials[]? | .data.username?] | map(select(type=="string" and length>0)) | .[0]) // .name // empty' <<< "${candidate}" 2>/dev/null || true)"
+  if [[ -z "${login_name}" ]]; then
+    login_name="${SUPPORT_USER}"
   fi
+  SUPPORT_USER_LOGIN_NAME="${login_name}"
+
   owner="$(jq -r '.is_owner // false' <<< "${candidate}" 2>/dev/null || echo "false")"
+  active_field="$(jq -r 'if has("is_active") then "true" else "false" end' <<< "${candidate}" 2>/dev/null || echo "false")"
+  active_value="$(jq -r 'if (.is_active // false) then "true" else "false" end' <<< "${candidate}" 2>/dev/null || echo "false")"
 
   SUPPORT_USER_EXISTS="true"
   if [[ "${owner}" == "true" ]]; then
     SUPPORT_USER_IS_OWNER="true"
   fi
+  if [[ "${active_field}" == "true" ]]; then
+    SUPPORT_USER_ACTIVE_KNOWN="true"
+    SUPPORT_USER_ACTIVE="${active_value}"
+  fi
+  USER_LOOKUP_REASON=""
   return 0
+}
+
+lookup_support_user_core() {
+  local users_raw users_data candidate needle
+
+  if ! api_call GET "/core/api/config/users"; then
+    USER_LOOKUP_REASON="ha_users_api_error_core"
+    return 1
+  fi
+  users_raw="${API_LAST_JSON}"
+  users_data="$(unwrap_supervisor_data "${users_raw}")"
+  needle="$(normalize_lc "${SUPPORT_USER}")"
+  candidate="$(extract_support_candidate "${users_data}" "${needle}")"
+  if ! populate_support_user_from_candidate "${candidate}"; then
+    return 1
+  fi
+  USER_LOOKUP_SOURCE="core_api"
+  return 0
+}
+
+lookup_support_user_auth() {
+  local users_raw users_data candidate needle
+
+  if ! api_call GET "/auth/list"; then
+    USER_LOOKUP_REASON="ha_users_api_error_auth"
+    return 1
+  fi
+  users_raw="${API_LAST_JSON}"
+  users_data="$(unwrap_supervisor_data "${users_raw}")"
+  needle="$(normalize_lc "${SUPPORT_USER}")"
+  candidate="$(extract_support_candidate "${users_data}" "${needle}")"
+  if ! populate_support_user_from_candidate "${candidate}"; then
+    return 1
+  fi
+  USER_LOOKUP_SOURCE="auth_api"
+  return 0
+}
+
+lookup_support_user() {
+  local core_reason auth_reason
+
+  SUPPORT_USER_EXISTS="false"
+  SUPPORT_USER_ACTIVE="false"
+  SUPPORT_USER_ACTIVE_KNOWN="false"
+  SUPPORT_USER_IS_OWNER="false"
+  SUPPORT_USER_ID=""
+  SUPPORT_USER_LOGIN_NAME=""
+  USER_LOOKUP_REASON=""
+  USER_LOOKUP_SOURCE=""
+
+  if [[ -z "${SUPPORT_USER:-}" ]]; then
+    USER_LOOKUP_REASON="support_user_vacio"
+    return 1
+  fi
+
+  if lookup_support_user_core; then
+    return 0
+  fi
+  core_reason="${USER_LOOKUP_REASON:-ha_users_api_error_core}"
+
+  if lookup_support_user_auth; then
+    return 0
+  fi
+  auth_reason="${USER_LOOKUP_REASON:-ha_users_api_error_auth}"
+
+  if [[ "${core_reason}" == "support_user_no_encontrado" && "${auth_reason}" == "support_user_no_encontrado" ]]; then
+    USER_LOOKUP_REASON="support_user_no_encontrado"
+  elif [[ "${core_reason}" == ha_users_api_error_* && "${auth_reason}" == ha_users_api_error_* ]]; then
+    USER_LOOKUP_REASON="ha_users_api_error"
+  else
+    USER_LOOKUP_REASON="${auth_reason:-${core_reason}}"
+  fi
+  return 1
 }
 
 auth_user_with_password() {
@@ -178,8 +245,28 @@ reset_user_password() {
   return 0
 }
 
+set_support_user_active_via_core() {
+  local desired payload
+  desired="${1:-false}"
+  if [[ -z "${SUPPORT_USER_ID:-}" ]]; then
+    USER_OP_REASON="support_user_id_vacio"
+    return 1
+  fi
+  payload="$(jq -nc --argjson is_active "$(json_bool "${desired}")" '{is_active:$is_active}')"
+  if ! api_call PATCH "/core/api/config/users/${SUPPORT_USER_ID}" "${payload}"; then
+    if ! api_call POST "/core/api/auth/users/${SUPPORT_USER_ID}" "${payload}"; then
+      USER_OP_REASON="core_user_patch_failed"
+      return 1
+    fi
+  fi
+  SUPPORT_USER_ACTIVE_KNOWN="true"
+  SUPPORT_USER_ACTIVE="${desired}"
+  USER_OP_REASON="core_user_patch_ok"
+  return 0
+}
+
 set_support_user_active() {
-  local desired random_password
+  local desired random_password core_reason
   desired="${1:-false}"
   USER_OP_REASON=""
 
@@ -190,14 +277,19 @@ set_support_user_active() {
     fi
   fi
 
-  if [[ "${SUPPORT_USER_IS_OWNER}" == "true" ]] && [[ "${desired}" != "true" ]]; then
+  if [[ "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
     USER_OP_REASON="support_user_es_owner_no_permitido"
     return 1
   fi
 
+  if set_support_user_active_via_core "${desired}"; then
+    return 0
+  fi
+  core_reason="${USER_OP_REASON:-core_user_patch_failed}"
+
   if [[ "${desired}" == "true" ]]; then
     if [[ -z "${SUPPORT_USER_PASSWORD:-}" ]]; then
-      USER_OP_REASON="support_user_password_vacio"
+      USER_OP_REASON="${core_reason}"
       return 1
     fi
     if auth_user_with_password "${SUPPORT_USER_LOGIN_NAME}" "${SUPPORT_USER_PASSWORD}"; then
@@ -226,6 +318,7 @@ set_support_user_active() {
     USER_OP_REASON="reset_password_failed"
     return 1
   fi
+  SUPPORT_USER_ACTIVE_KNOWN="true"
   SUPPORT_USER_ACTIVE="false"
   USER_OP_REASON="password_rotated_disable"
   return 0
@@ -328,8 +421,10 @@ build_eligibility() {
 
   SUPPORT_USER_EXISTS="false"
   SUPPORT_USER_ACTIVE="false"
+  SUPPORT_USER_ACTIVE_KNOWN="false"
   SUPPORT_USER_IS_OWNER="false"
   SUPPORT_USER_ID=""
+  SUPPORT_USER_LOGIN_NAME=""
 
   if [[ -z "${target_dns_suffix}" ]]; then
     SUPPORT_REASON="support_tailnet_dns_suffix_vacio"
@@ -398,6 +493,7 @@ write_state() {
     --argjson active "$(json_bool "${active}")" \
     --argjson support_user_exists "$(json_bool "${SUPPORT_USER_EXISTS}")" \
     --argjson support_user_active "$(json_bool "${SUPPORT_USER_ACTIVE}")" \
+    --argjson support_user_active_known "$(json_bool "${SUPPORT_USER_ACTIVE_KNOWN}")" \
     --argjson support_user_is_owner "$(json_bool "${SUPPORT_USER_IS_OWNER}")" \
     '{
       updated_at:$updated_at,
@@ -412,6 +508,7 @@ write_state() {
       support_user_id:$support_user_id,
       support_user_exists:$support_user_exists,
       support_user_active:$support_user_active,
+      support_user_active_known:$support_user_active_known,
       support_user_is_owner:$support_user_is_owner,
       pid:"",
       url:"",
@@ -453,7 +550,9 @@ status_cmd() {
       SUPPORT_REASON="ttl_expired"
       active=false
     elif [[ "${SUPPORT_USER_EXISTS}" == "true" ]]; then
-      if [[ "${SUPPORT_USER_ACTIVE}" == "true" ]]; then
+      if [[ "${SUPPORT_USER_ACTIVE_KNOWN}" != "true" ]]; then
+        active=true
+      elif [[ "${SUPPORT_USER_ACTIVE}" == "true" ]]; then
         active=true
       else
         clear_meta
@@ -571,6 +670,7 @@ fallback_status_json() {
       support_user_id:"",
       support_user_exists:false,
       support_user_active:false,
+      support_user_active_known:false,
       support_user_is_owner:false,
       pid:"",
       url:"",

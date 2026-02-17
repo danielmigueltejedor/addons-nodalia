@@ -4,6 +4,18 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta103 - 2026-02-17
+### Fixed
+- Soporte Nodalia: corrección del `ha_users_api_error` en elegibilidad de soporte.
+  - `config.yaml` habilita `auth_api: true` para permitir endpoints de autenticación del Supervisor.
+  - `support-tunnel` ahora busca usuario en dos rutas: primero `/core/api/config/users`, con fallback a `/auth/list`.
+  - activación/revocación del usuario prioriza `PATCH /core/api/config/users/<id>` (`is_active`) para no depender de password en el flujo principal.
+  - se mantiene fallback por `auth/reset` solo como ruta secundaria.
+- Estado de soporte más estable cuando no se puede leer `is_active`:
+  - nuevo campo `support_user_active_known`,
+  - si el estado activo no es verificable en ese ciclo, no se invalida la sesión TTL de forma prematura.
+- Marcador visual actualizado a `UI build: 3.0.0-beta103`.
+
 ## 3.0.0-beta102 - 2026-02-17
 ### Fixed
 - `support_status_failed_rc_0` (falso positivo) en runtime:

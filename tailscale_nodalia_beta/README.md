@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta102`
+`3.0.0-beta103`
 
 Cambios destacados (resumen de betas recientes):
 - Flujo de Web UI por ingress estabilizado:
@@ -29,6 +29,8 @@ Cambios destacados (resumen de betas recientes):
   - fallback definitivo: rutas de acción apuntan a CGI dedicados por nombre (`control-logout`, etc.), sin depender de variables CGI que algunos entornos no propagan.
 - Soporte Nodalia orientado a acceso local:
   - el botón de soporte deja de depender de túnel Cloudflare y controla directamente un usuario local de Home Assistant.
+  - lookup de usuario endurecido (primero `core/api/config/users`, fallback `auth/list`) para evitar falsos `ha_users_api_error`.
+  - activación/revocación prioriza `is_active` por API de Home Assistant y solo cae a reset de password como último recurso.
   - nueva ventana temporal con TTL, auditoría y elegibilidad por DNS de tailnet (`support_tailnet_dns_suffix`).
   - el usuario de soporte se define en `support_user` (por defecto `Nodalia`).
 - UI beta renovada:
