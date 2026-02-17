@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta110 - 2026-02-17
+### Fixed
+- Corrección de `support_id_vacio`/`support_user_id_vacio` en el flujo de soporte:
+  - `support-tunnel` ahora reconoce usuarios en estructuras de API más amplias (campos directos y anidados en `.user`).
+  - se amplía la resolución del identificador de usuario con fallback en `id`, `user_id`, `uuid` y `uid` (incluyendo variantes anidadas).
+  - detección de `username`, `name`, `is_owner` e `is_active` endurecida para formatos alternativos de respuesta del Supervisor/Auth API.
+- Marcador visual actualizado a `UI build: 3.0.0-beta110`.
+
 ## 3.0.0-beta105 - 2026-02-17
 ### Fixed
 - Soporte: nuevo intento para resolver `ha_users_api_error`.

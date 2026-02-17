@@ -87,20 +87,21 @@ extract_support_candidate() {
   users_data="${1:-null}"
   needle="$(normalize_lc "${2:-}")"
   jq -c --arg needle "${needle}" '
+    def norm: (tostring | ascii_downcase);
+    def matches:
+      (
+        (.username // .user.username // "" | norm) == $needle
+      ) or (
+        (.name // .user.name // "" | norm) == $needle
+      ) or (
+        (.id // .user_id // .user.id // .user.user_id // .uuid // .user.uuid // .uid // .user.uid // "" | norm) == $needle
+      );
     if type=="object" and (.users? | type=="array") then
       .users
-      | map(select(
-          ((.username // "" | ascii_downcase)==$needle) or
-          ((.name // "" | ascii_downcase)==$needle) or
-          ((.id // "" | ascii_downcase)==$needle)
-        ))
+      | map(select(matches))
       | .[0] // empty
     elif type=="array" then
-      map(select(
-          ((.username // "" | ascii_downcase)==$needle) or
-          ((.name // "" | ascii_downcase)==$needle) or
-          ((.id // "" | ascii_downcase)==$needle)
-        ))
+      map(select(matches))
       | .[0] // empty
     else
       empty
@@ -116,21 +117,21 @@ populate_support_user_from_candidate() {
     return 1
   fi
 
-  SUPPORT_USER_ID="$(jq -r '.id // empty' <<< "${candidate}" 2>/dev/null || true)"
+  SUPPORT_USER_ID="$(jq -r '.id // .user_id // .user.id // .user.user_id // .uuid // .user.uuid // .uid // .user.uid // empty' <<< "${candidate}" 2>/dev/null || true)"
   if [[ -z "${SUPPORT_USER_ID}" ]]; then
     USER_LOOKUP_REASON="support_user_id_vacio"
     return 1
   fi
 
-  login_name="$(jq -r '.username // ([.credentials[]? | .data.username?] | map(select(type=="string" and length>0)) | .[0]) // .name // empty' <<< "${candidate}" 2>/dev/null || true)"
+  login_name="$(jq -r '.username // .user.username // ([.credentials[]? | .data.username?] | map(select(type=="string" and length>0)) | .[0]) // .name // .user.name // empty' <<< "${candidate}" 2>/dev/null || true)"
   if [[ -z "${login_name}" ]]; then
     login_name="${SUPPORT_USER}"
   fi
   SUPPORT_USER_LOGIN_NAME="${login_name}"
 
-  owner="$(jq -r '.is_owner // false' <<< "${candidate}" 2>/dev/null || echo "false")"
-  active_field="$(jq -r 'if has("is_active") then "true" else "false" end' <<< "${candidate}" 2>/dev/null || echo "false")"
-  active_value="$(jq -r 'if (.is_active // false) then "true" else "false" end' <<< "${candidate}" 2>/dev/null || echo "false")"
+  owner="$(jq -r '.is_owner // .user.is_owner // false' <<< "${candidate}" 2>/dev/null || echo "false")"
+  active_field="$(jq -r 'if has("is_active") or ((.user? | type=="object") and (.user | has("is_active"))) then "true" else "false" end' <<< "${candidate}" 2>/dev/null || echo "false")"
+  active_value="$(jq -r 'if (.is_active // .user.is_active // false) then "true" else "false" end' <<< "${candidate}" 2>/dev/null || echo "false")"
 
   SUPPORT_USER_EXISTS="true"
   if [[ "${owner}" == "true" ]]; then
