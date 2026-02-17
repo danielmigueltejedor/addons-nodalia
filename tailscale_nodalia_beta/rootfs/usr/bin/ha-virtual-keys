@@ -4,6 +4,8 @@ import asyncio
 import json
 import os
 import sys
+import warnings
+import inspect
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
@@ -19,6 +21,8 @@ except Exception as exc:  # pragma: no cover
         )
     )
     sys.exit(2)
+
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"websockets(\.|$)")
 
 
 WS_URL_CANDIDATES = [
@@ -47,21 +51,57 @@ class HaWsClient:
     def __init__(self, token: str, timeout: float = 8.0) -> None:
         self.token = token
         self.timeout = timeout
-        self.ws: Optional[websockets.WebSocketClientProtocol] = None
+        self.ws: Optional[Any] = None
         self.url: str = ""
         self.req_id: int = 1
+
+    async def _connect_ws(self, url: str):
+        common_kwargs = {
+            "open_timeout": self.timeout,
+            "close_timeout": self.timeout,
+            "ping_interval": 20,
+        }
+        auth_header = {"Authorization": f"Bearer {self.token}"}
+
+        # websockets <= 11 usa extra_headers, websockets >= 13 usa additional_headers.
+        # Detectamos la firma para soportar ambas sin pin de versión.
+        try:
+            sig = inspect.signature(websockets.connect)
+            params = sig.parameters
+            if "additional_headers" in params:
+                return await websockets.connect(
+                    url,
+                    additional_headers=auth_header,
+                    **common_kwargs,
+                )
+            if "extra_headers" in params:
+                return await websockets.connect(
+                    url,
+                    extra_headers=auth_header,
+                    **common_kwargs,
+                )
+        except Exception:
+            pass
+
+        # Fallback defensivo para builds donde la introspección no sea fiable.
+        try:
+            return await websockets.connect(
+                url,
+                additional_headers=auth_header,
+                **common_kwargs,
+            )
+        except TypeError:
+            return await websockets.connect(
+                url,
+                extra_headers=auth_header,
+                **common_kwargs,
+            )
 
     async def connect(self) -> None:
         last_err = ""
         for url in WS_URL_CANDIDATES:
             try:
-                ws = await websockets.connect(
-                    url,
-                    open_timeout=self.timeout,
-                    close_timeout=self.timeout,
-                    ping_interval=20,
-                    extra_headers={"Authorization": f"Bearer {self.token}"},
-                )
+                ws = await self._connect_ws(url)
                 await self._auth(ws)
                 self.ws = ws
                 self.url = url
@@ -71,7 +111,7 @@ class HaWsClient:
                 continue
         raise VkError("virtual_keys_ws_connect_failed", last_err)
 
-    async def _auth(self, ws: websockets.WebSocketClientProtocol) -> None:
+    async def _auth(self, ws: Any) -> None:
         try:
             first_raw = await asyncio.wait_for(ws.recv(), timeout=self.timeout)
             first = json.loads(first_raw)
