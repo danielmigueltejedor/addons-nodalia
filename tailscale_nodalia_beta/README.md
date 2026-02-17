@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta114`
+`3.0.0-beta115`
 
 Cambios destacados (resumen de betas recientes):
 - Flujo de Web UI por ingress estabilizado:
@@ -33,6 +33,7 @@ Cambios destacados (resumen de betas recientes):
   - activación/revocación prioriza `is_active` por API de Home Assistant y solo cae a reset de password como último recurso.
   - nueva ventana temporal con TTL, auditoría y elegibilidad por DNS de tailnet (`support_tailnet_dns_suffix`).
   - el usuario de soporte se define en `support_user` (por defecto `nodalia`).
+  - nuevo endpoint y botón `Debug soporte` para capturar causa técnica real (`reason`, `lookup_source`, `lookup_reason`, usuario/ID/login y último error API) y facilitar soporte.
 - UI beta renovada:
   - tema oscuro por defecto.
   - selector claro/oscuro en modo icon-only (`☀`/`🌙`).

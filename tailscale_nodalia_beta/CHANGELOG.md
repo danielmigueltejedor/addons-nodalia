@@ -4,6 +4,18 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta115 - 2026-02-17
+### Fixed
+- Soporte: diagnóstico real cuando falla `Habilitar acceso soporte`.
+  - nuevo endpoint `support-api/debug` (backend + nginx + CGI) para inspeccionar estado de elegibilidad, lookup de usuario y último error de API.
+  - nueva acción `support-tunnel debug` con snapshot de `config`, `tailscale`, `support`, `lookup`, `api_last`, `state_snapshot` y `meta_snapshot`.
+  - el frontend añade botón `Debug soporte` y muestra JSON detallado en pantalla para compartir incidencias.
+- Errores de soporte más útiles en UI:
+  - el parser prioriza `reason` sobre `error`.
+  - cuando una llamada API falla, la UI conserva `payload` + `HTTP status` y lo muestra en el bloque técnico.
+  - `enable/disable` ahora devuelven más contexto (`lookup_reason`, `support_user`, `support_user_id`, `support_user_login_name`).
+- Marcador visual actualizado a `UI build: 3.0.0-beta115`.
+
 ## 3.0.0-beta114 - 2026-02-17
 ### Fixed
 - Soporte: corrección del error `no se pudo habilitar support_user` cuando falla activación por API de usuario.

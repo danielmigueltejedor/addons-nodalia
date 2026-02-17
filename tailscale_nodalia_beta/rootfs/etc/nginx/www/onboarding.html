@@ -608,6 +608,7 @@
         <button id="sup-enable-btn" type="button" class="ghost">Habilitar acceso soporte</button>
         <button id="sup-disable-btn" type="button" class="ghost">Revocar ahora</button>
         <button id="sup-audit-btn" type="button" class="ghost">Ver auditoria</button>
+        <button id="sup-debug-btn" type="button" class="ghost">Debug soporte</button>
       </div>
       <p id="sup-message" class="small"></p>
       <div id="sup-audit-output" class="mono" hidden></div>
@@ -637,7 +638,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta114</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta115</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -676,6 +677,7 @@
     const supportEnableBtn = document.getElementById("sup-enable-btn");
     const supportDisableBtn = document.getElementById("sup-disable-btn");
     const supportAuditBtn = document.getElementById("sup-audit-btn");
+    const supportDebugBtn = document.getElementById("sup-debug-btn");
     const supportAuditOutput = document.getElementById("sup-audit-output");
     const rtBackend = document.getElementById("rt-backend");
     const rtWebUi = document.getElementById("rt-webui");
@@ -723,7 +725,7 @@
     let redirectDeadlineMs = 0;
     let actionInFlight = 0;
     let supportBusy = false;
-    let supportRules = { enable: false, disable: false, audit: false };
+    let supportRules = { enable: false, disable: false, audit: false, debug: true };
     let opBusy = false;
     let opCanLogout = false;
     let logoutConfirmUntilMs = 0;
@@ -960,6 +962,7 @@
       setUiDisabled(supportEnableBtn, supportBusy || !supportRules.enable);
       setUiDisabled(supportDisableBtn, supportBusy || !supportRules.disable);
       setUiDisabled(supportAuditBtn, supportBusy || !supportRules.audit);
+      setUiDisabled(supportDebugBtn, supportBusy || !supportRules.debug);
     }
 
     function renderOpButtons() {
@@ -996,6 +999,7 @@
         enable: enabled && eligible,
         disable: active,
         audit: enabled,
+        debug: true,
       };
       renderSupportButtons();
     }
@@ -1148,12 +1152,43 @@
 
     function extractApiError(data, fallback = "api_failed") {
       return String(
-        data?.error ||
         data?.reason ||
+        data?.error ||
         data?.output ||
         data?.message ||
         fallback
       );
+    }
+
+    function buildApiError(data, fallback, requestError, response) {
+      const error = new Error(
+        extractApiError(data, requestError?.message || fallback)
+      );
+      error.data = data && typeof data === "object" ? data : null;
+      error.status = Number(response?.status || 0);
+      return error;
+    }
+
+    function formatSupportDebug(action, error) {
+      const payload = error?.data && typeof error.data === "object" ? error.data : {};
+      const runtime = lastRuntime || {};
+      return JSON.stringify({
+        generated_at: new Date().toISOString(),
+        action,
+        message: String(error?.message || "unknown_error"),
+        status: Number(error?.status || 0),
+        reason: String(payload?.reason || ""),
+        lookup_source: String(payload?.lookup_source || ""),
+        lookup_reason: String(payload?.lookup_reason || ""),
+        support_user: String(payload?.support_user || runtime?.support_user || ""),
+        support_user_id: String(payload?.support_user_id || ""),
+        support_user_login_name: String(payload?.support_user_login_name || ""),
+        runtime_backend_state: String(runtime?.backend_state || ""),
+        runtime_support_reason: String(runtime?.support_reason || ""),
+        runtime_support_eligible: Boolean(runtime?.support_eligible),
+        runtime_support_active: Boolean(runtime?.support_active),
+        payload,
+      }, null, 2);
     }
 
     async function callSupportApi(action, method = "GET", allowGetFallback = false) {
@@ -1185,16 +1220,12 @@
         if (second.response?.ok && second.data?.ok !== false) {
           return second.data;
         }
-        throw new Error(
-          extractApiError(second.data, second.error?.message || "support_api_failed")
-        );
+        throw buildApiError(second.data, "support_api_failed", second.error, second.response);
       }
       if (first.response?.ok && first.data?.ok !== false) {
         return first.data;
       }
-      throw new Error(
-        extractApiError(first.data, first.error?.message || "support_api_failed")
-      );
+      throw buildApiError(first.data, "support_api_failed", first.error, first.response);
     }
 
     async function callControlApi(action, method = "POST", allowGetFallback = false) {
@@ -1226,16 +1257,12 @@
         if (second.response?.ok && second.data?.ok !== false) {
           return second.data;
         }
-        throw new Error(
-          extractApiError(second.data, second.error?.message || "control_api_failed")
-        );
+        throw buildApiError(second.data, "control_api_failed", second.error, second.response);
       }
       if (first.response?.ok && first.data?.ok !== false) {
         return first.data;
       }
-      throw new Error(
-        extractApiError(first.data, first.error?.message || "control_api_failed")
-      );
+      throw buildApiError(first.data, "control_api_failed", first.error, first.response);
     }
 
     async function waitForBackendTransition(targetStates, timeoutMs = 7000, stepMs = 700) {
@@ -1541,7 +1568,7 @@
         suggestions.push("No se pudo cambiar is_active del usuario de soporte. Revisa permisos del add-on y existencia del usuario local.");
       }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_id_vacio")) {
-        suggestions.push("La API devolvio usuario sin ID. En beta114 se intenta fallback por login_name/password; reinicia el add-on y prueba de nuevo.");
+        suggestions.push("La API devolvio usuario sin ID. En beta115 se intenta fallback por login_name/password; reinicia el add-on y prueba de nuevo.");
       }
       if (String(lastRuntime?.support_reason || "").includes("support_status")) {
         suggestions.push("El backend de soporte devolvio fallo interno. Pulsa Recargar y revisa logs del add-on para ver el error exacto.");
@@ -1711,7 +1738,7 @@
         supportUser.textContent = "n/a";
         supportExpires.textContent = "n/a";
         supportReason.textContent = "runtime unavailable";
-        supportRules = { enable: false, disable: false, audit: false };
+        supportRules = { enable: false, disable: false, audit: false, debug: true };
         renderSupportButtons();
         opCanLogout = false;
         renderOpButtons();
@@ -1788,6 +1815,8 @@
         await refreshRuntime(1500);
       } catch (error) {
         supportMessage.textContent = "No se pudo habilitar el acceso: " + error.message;
+        supportAuditOutput.hidden = false;
+        supportAuditOutput.textContent = formatSupportDebug("enable", error);
       } finally {
         setSupportButtonState(false);
         endUiAction();
@@ -1806,6 +1835,8 @@
         await refreshRuntime(1500);
       } catch (error) {
         supportMessage.textContent = "No se pudo revocar el acceso: " + error.message;
+        supportAuditOutput.hidden = false;
+        supportAuditOutput.textContent = formatSupportDebug("disable", error);
       } finally {
         setSupportButtonState(false);
         endUiAction();
@@ -1828,6 +1859,26 @@
       } catch (error) {
         supportAuditOutput.textContent = "No se pudo cargar auditoria: " + error.message;
       } finally {
+        endUiAction();
+      }
+    });
+    supportDebugBtn.addEventListener("click", async () => {
+      if (isUiDisabled(supportDebugBtn)) {
+        return;
+      }
+      beginUiAction();
+      setSupportButtonState(true);
+      supportAuditOutput.hidden = false;
+      supportAuditOutput.textContent = "Cargando debug de soporte...";
+      try {
+        const data = await callSupportApi("debug", "GET", false);
+        supportMessage.textContent = "Debug de soporte actualizado.";
+        supportAuditOutput.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        supportMessage.textContent = "No se pudo obtener debug de soporte: " + error.message;
+        supportAuditOutput.textContent = formatSupportDebug("debug", error);
+      } finally {
+        setSupportButtonState(false);
         endUiAction();
       }
     });

@@ -55,6 +55,16 @@ sanitize_uint() {
   fi
 }
 
+read_json_file_or_empty() {
+  local path
+  path="${1:-}"
+  if [[ -n "${path}" && -f "${path}" ]]; then
+    jq -c '.' "${path}" 2>/dev/null || echo '{}'
+  else
+    echo '{}'
+  fi
+}
+
 resolve_support_enable_password() {
   local configured_password
   if [[ -n "${SUPPORT_USER_PASSWORD:-}" ]]; then
@@ -680,7 +690,11 @@ enable_cmd() {
       --arg error "no se pudo habilitar support_user" \
       --arg reason "${USER_OP_REASON:-enable_failed}" \
       --arg lookup_source "${USER_LOOKUP_SOURCE:-}" \
-      '{ok:false,error:$error,reason:$reason,lookup_source:$lookup_source}'
+      --arg lookup_reason "${USER_LOOKUP_REASON:-}" \
+      --arg support_user "${SUPPORT_USER:-}" \
+      --arg support_user_id "${SUPPORT_USER_ID:-}" \
+      --arg support_user_login_name "${SUPPORT_USER_LOGIN_NAME:-}" \
+      '{ok:false,error:$error,reason:$reason,lookup_source:$lookup_source,lookup_reason:$lookup_reason,support_user:$support_user,support_user_id:$support_user_id,support_user_login_name:$support_user_login_name}'
     exit 1
   fi
 
@@ -703,7 +717,9 @@ disable_cmd() {
     jq -nc \
       --arg error "no se pudo revocar support_user" \
       --arg reason "${USER_OP_REASON:-disable_failed}" \
-      '{ok:false,error:$error,reason:$reason}'
+      --arg support_user "${SUPPORT_USER:-}" \
+      --arg support_user_id "${SUPPORT_USER_ID:-}" \
+      '{ok:false,error:$error,reason:$reason,support_user:$support_user,support_user_id:$support_user_id}'
     exit 1
   fi
 
@@ -718,6 +734,140 @@ audit_cmd() {
   else
     echo ""
   fi
+}
+
+debug_cmd() {
+  local cfg_enabled cfg_dns cfg_user cfg_password cfg_password_set
+  local status_json self_dns_name self_host_name magic_dns_suffix current_tailnet_name
+  local lookup_forced lookup_rc lookup_hint
+  local debug_eligible now_epoch debug_active
+  local state_snapshot meta_snapshot
+
+  cfg_enabled=false
+  if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
+    cfg_enabled=true
+  fi
+  cfg_dns="$(normalize_dns_value "$(bashio::config "support_tailnet_dns_suffix" "tail37b857.ts.net")")"
+  cfg_user="$(bashio::config "support_user" "nodalia")"
+  cfg_password="$(bashio::config "support_user_password" "" 2>/dev/null || true)"
+  cfg_password_set=false
+  if [[ -n "${cfg_password}" ]]; then
+    cfg_password_set=true
+  fi
+
+  status_json=$(/opt/tailscale status --json --self=true --peers=false 2>/dev/null || echo '{}')
+  SUPPORT_STATUS_JSON="${status_json}"
+  build_eligibility
+  read_meta
+
+  lookup_forced=false
+  lookup_rc="skipped"
+  lookup_hint="lookup_skip_backend_not_running"
+  if [[ "${SUPPORT_BACKEND:-Unknown}" == "Running" ]]; then
+    lookup_forced=true
+    lookup_hint="lookup_ran"
+    set +e
+    lookup_support_user
+    lookup_rc=$?
+    set -e
+  fi
+
+  debug_eligible=false
+  if [[ "${SUPPORT_ENABLED}" == "true" && "${SUPPORT_TAILNET_MATCH}" == "true" && "${SUPPORT_BACKEND}" == "Running" ]] && \
+    [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
+    debug_eligible=true
+  fi
+
+  now_epoch="$(date +%s)"
+  debug_active=false
+  if [[ "${META_EXPIRES_EPOCH:-0}" -gt 0 && "${now_epoch}" -lt "${META_EXPIRES_EPOCH}" ]]; then
+    debug_active=true
+  fi
+
+  self_dns_name="$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)"
+  self_host_name="$(jq -r '.Self.HostName // empty' <<< "${status_json}" 2>/dev/null || true)"
+  magic_dns_suffix="$(jq -r '.CurrentTailnet.MagicDNSSuffix // empty' <<< "${status_json}" 2>/dev/null || true)"
+  current_tailnet_name="$(jq -r '.CurrentTailnet.Name // empty' <<< "${status_json}" 2>/dev/null || true)"
+
+  state_snapshot="$(read_json_file_or_empty "${STATE_FILE}")"
+  meta_snapshot="$(read_json_file_or_empty "${META_FILE}")"
+
+  jq -nc \
+    --arg generated_at "$(now_utc)" \
+    --arg cfg_dns "${cfg_dns}" \
+    --arg cfg_user "${cfg_user}" \
+    --arg backend_state "${SUPPORT_BACKEND:-Unknown}" \
+    --arg support_reason "${SUPPORT_REASON:-}" \
+    --arg support_user "${SUPPORT_USER:-}" \
+    --arg support_user_id "${SUPPORT_USER_ID:-}" \
+    --arg support_user_login_name "${SUPPORT_USER_LOGIN_NAME:-}" \
+    --arg lookup_rc "${lookup_rc}" \
+    --arg lookup_source "${USER_LOOKUP_SOURCE:-}" \
+    --arg lookup_reason "${USER_LOOKUP_REASON:-}" \
+    --arg lookup_hint "${lookup_hint}" \
+    --arg user_op_reason "${USER_OP_REASON:-}" \
+    --arg self_dns_name "${self_dns_name}" \
+    --arg self_host_name "${self_host_name}" \
+    --arg magic_dns_suffix "${magic_dns_suffix}" \
+    --arg current_tailnet_name "${current_tailnet_name}" \
+    --arg api_last_rc "${API_LAST_RC:-}" \
+    --arg api_last_output "${API_LAST_OUTPUT:-}" \
+    --argjson cfg_enabled "$(json_bool "${cfg_enabled}")" \
+    --argjson cfg_password_set "$(json_bool "${cfg_password_set}")" \
+    --argjson tailnet_match "$(json_bool "${SUPPORT_TAILNET_MATCH:-false}")" \
+    --argjson eligible "$(json_bool "${debug_eligible}")" \
+    --argjson active "$(json_bool "${debug_active}")" \
+    --argjson support_user_exists "$(json_bool "${SUPPORT_USER_EXISTS:-false}")" \
+    --argjson support_user_active "$(json_bool "${SUPPORT_USER_ACTIVE:-false}")" \
+    --argjson support_user_active_known "$(json_bool "${SUPPORT_USER_ACTIVE_KNOWN:-false}")" \
+    --argjson support_user_is_owner "$(json_bool "${SUPPORT_USER_IS_OWNER:-false}")" \
+    --argjson lookup_forced "$(json_bool "${lookup_forced}")" \
+    --argjson state_snapshot "${state_snapshot}" \
+    --argjson meta_snapshot "${meta_snapshot}" \
+    '{
+      ok:true,
+      action:"debug",
+      generated_at:$generated_at,
+      config:{
+        support_tunnel_enabled:$cfg_enabled,
+        support_tailnet_dns_suffix:$cfg_dns,
+        support_user:$cfg_user,
+        support_user_password_set:$cfg_password_set
+      },
+      tailscale:{
+        backend_state:$backend_state,
+        self_dns_name:$self_dns_name,
+        self_host_name:$self_host_name,
+        current_tailnet_name:$current_tailnet_name,
+        magic_dns_suffix:$magic_dns_suffix
+      },
+      support:{
+        reason:$support_reason,
+        tailnet_match:$tailnet_match,
+        eligible:$eligible,
+        active:$active,
+        support_user:$support_user,
+        support_user_id:$support_user_id,
+        support_user_login_name:$support_user_login_name,
+        support_user_exists:$support_user_exists,
+        support_user_active:$support_user_active,
+        support_user_active_known:$support_user_active_known,
+        support_user_is_owner:$support_user_is_owner
+      },
+      lookup:{
+        forced:$lookup_forced,
+        rc:$lookup_rc,
+        source:$lookup_source,
+        reason:$lookup_reason,
+        hint:$lookup_hint
+      },
+      api_last:{
+        rc:$api_last_rc,
+        output:$api_last_output
+      },
+      state_snapshot:$state_snapshot,
+      meta_snapshot:$meta_snapshot
+    }'
 }
 
 fallback_status_json() {
@@ -781,8 +931,11 @@ case "${1:-status}" in
   audit)
     audit_cmd
     ;;
+  debug)
+    debug_cmd
+    ;;
   *)
-    echo "Usage: support-tunnel [status|enable|disable|audit]" >&2
+    echo "Usage: support-tunnel [status|enable|disable|audit|debug]" >&2
     exit 2
     ;;
 esac
