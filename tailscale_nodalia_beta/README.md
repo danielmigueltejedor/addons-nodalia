@@ -483,9 +483,48 @@ Por defecto: `nodalia_support_key`.
 
 ### `support_target_url`
 
-Campo opcional de compatibilidad para apps externas.
+Base URL pública opcional para construir el enlace de acceso de soporte en modo `virtual-keys`.
 
-No se usa en el flujo normal de soporte Nodalia.
+Ejemplo: `https://homeassistant.getnodalia.com`
+
+Si está vacío, el add-on intentará construirla automáticamente como:
+`https://<hostname>.<support_target_domain_suffix>`.
+
+---
+
+### `support_target_domain_suffix`
+
+Sufijo de dominio público usado para construir URL externa automática de soporte.
+
+Ejemplo: con `hostname=homeassistant` y `support_target_domain_suffix=getnodalia.com`,
+se genera `https://homeassistant.getnodalia.com`.
+
+Por defecto: `getnodalia.com`.
+
+---
+
+### `support_notify_telegram_enabled`
+
+Habilita envío automático por Telegram del enlace temporal de soporte al crear token (`virtual-keys`).
+
+- `false` (por defecto): no envía notificación.
+- `true`: envía mensaje con `HostName`, token, TTL y URL de acceso.
+
+---
+
+### `support_notify_telegram_bot_token`
+
+Token del bot de Telegram usado para enviar el mensaje.
+
+Formato esperado: token de BotFather, por ejemplo `123456789:AA...`.
+
+---
+
+### `support_notify_telegram_chat_id`
+
+Chat ID de destino en Telegram (usuario, grupo o canal).
+
+Ejemplos: `123456789`, `-1001234567890`.
 
 ---
 

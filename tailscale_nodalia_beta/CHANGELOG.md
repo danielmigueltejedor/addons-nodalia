@@ -16,12 +16,20 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   - al revocar o expirar TTL elimina el token temporal asociado.
 - Runtime:
   - se expone `support_mode` en `runtime.json` para diagnóstico/UI.
+- Entrega automática del enlace de soporte en modo `virtual-keys`:
+  - nueva construcción de URL pública por hostname (`https://<hostname>.<dominio>`).
+  - nuevas opciones: `support_target_domain_suffix`, `support_notify_telegram_enabled`,
+    `support_notify_telegram_bot_token` y `support_notify_telegram_chat_id`.
+  - envío opcional por Telegram del enlace temporal con hostname, token y TTL.
 
 ### Fixed
 - Elegibilidad de soporte temporal más estricta:
   - valida servicios de creación/revocación antes de permitir habilitar.
   - evita activar soporte temporal cuando no hay camino de revocación.
   - si `support_disable_service` está vacío, reutiliza `support_enable_service` para `action=delete`.
+- Soporte `virtual-keys`:
+  - compatibilidad con distintas versiones de `python-websockets` (`extra_headers`/`additional_headers`) para evitar `virtual_keys_ws_connect_failed`.
+  - `Login URL` de token temporal ahora puede construirse con dominio externo usando `support_target_url`.
 - Recuperación ante metadatos stale en modo temporal:
   - si el usuario temporal guardado ya no existe, limpia meta y permite recrearlo.
 - UI onboarding:

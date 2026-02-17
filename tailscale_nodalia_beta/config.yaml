@@ -69,6 +69,11 @@ options:
   support_temp_password_length: 20
   support_virtual_keys_mode: false
   support_virtual_keys_token_prefix: "nodalia_support_key"
+  support_target_url: ""
+  support_target_domain_suffix: "getnodalia.com"
+  support_notify_telegram_enabled: false
+  support_notify_telegram_bot_token: ""
+  support_notify_telegram_chat_id: ""
   exit_node: ""
   login_server: "https://controlplane.tailscale.com"
 
@@ -107,3 +112,7 @@ schema:
   support_virtual_keys_mode: bool?
   support_virtual_keys_token_prefix: str?
   support_target_url: match(^https?://.+$)?
+  support_target_domain_suffix: str?
+  support_notify_telegram_enabled: bool?
+  support_notify_telegram_bot_token: str?
+  support_notify_telegram_chat_id: str?

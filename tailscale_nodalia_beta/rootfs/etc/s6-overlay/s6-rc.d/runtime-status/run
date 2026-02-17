@@ -142,6 +142,7 @@ do
     support_json="${support_cached_json}"
   else
     support_fallback_dns="$(bashio::config "support_tailnet_dns_suffix" "tail37b857.ts.net")"
+    support_fallback_target_url="$(bashio::config "support_target_url" "" 2>/dev/null || true)"
     support_fallback_user="$(bashio::config "support_user" "nodalia")"
     support_fallback_enabled="false"
     support_fallback_mode="static_user"
@@ -159,15 +160,17 @@ do
     fi
     support_json="$(jq -nc \
       --arg support_target_dns_suffix "${support_fallback_dns}" \
+      --arg support_target_url "${support_fallback_target_url}" \
       --arg support_user "${support_fallback_user}" \
       --arg support_mode "${support_fallback_mode}" \
       --arg reason "${support_reason_fallback}" \
       --arg support_enabled "${support_fallback_enabled}" \
-      '{support_enabled:($support_enabled=="true"),support_mode:$support_mode,support_target_dns_suffix:$support_target_dns_suffix,tailnet_match:false,eligible:false,active:false,reason:$reason,support_user:$support_user}')"
+      '{support_enabled:($support_enabled=="true"),support_mode:$support_mode,support_target_dns_suffix:$support_target_dns_suffix,support_target_url:$support_target_url,tailnet_match:false,eligible:false,active:false,reason:$reason,support_user:$support_user}')"
   fi
   support_enabled="$(jq -r '.support_enabled // false' <<< "${support_json}" 2>/dev/null || echo "false")"
   support_mode="$(jq -r '.support_mode // "static_user"' <<< "${support_json}" 2>/dev/null || echo "static_user")"
   support_target_id="$(jq -r '.support_target_id // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_target_url="$(jq -r '.support_target_url // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_tailnet_dns_suffix="$(jq -r '.support_target_dns_suffix // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_tailnet_match="$(jq -r '.tailnet_match // false' <<< "${support_json}" 2>/dev/null || echo "false")"
   support_eligible="$(jq -r '.eligible // false' <<< "${support_json}" 2>/dev/null || echo "false")"
@@ -217,6 +220,7 @@ do
     --arg support_enabled "${support_enabled}" \
     --arg support_mode "${support_mode}" \
     --arg support_target_id "${support_target_id}" \
+    --arg support_target_url "${support_target_url}" \
     --arg support_tailnet_dns_suffix "${support_tailnet_dns_suffix}" \
     --arg support_tailnet_match "${support_tailnet_match}" \
     --arg support_eligible "${support_eligible}" \
@@ -250,6 +254,7 @@ do
       support_enabled: ($support_enabled == "true"),
       support_mode:$support_mode,
       support_target_id:$support_target_id,
+      support_target_url:$support_target_url,
       support_tailnet_dns_suffix:$support_tailnet_dns_suffix,
       support_tailnet_match: ($support_tailnet_match == "true"),
       support_eligible: ($support_eligible == "true"),

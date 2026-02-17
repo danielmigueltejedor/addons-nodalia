@@ -187,10 +187,30 @@ configuration:
       Prefix used for temporary token names created via virtual-keys.
       A timestamp suffix is appended on each activation.
   support_target_url:
-    name: Legacy target URL (external apps)
+    name: Support public base URL
     description: >-
-      Optional compatibility value for external apps.
-      It is not used in the normal Nodalia support flow.
+      Optional public base URL used to build external support links
+      in virtual-keys mode (example: `https://homeassistant.getnodalia.com`).
+      If empty, it is auto-built from hostname and domain suffix.
+  support_target_domain_suffix:
+    name: Public support link domain
+    description: >-
+      Domain suffix used to auto-build external support links as:
+      `https://<hostname>.<domain>`.
+      Example: `getnodalia.com`.
+  support_notify_telegram_enabled:
+    name: Telegram support notification
+    description: >-
+      When enabled, creating a temporary support token sends a Telegram message
+      with hostname, token name, TTL and login URL.
+  support_notify_telegram_bot_token:
+    name: Telegram bot token
+    description: >-
+      Telegram bot token (BotFather) used to send support notifications.
+  support_notify_telegram_chat_id:
+    name: Telegram chat id
+    description: >-
+      Destination Telegram chat ID (user, group or channel) for support links.
   support_tunnel_ttl_minutes:
     name: Support access TTL (minutes)
     description: >-

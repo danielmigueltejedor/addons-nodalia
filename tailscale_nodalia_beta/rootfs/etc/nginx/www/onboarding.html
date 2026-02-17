@@ -1225,21 +1225,33 @@
       if (mode === "virtual_keys_token") {
         const tokenName = String(data?.support_virtual_keys_token_name || "");
         const loginPath = String(data?.support_virtual_keys_login_path || "");
-        if (!tokenName || !loginPath) {
+        const explicitLoginUrl = String(data?.support_virtual_keys_login_url || "");
+        if (!tokenName || (!loginPath && !explicitLoginUrl)) {
           return "";
         }
-        let loginUrl = loginPath;
+        const supportTargetUrl = String(data?.support_target_url || lastRuntime?.support_target_url || "");
+        let loginUrl = explicitLoginUrl || loginPath;
         try {
-          loginUrl = new URL(loginPath, window.location.origin).toString();
+          if (!explicitLoginUrl && supportTargetUrl) {
+            loginUrl = new URL(loginPath, supportTargetUrl).toString();
+          } else if (!explicitLoginUrl) {
+            loginUrl = new URL(loginPath, window.location.origin).toString();
+          }
         } catch (_) {
         }
         const ttlMinutes = Number(data?.ttl_minutes || lastRuntime?.support_ttl_minutes || 30);
+        const notifyStatus = String(data?.support_notify_status || "");
+        const notifyReason = String(data?.support_notify_reason || "");
+        const notifyLine = notifyStatus
+          ? ("Notificacion Telegram: " + notifyStatus + (notifyReason ? " (" + notifyReason + ")" : ""))
+          : "";
         return [
           "Token temporal de soporte (virtual-keys)",
           "Token: " + tokenName,
           "TTL(min): " + ttlMinutes,
-          "Login URL: " + loginUrl
-        ].join("\n");
+          "Login URL: " + loginUrl,
+          notifyLine
+        ].filter(Boolean).join("\n");
       }
       return "";
     }

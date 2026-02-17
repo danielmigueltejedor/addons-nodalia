@@ -35,6 +35,138 @@ normalize_dns_value() {
   printf '%s' "${value}"
 }
 
+normalize_base_url() {
+  local value
+  value="$(trim_spaces "${1:-}")"
+  if [[ -z "${value}" ]]; then
+    printf ''
+    return 0
+  fi
+  if ! [[ "${value}" =~ ^https?:// ]]; then
+    printf ''
+    return 0
+  fi
+  while [[ "${value}" == */ ]]; do
+    value="${value%/}"
+  done
+  printf '%s' "${value}"
+}
+
+build_absolute_url() {
+  local base path
+  base="$(normalize_base_url "${1:-}")"
+  path="${2:-}"
+  if [[ -z "${path}" ]]; then
+    printf ''
+    return 0
+  fi
+  if [[ "${path}" =~ ^https?:// ]]; then
+    printf '%s' "${path}"
+    return 0
+  fi
+  if [[ -z "${base}" ]]; then
+    printf '%s' "${path}"
+    return 0
+  fi
+  if [[ "${path}" == /* ]]; then
+    printf '%s%s' "${base}" "${path}"
+  else
+    printf '%s/%s' "${base}" "${path#./}"
+  fi
+}
+
+sanitize_hostname_label() {
+  local value
+  value="$(normalize_lc "${1:-}")"
+  value="$(printf '%s' "${value}" | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//')"
+  printf '%s' "${value}"
+}
+
+telegram_notify_enabled() {
+  if bashio::config.has_value "support_notify_telegram_enabled" && bashio::config.true "support_notify_telegram_enabled"; then
+    return 0
+  fi
+  return 1
+}
+
+send_support_notification_telegram() {
+  local bot_token chat_id login_url host_label ttl_minutes token_name message payload response rc
+  SUPPORT_NOTIFY_STATUS="disabled"
+  SUPPORT_NOTIFY_REASON=""
+
+  if ! telegram_notify_enabled; then
+    return 0
+  fi
+
+  SUPPORT_NOTIFY_STATUS="pending"
+
+  bot_token="$(trim_spaces "$(bashio::config "support_notify_telegram_bot_token" "" 2>/dev/null || true)")"
+  chat_id="$(trim_spaces "$(bashio::config "support_notify_telegram_chat_id" "" 2>/dev/null || true)")"
+  if [[ -z "${bot_token}" || -z "${chat_id}" ]]; then
+    SUPPORT_NOTIFY_STATUS="error"
+    SUPPORT_NOTIFY_REASON="support_notify_telegram_config_incomplete"
+    return 1
+  fi
+
+  login_url="${SUPPORT_VK_LOGIN_URL:-}"
+  if [[ -z "${login_url}" ]]; then
+    login_url="$(build_absolute_url "${SUPPORT_TARGET_URL:-}" "${SUPPORT_VK_LOGIN_PATH:-}")"
+  fi
+  if [[ -z "${login_url}" ]]; then
+    SUPPORT_NOTIFY_STATUS="error"
+    SUPPORT_NOTIFY_REASON="support_notify_login_url_empty"
+    return 1
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    SUPPORT_NOTIFY_STATUS="error"
+    SUPPORT_NOTIFY_REASON="support_notify_curl_missing"
+    return 1
+  fi
+
+  host_label="${SUPPORT_SELF_HOST_NAME:-unknown}"
+  ttl_minutes="$(sanitize_uint_range "$(bashio::config "support_tunnel_ttl_minutes" "30")" 5 180)"
+  token_name="${SUPPORT_VK_TOKEN_NAME:-nodalia_support_key}"
+
+  message=$(
+    cat <<EOF
+Nodalia Connect: token temporal creado
+HostName: ${host_label}
+Token: ${token_name}
+TTL(min): ${ttl_minutes}
+Login URL: ${login_url}
+EOF
+  )
+
+  payload="$(jq -nc \
+    --arg chat_id "${chat_id}" \
+    --arg text "${message}" \
+    '{chat_id:$chat_id,text:$text,disable_web_page_preview:true}')"
+
+  set +e
+  response="$(curl -fsS --connect-timeout 5 --max-time 15 \
+    -H "Content-Type: application/json" \
+    -d "${payload}" \
+    "https://api.telegram.org/bot${bot_token}/sendMessage" 2>&1)"
+  rc=$?
+  set -e
+
+  if (( rc != 0 )); then
+    SUPPORT_NOTIFY_STATUS="error"
+    SUPPORT_NOTIFY_REASON="support_notify_telegram_request_failed"
+    return 1
+  fi
+  if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response}"; then
+    SUPPORT_NOTIFY_STATUS="error"
+    SUPPORT_NOTIFY_REASON="support_notify_telegram_api_failed"
+    return 1
+  fi
+
+  SUPPORT_NOTIFY_STATUS="sent"
+  SUPPORT_NOTIFY_REASON=""
+  return 0
+}
+
 dns_matches_suffix() {
   local value suffix
   value="$(normalize_dns_value "${1:-}")"
@@ -680,6 +812,7 @@ create_virtual_keys_token() {
   SUPPORT_VK_TOKEN_ID="$(jq -r '.token_id // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
   SUPPORT_VK_TOKEN_NAME="$(jq -r '.token_name // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
   SUPPORT_VK_LOGIN_PATH="$(jq -r '.login_path // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_VK_LOGIN_URL="$(build_absolute_url "${SUPPORT_TARGET_URL:-}" "${SUPPORT_VK_LOGIN_PATH:-}")"
   SUPPORT_VK_TOKEN_VALUE="$(jq -r '.token // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
   SUPPORT_VK_TOKEN_COUNT="1"
   SUPPORT_VK_TOKEN_PRESENT="true"
@@ -933,8 +1066,11 @@ set_support_user_active() {
   SUPPORT_VK_TOKEN_ID=""
   SUPPORT_VK_TOKEN_VALUE=""
   SUPPORT_VK_LOGIN_PATH=""
+  SUPPORT_VK_LOGIN_URL=""
   SUPPORT_VK_TOKEN_COUNT="0"
   SUPPORT_VK_TOKEN_PRESENT="false"
+  SUPPORT_NOTIFY_STATUS="disabled"
+  SUPPORT_NOTIFY_REASON=""
 
   if [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
     if [[ "${desired}" == "true" ]]; then
@@ -1138,7 +1274,8 @@ clear_meta() {
 
 build_eligibility() {
   local status_json support_enabled target_dns_suffix backend candidate_strings
-  local self_dns_name magic_dns_suffix token_lc support_mode_cfg
+  local self_dns_name self_host_name magic_dns_suffix token_lc support_mode_cfg
+  local target_url_cfg target_domain_suffix support_host_label
   local temp_create_service_cfg temp_delete_service_cfg
   local create_path_rc delete_path_rc
   support_enabled=false
@@ -1154,12 +1291,23 @@ build_eligibility() {
   fi
   backend="$(jq -r '.BackendState // "Unknown"' <<< "${status_json}" 2>/dev/null || echo "Unknown")"
   self_dns_name="$(normalize_dns_value "$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)")"
+  self_host_name="$(jq -r '.Self.HostName // empty' <<< "${status_json}" 2>/dev/null || true)"
+  support_host_label="$(sanitize_hostname_label "${self_host_name}")"
   magic_dns_suffix="$(normalize_dns_value "$(jq -r '.CurrentTailnet.MagicDNSSuffix // empty' <<< "${status_json}" 2>/dev/null || true)")"
   candidate_strings="$(jq -r '[.CurrentTailnet.Name,.CurrentTailnet.MagicDNSSuffix,.CurrentTailnet.Tailnet,.Self.DNSName,.Self.HostName,.Self.Tailnet] | map(select(type=="string" and length>0)) | .[]' <<< "${status_json}" 2>/dev/null || true)"
+
+  target_url_cfg="$(normalize_base_url "$(bashio::config "support_target_url" "" 2>/dev/null || true)")"
+  target_domain_suffix="$(normalize_dns_value "$(bashio::config "support_target_domain_suffix" "getnodalia.com" 2>/dev/null || true)")"
+  if [[ -z "${target_url_cfg}" && -n "${support_host_label}" && -n "${target_domain_suffix}" ]]; then
+    target_url_cfg="https://${support_host_label}.${target_domain_suffix}"
+  fi
 
   SUPPORT_ENABLED="${support_enabled}"
   SUPPORT_TARGET_ID=""
   SUPPORT_TARGET_DNS_SUFFIX="${target_dns_suffix}"
+  SUPPORT_TARGET_URL="${target_url_cfg}"
+  SUPPORT_TARGET_DOMAIN_SUFFIX="${target_domain_suffix}"
+  SUPPORT_SELF_HOST_NAME="${support_host_label}"
   SUPPORT_BACKEND="${backend}"
   SUPPORT_REASON=""
   SUPPORT_TAILNET_MATCH="false"
@@ -1169,6 +1317,7 @@ build_eligibility() {
   SUPPORT_VK_TOKEN_NAME=""
   SUPPORT_VK_TOKEN_ID=""
   SUPPORT_VK_LOGIN_PATH=""
+  SUPPORT_VK_LOGIN_URL=""
   SUPPORT_VK_TOKEN_VALUE=""
 
   support_mode_cfg="static_user"
@@ -1306,6 +1455,7 @@ write_state() {
   jq -nc \
     --arg updated_at "${now}" \
     --arg support_target_id "${SUPPORT_TARGET_ID}" \
+    --arg support_target_url "${SUPPORT_TARGET_URL:-}" \
     --arg support_target_dns_suffix "${SUPPORT_TARGET_DNS_SUFFIX}" \
     --arg backend_state "${SUPPORT_BACKEND}" \
     --arg reason "${SUPPORT_REASON}" \
@@ -1329,6 +1479,7 @@ write_state() {
       updated_at:$updated_at,
       support_enabled:$support_enabled,
       support_target_id:$support_target_id,
+      support_target_url:$support_target_url,
       support_target_dns_suffix:$support_target_dns_suffix,
       backend_state:$backend_state,
       tailnet_match:$tailnet_match,
@@ -1537,10 +1688,18 @@ enable_cmd() {
   prepare_meta "${ttl_minutes}"
   write_meta
 
+  if [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+    if ! send_support_notification_telegram; then
+      audit_event "notify_failed" "${SUPPORT_NOTIFY_REASON:-support_notify_failed}" "token=${SUPPORT_VK_TOKEN_NAME:-}"
+    else
+      audit_event "notify_sent" "support_notify_telegram_sent" "token=${SUPPORT_VK_TOKEN_NAME:-}"
+    fi
+  fi
+
   if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
     details="temp_user_enable_ok:${USER_OP_REASON}:${SUPPORT_USER}"
   elif [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
-    details="virtual_keys_enable_ok:${USER_OP_REASON}:${SUPPORT_USER}:${SUPPORT_VK_TOKEN_NAME:-}"
+    details="virtual_keys_enable_ok:${USER_OP_REASON}:${SUPPORT_USER}:${SUPPORT_VK_TOKEN_NAME:-}:notify=${SUPPORT_NOTIFY_STATUS:-disabled}"
   else
     details="user_enable_ok:${USER_OP_REASON}"
   fi
@@ -1558,7 +1717,10 @@ enable_cmd() {
       --arg support_mode "${SUPPORT_MODE:-virtual_keys_token}" \
       --arg support_virtual_keys_token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
       --arg support_virtual_keys_login_path "${SUPPORT_VK_LOGIN_PATH:-}" \
-      '. + {support_mode:$support_mode,support_virtual_keys_token_name:$support_virtual_keys_token_name,support_virtual_keys_login_path:$support_virtual_keys_login_path}' \
+      --arg support_virtual_keys_login_url "${SUPPORT_VK_LOGIN_URL:-}" \
+      --arg support_notify_status "${SUPPORT_NOTIFY_STATUS:-disabled}" \
+      --arg support_notify_reason "${SUPPORT_NOTIFY_REASON:-}" \
+      '. + {support_mode:$support_mode,support_virtual_keys_token_name:$support_virtual_keys_token_name,support_virtual_keys_login_path:$support_virtual_keys_login_path,support_virtual_keys_login_url:$support_virtual_keys_login_url,support_notify_status:$support_notify_status,support_notify_reason:$support_notify_reason}' \
       "${STATE_FILE}"
   else
     cat "${STATE_FILE}"
@@ -1602,7 +1764,9 @@ debug_cmd() {
   local cfg_enabled cfg_dns cfg_user cfg_password cfg_password_set
   local cfg_enable_service cfg_disable_service
   local cfg_temp_mode cfg_temp_prefix cfg_temp_password_length
-  local cfg_virtual_keys_mode cfg_virtual_keys_token_prefix
+  local cfg_virtual_keys_mode cfg_virtual_keys_token_prefix cfg_target_url cfg_target_domain_suffix
+  local cfg_notify_telegram_enabled cfg_notify_telegram_bot_token cfg_notify_telegram_chat_id
+  local cfg_notify_telegram_bot_token_set cfg_notify_telegram_chat_id_set
   local status_json self_dns_name self_host_name magic_dns_suffix current_tailnet_name
   local lookup_forced lookup_rc lookup_hint
   local debug_eligible now_epoch debug_active
@@ -1628,6 +1792,22 @@ debug_cmd() {
     cfg_virtual_keys_mode=true
   fi
   cfg_virtual_keys_token_prefix="$(virtual_keys_token_prefix)"
+  cfg_target_url="$(normalize_base_url "$(bashio::config "support_target_url" "" 2>/dev/null || true)")"
+  cfg_target_domain_suffix="$(normalize_dns_value "$(bashio::config "support_target_domain_suffix" "getnodalia.com" 2>/dev/null || true)")"
+  cfg_notify_telegram_enabled=false
+  if telegram_notify_enabled; then
+    cfg_notify_telegram_enabled=true
+  fi
+  cfg_notify_telegram_bot_token="$(trim_spaces "$(bashio::config "support_notify_telegram_bot_token" "" 2>/dev/null || true)")"
+  cfg_notify_telegram_chat_id="$(trim_spaces "$(bashio::config "support_notify_telegram_chat_id" "" 2>/dev/null || true)")"
+  cfg_notify_telegram_bot_token_set=false
+  if [[ -n "${cfg_notify_telegram_bot_token}" ]]; then
+    cfg_notify_telegram_bot_token_set=true
+  fi
+  cfg_notify_telegram_chat_id_set=false
+  if [[ -n "${cfg_notify_telegram_chat_id}" ]]; then
+    cfg_notify_telegram_chat_id_set=true
+  fi
   cfg_password_set=false
   if [[ -n "${cfg_password}" ]]; then
     cfg_password_set=true
@@ -1699,6 +1879,8 @@ debug_cmd() {
     --arg cfg_temp_prefix "${cfg_temp_prefix}" \
     --arg cfg_temp_password_length "${cfg_temp_password_length}" \
     --arg cfg_virtual_keys_token_prefix "${cfg_virtual_keys_token_prefix}" \
+    --arg cfg_target_url "${cfg_target_url}" \
+    --arg cfg_target_domain_suffix "${cfg_target_domain_suffix}" \
     --arg backend_state "${SUPPORT_BACKEND:-Unknown}" \
     --arg support_reason "${SUPPORT_REASON:-}" \
     --arg support_user "${SUPPORT_USER:-}" \
@@ -1728,6 +1910,9 @@ debug_cmd() {
     --argjson cfg_password_set "$(json_bool "${cfg_password_set}")" \
     --argjson cfg_temp_mode "$(json_bool "${cfg_temp_mode}")" \
     --argjson cfg_virtual_keys_mode "$(json_bool "${cfg_virtual_keys_mode}")" \
+    --argjson cfg_notify_telegram_enabled "$(json_bool "${cfg_notify_telegram_enabled}")" \
+    --argjson cfg_notify_telegram_bot_token_set "$(json_bool "${cfg_notify_telegram_bot_token_set}")" \
+    --argjson cfg_notify_telegram_chat_id_set "$(json_bool "${cfg_notify_telegram_chat_id_set}")" \
     --argjson support_token_present "$(json_bool "${SUPPORT_VK_TOKEN_PRESENT:-false}")" \
     --argjson tailnet_match "$(json_bool "${SUPPORT_TAILNET_MATCH:-false}")" \
     --argjson eligible "$(json_bool "${debug_eligible}")" \
@@ -1754,7 +1939,12 @@ debug_cmd() {
         support_temp_user_prefix:$cfg_temp_prefix,
         support_temp_password_length:($cfg_temp_password_length|tonumber? // 20),
         support_virtual_keys_mode:$cfg_virtual_keys_mode,
-        support_virtual_keys_token_prefix:$cfg_virtual_keys_token_prefix
+        support_virtual_keys_token_prefix:$cfg_virtual_keys_token_prefix,
+        support_target_url:$cfg_target_url,
+        support_target_domain_suffix:$cfg_target_domain_suffix,
+        support_notify_telegram_enabled:$cfg_notify_telegram_enabled,
+        support_notify_telegram_bot_token_set:$cfg_notify_telegram_bot_token_set,
+        support_notify_telegram_chat_id_set:$cfg_notify_telegram_chat_id_set
       },
       tailscale:{
         backend_state:$backend_state,
@@ -1806,7 +1996,7 @@ debug_cmd() {
 }
 
 fallback_status_json() {
-  local reason cfg_dns cfg_user cfg_enabled cfg_mode
+  local reason cfg_dns cfg_user cfg_enabled cfg_mode cfg_target_url
   reason="${1:-support_status_failed}"
   cfg_dns="$(bashio::config "support_tailnet_dns_suffix" 2>/dev/null || true)"
   if [[ -z "${cfg_dns}" ]]; then
@@ -1817,6 +2007,7 @@ fallback_status_json() {
     cfg_user="nodalia"
   fi
   cfg_user="$(sanitize_username "${cfg_user}")"
+  cfg_target_url="$(normalize_base_url "$(bashio::config "support_target_url" "" 2>/dev/null || true)")"
   cfg_mode="static_user"
   if virtual_keys_mode_enabled; then
     cfg_mode="virtual_keys_token"
@@ -1830,6 +2021,7 @@ fallback_status_json() {
   jq -nc \
     --arg updated_at "$(now_utc)" \
     --arg support_target_dns_suffix "${cfg_dns}" \
+    --arg support_target_url "${cfg_target_url}" \
     --arg support_user "${cfg_user}" \
     --arg support_mode "${cfg_mode}" \
     --arg reason "${reason}" \
@@ -1838,6 +2030,7 @@ fallback_status_json() {
       updated_at:$updated_at,
       support_enabled:$support_enabled,
       support_target_id:"",
+      support_target_url:$support_target_url,
       support_target_dns_suffix:$support_target_dns_suffix,
       backend_state:"Unknown",
       tailnet_match:false,
