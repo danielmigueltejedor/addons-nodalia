@@ -1,5 +1,5 @@
 name: Nodalia Connect (BETA)
-version: 3.0.0-beta120
+version: 3.0.0-beta122
 slug: tailscale_nodalia_beta
 description: Zero config VPN for building secure networks (Nodalia beta build)
 url: https://github.com/danielmigueltejedor/apps-nodalia
@@ -64,6 +64,9 @@ options:
   support_user_password: ""
   support_enable_service: ""
   support_disable_service: ""
+  support_temp_account_mode: false
+  support_temp_user_prefix: "nodalia_support"
+  support_temp_password_length: 20
   exit_node: ""
   login_server: "https://controlplane.tailscale.com"
 
@@ -96,4 +99,7 @@ schema:
   support_user_password: str?
   support_enable_service: str?
   support_disable_service: str?
+  support_temp_account_mode: bool?
+  support_temp_user_prefix: str?
+  support_temp_password_length: int(12,64)?
   support_target_url: match(^https?://.+$)?

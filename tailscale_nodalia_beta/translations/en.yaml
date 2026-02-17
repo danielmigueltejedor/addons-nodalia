@@ -159,6 +159,22 @@ configuration:
       Home Assistant service to call when disabling support (format `domain.service`).
       Useful when your installation cannot toggle `is_active` via API.
       Example: `script.nodalia_support_disable`.
+  support_temp_account_mode:
+    name: Temporary support account mode
+    description: >-
+      When enabled, support activation creates a temporary user with a random password.
+      On revoke or TTL expiry, that temporary user is deleted.
+      Requires Home Assistant services to create and delete users.
+  support_temp_user_prefix:
+    name: Temporary user prefix
+    description: >-
+      Prefix used for temporary support usernames (example `nodalia_support`).
+      The add-on appends a random suffix on each activation.
+  support_temp_password_length:
+    name: Temporary password length
+    description: >-
+      Length of the random password generated for the temporary user.
+      Allowed range: 12-64.
   support_target_url:
     name: Legacy target URL (external apps)
     description: >-

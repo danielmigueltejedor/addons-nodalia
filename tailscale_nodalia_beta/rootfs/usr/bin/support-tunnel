@@ -63,6 +63,42 @@ trim_spaces() {
   printf '%s' "${value}"
 }
 
+sanitize_username() {
+  local value
+  value="$(normalize_lc "${1:-}")"
+  value="$(printf '%s' "${value}" | tr -cd 'a-z0-9_-')"
+  value="${value##_}"
+  value="${value%%_}"
+  if [[ -z "${value}" ]]; then
+    value="nodalia_support"
+  fi
+  printf '%s' "${value}"
+}
+
+sanitize_uint_range() {
+  local value min max
+  value="$(sanitize_uint "${1:-0}")"
+  min="$(sanitize_uint "${2:-0}")"
+  max="$(sanitize_uint "${3:-0}")"
+  if (( value < min )); then
+    value="${min}"
+  fi
+  if (( max > 0 && value > max )); then
+    value="${max}"
+  fi
+  printf '%s' "${value}"
+}
+
+random_alnum() {
+  local length token
+  length="$(sanitize_uint_range "${1:-16}" 8 64)"
+  token="$(head -c 64 /dev/urandom 2>/dev/null | base64 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c "${length}")"
+  if [[ "${#token}" -lt "${length}" ]]; then
+    token="${token}$(date +%s%N | tr -dc '0-9' | head -c "$((length - ${#token}))")"
+  fi
+  printf '%s' "${token:0:${length}}"
+}
+
 read_json_file_or_empty() {
   local path
   path="${1:-}"
@@ -484,6 +520,173 @@ set_support_user_active_via_service() {
   return 0
 }
 
+temp_mode_enabled() {
+  if bashio::config.has_value "support_temp_account_mode" && bashio::config.true "support_temp_account_mode"; then
+    return 0
+  fi
+  return 1
+}
+
+resolve_service_endpoint() {
+  local service_cfg service_domain service_name
+  service_cfg="$(trim_spaces "${1:-}")"
+  if [[ -z "${service_cfg}" ]]; then
+    return 1
+  fi
+  if ! [[ "${service_cfg}" =~ ^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$ ]]; then
+    return 2
+  fi
+  service_domain="${service_cfg%%.*}"
+  service_name="${service_cfg#*.}"
+  printf '/core/api/services/%s/%s' "${service_domain}" "${service_name}"
+  return 0
+}
+
+resolve_temp_delete_service_cfg() {
+  local disable_cfg enable_cfg
+  disable_cfg="$(trim_spaces "$(bashio::config "support_disable_service" "" 2>/dev/null || true)")"
+  if [[ -n "${disable_cfg}" ]]; then
+    printf '%s' "${disable_cfg}"
+    return 0
+  fi
+  enable_cfg="$(trim_spaces "$(bashio::config "support_enable_service" "" 2>/dev/null || true)")"
+  if [[ -n "${enable_cfg}" ]]; then
+    printf '%s' "${enable_cfg}"
+    return 0
+  fi
+  return 1
+}
+
+generate_temp_support_username() {
+  local prefix suffix
+  prefix="$(sanitize_username "$(bashio::config "support_temp_user_prefix" "nodalia_support")")"
+  suffix="$(random_alnum 8 | tr '[:upper:]' '[:lower:]')"
+  printf '%s_%s' "${prefix}" "${suffix}"
+}
+
+generate_temp_support_password() {
+  local length
+  length="$(sanitize_uint_range "$(bashio::config "support_temp_password_length" "20")" 12 64)"
+  random_alnum "${length}"
+}
+
+create_temp_support_account() {
+  local service_cfg path path_rc ttl_minutes payload created_username created_password verify_rc
+  ttl_minutes="$(sanitize_uint_range "${1:-30}" 5 180)"
+  service_cfg="$(trim_spaces "$(bashio::config "support_enable_service" "" 2>/dev/null || true)")"
+  path_rc=0
+  path="$(resolve_service_endpoint "${service_cfg}")" || path_rc=$?
+  if (( path_rc == 1 )); then
+    USER_OP_REASON="support_temp_create_service_not_configured"
+    return 2
+  fi
+  if (( path_rc == 2 )); then
+    USER_OP_REASON="support_temp_create_service_invalid"
+    return 1
+  fi
+
+  created_username="$(generate_temp_support_username)"
+  created_password="$(generate_temp_support_password)"
+  payload="$(jq -nc \
+    --arg action "create" \
+    --arg support_mode "temp_account" \
+    --arg support_user "${created_username}" \
+    --arg support_password "${created_password}" \
+    --arg support_target_dns_suffix "${SUPPORT_TARGET_DNS_SUFFIX:-}" \
+    --argjson ttl_minutes "${ttl_minutes}" \
+    '{action:$action,support_mode:$support_mode,support_user:$support_user,support_password:$support_password,support_target_dns_suffix:$support_target_dns_suffix,ttl_minutes:$ttl_minutes}')"
+
+  USER_OP_PATH="POST:${path}"
+  if ! api_call POST "${path}" "${payload}"; then
+    USER_OP_REASON="support_temp_create_service_api_failed"
+    return 1
+  fi
+
+  SUPPORT_USER="${created_username}"
+  SUPPORT_USER_LOGIN_NAME="${created_username}"
+  set +e
+  lookup_support_user
+  verify_rc=$?
+  set -e
+  if (( verify_rc != 0 )); then
+    USER_OP_REASON="support_temp_create_service_no_effect:${USER_LOOKUP_REASON:-lookup_failed}"
+    return 1
+  fi
+  if [[ "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
+    USER_OP_REASON="support_temp_user_owner_invalid"
+    return 1
+  fi
+  if [[ "${SUPPORT_USER_ACTIVE_KNOWN}" == "true" && "${SUPPORT_USER_ACTIVE}" != "true" ]]; then
+    USER_OP_REASON="support_temp_user_created_but_inactive"
+    return 1
+  fi
+  SUPPORT_USER_ACTIVE_KNOWN="true"
+  SUPPORT_USER_ACTIVE="true"
+  SUPPORT_TEMP_USERNAME="${created_username}"
+  SUPPORT_TEMP_PASSWORD="${created_password}"
+  USER_OP_REASON="support_temp_create_service_ok"
+  return 0
+}
+
+delete_temp_support_account() {
+  local service_cfg path path_rc payload target_username verify_rc
+  target_username="${META_SUPPORT_USER:-${SUPPORT_USER:-}}"
+  if [[ -z "${target_username}" ]]; then
+    USER_OP_REASON="support_temp_user_missing_in_meta"
+    return 1
+  fi
+
+  service_cfg="$(resolve_temp_delete_service_cfg 2>/dev/null || true)"
+  path_rc=0
+  path="$(resolve_service_endpoint "${service_cfg}")" || path_rc=$?
+  if (( path_rc == 1 )); then
+    USER_OP_REASON="support_temp_delete_service_not_configured"
+    return 2
+  fi
+  if (( path_rc == 2 )); then
+    USER_OP_REASON="support_temp_delete_service_invalid"
+    return 1
+  fi
+
+  payload="$(jq -nc \
+    --arg action "delete" \
+    --arg support_mode "temp_account" \
+    --arg support_user "${target_username}" \
+    --arg support_target_dns_suffix "${SUPPORT_TARGET_DNS_SUFFIX:-}" \
+    '{action:$action,support_mode:$support_mode,support_user:$support_user,support_target_dns_suffix:$support_target_dns_suffix}')"
+
+  USER_OP_PATH="POST:${path}"
+  if ! api_call POST "${path}" "${payload}"; then
+    USER_OP_REASON="support_temp_delete_service_api_failed"
+    return 1
+  fi
+
+  SUPPORT_USER="${target_username}"
+  SUPPORT_USER_LOGIN_NAME="${target_username}"
+  set +e
+  lookup_support_user
+  verify_rc=$?
+  set -e
+  if (( verify_rc != 0 )); then
+    if [[ "${USER_LOOKUP_REASON:-}" == "support_user_no_encontrado" ]]; then
+      USER_OP_REASON="support_temp_delete_service_ok"
+      SUPPORT_USER_EXISTS="false"
+      SUPPORT_USER_ACTIVE="false"
+      SUPPORT_USER_ACTIVE_KNOWN="true"
+      return 0
+    fi
+    USER_OP_REASON="support_temp_delete_verify_failed:${USER_LOOKUP_REASON:-lookup_failed}"
+    return 1
+  fi
+
+  if [[ "${SUPPORT_USER_ACTIVE_KNOWN}" == "true" && "${SUPPORT_USER_ACTIVE}" == "false" ]]; then
+    USER_OP_REASON="support_temp_delete_service_ok"
+    return 0
+  fi
+  USER_OP_REASON="support_temp_delete_service_no_effect"
+  return 1
+}
+
 set_support_user_active_via_auth() {
   local desired target method path payload
   local payload_base payload_username payload_name
@@ -526,10 +729,33 @@ set_support_user_active_via_auth() {
 }
 
 set_support_user_active() {
-  local desired random_password core_reason enable_password password_source service_rc
+  local desired core_reason enable_password password_source service_rc
   desired="${1:-false}"
   USER_OP_REASON=""
   USER_OP_PATH=""
+  SUPPORT_TEMP_USERNAME=""
+  SUPPORT_TEMP_PASSWORD=""
+
+  if temp_mode_enabled; then
+    if [[ "${desired}" == "true" ]]; then
+      set +e
+      create_temp_support_account "$(bashio::config "support_tunnel_ttl_minutes" "30")"
+      service_rc=$?
+      set -e
+      if (( service_rc == 0 )); then
+        return 0
+      fi
+      return 1
+    fi
+    set +e
+    delete_temp_support_account
+    service_rc=$?
+    set -e
+    if (( service_rc == 0 )); then
+      return 0
+    fi
+    return 1
+  fi
 
   if [[ "${SUPPORT_USER_EXISTS:-false}" != "true" ]]; then
     if ! lookup_support_user; then
@@ -601,23 +827,22 @@ set_support_user_active() {
     return 1
   fi
 
-  random_password="$(head -c 32 /dev/urandom 2>/dev/null | base64 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 32)"
-  if [[ -z "${random_password}" ]]; then
-    random_password="nodalia$(date +%s)$(od -An -N4 -tx4 /dev/urandom 2>/dev/null | tr -d ' \n' || true)"
-  fi
-  if ! reset_user_password "${SUPPORT_USER_LOGIN_NAME}" "${random_password}"; then
-    USER_OP_REASON="reset_password_failed"
+  # For disable flow, rotating password is not enough when user remains active.
+  # We require a real deactivation path (core/auth API or configured HA service).
+  if (( service_rc == 2 )); then
+    if [[ -z "${SUPPORT_USER_ID:-}" ]]; then
+      USER_OP_REASON="support_disable_service_not_configured"
+    else
+      USER_OP_REASON="${core_reason}"
+    fi
     return 1
   fi
-
-  if ! verify_support_user_state false; then
+  if (( service_rc == 1 )); then
+    USER_OP_REASON="${core_reason}"
     return 1
   fi
-
-  SUPPORT_USER_ACTIVE_KNOWN="true"
-  SUPPORT_USER_ACTIVE="false"
-  USER_OP_REASON="password_rotated_disable_verified"
-  return 0
+  USER_OP_REASON="${core_reason}"
+  return 1
 
 }
 
@@ -647,6 +872,7 @@ read_meta() {
   META_EXPIRES_AT=""
   META_TTL_MIN=0
   META_SUPPORT_USER=""
+  META_SUPPORT_MODE=""
   if [[ -f "${META_FILE}" ]]; then
     raw_epoch="$(jq -r '.expires_epoch // 0' "${META_FILE}" 2>/dev/null || echo "0")"
     META_EXPIRES_EPOCH="$(sanitize_uint "${raw_epoch}")"
@@ -654,6 +880,7 @@ read_meta() {
     raw_ttl="$(jq -r '.ttl_minutes // 0' "${META_FILE}" 2>/dev/null || echo "0")"
     META_TTL_MIN="$(sanitize_uint "${raw_ttl}")"
     META_SUPPORT_USER="$(jq -r '.support_user // empty' "${META_FILE}" 2>/dev/null || true)"
+    META_SUPPORT_MODE="$(jq -r '.support_mode // empty' "${META_FILE}" 2>/dev/null || true)"
   fi
 }
 
@@ -680,9 +907,10 @@ write_meta() {
     --arg created_at "${META_NEW_CREATED_AT}" \
     --arg expires_at "${META_NEW_EXPIRES_AT}" \
     --arg support_user "${SUPPORT_USER}" \
+    --arg support_mode "${SUPPORT_MODE:-static_user}" \
     --argjson expires_epoch "${META_NEW_EXPIRES_EPOCH}" \
     --argjson ttl_minutes "${META_NEW_TTL_MIN}" \
-    '{created_at:$created_at,expires_at:$expires_at,expires_epoch:$expires_epoch,ttl_minutes:$ttl_minutes,support_user:$support_user}' > "${META_FILE}"
+    '{created_at:$created_at,expires_at:$expires_at,expires_epoch:$expires_epoch,ttl_minutes:$ttl_minutes,support_user:$support_user,support_mode:$support_mode}' > "${META_FILE}"
 }
 
 clear_meta() {
@@ -691,12 +919,15 @@ clear_meta() {
 
 build_eligibility() {
   local status_json support_enabled target_dns_suffix backend candidate_strings
-  local self_dns_name magic_dns_suffix token_lc
+  local self_dns_name magic_dns_suffix token_lc support_mode_cfg
+  local temp_create_service_cfg temp_delete_service_cfg
+  local create_path_rc delete_path_rc
   support_enabled=false
   if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
     support_enabled=true
   fi
 
+  read_meta
   target_dns_suffix="$(normalize_dns_value "$(bashio::config "support_tailnet_dns_suffix" "tail37b857.ts.net")")"
   status_json="${SUPPORT_STATUS_JSON:-}"
   if [[ -z "${status_json}" ]]; then
@@ -713,7 +944,22 @@ build_eligibility() {
   SUPPORT_BACKEND="${backend}"
   SUPPORT_REASON=""
   SUPPORT_TAILNET_MATCH="false"
-  SUPPORT_USER="$(bashio::config "support_user" "nodalia")"
+  SUPPORT_USER="$(sanitize_username "$(bashio::config "support_user" "nodalia")")"
+
+  support_mode_cfg="static_user"
+  if temp_mode_enabled; then
+    support_mode_cfg="temp_account"
+  fi
+  SUPPORT_MODE="${support_mode_cfg}"
+  if [[ -n "${META_SUPPORT_MODE:-}" ]]; then
+    SUPPORT_MODE="${META_SUPPORT_MODE}"
+  fi
+  if [[ "${SUPPORT_MODE}" != "temp_account" && "${SUPPORT_MODE}" != "static_user" ]]; then
+    SUPPORT_MODE="${support_mode_cfg}"
+  fi
+  if [[ "${SUPPORT_MODE}" == "temp_account" && -n "${META_SUPPORT_USER:-}" ]]; then
+    SUPPORT_USER="$(sanitize_username "${META_SUPPORT_USER}")"
+  fi
 
   SUPPORT_USER_EXISTS="false"
   SUPPORT_USER_ACTIVE="false"
@@ -754,7 +1000,40 @@ build_eligibility() {
     return
   fi
 
+  if [[ "${SUPPORT_MODE}" == "temp_account" && -z "${META_SUPPORT_USER:-}" ]]; then
+    temp_create_service_cfg="$(trim_spaces "$(bashio::config "support_enable_service" "" 2>/dev/null || true)")"
+    if [[ -z "${temp_create_service_cfg}" ]]; then
+      SUPPORT_REASON="support_temp_create_service_not_configured"
+      return
+    fi
+    create_path_rc=0
+    resolve_service_endpoint "${temp_create_service_cfg}" >/dev/null || create_path_rc=$?
+    if (( create_path_rc == 2 )); then
+      SUPPORT_REASON="support_temp_create_service_invalid"
+      return
+    fi
+    temp_delete_service_cfg="$(resolve_temp_delete_service_cfg 2>/dev/null || true)"
+    if [[ -z "${temp_delete_service_cfg}" ]]; then
+      SUPPORT_REASON="support_temp_delete_service_not_configured"
+      return
+    fi
+    delete_path_rc=0
+    resolve_service_endpoint "${temp_delete_service_cfg}" >/dev/null || delete_path_rc=$?
+    if (( delete_path_rc == 2 )); then
+      SUPPORT_REASON="support_temp_delete_service_invalid"
+      return
+    fi
+    # No temp user exists yet; this state is still eligible for "enable/create".
+    SUPPORT_REASON=""
+    return
+  fi
+
   if ! lookup_support_user; then
+    if [[ "${SUPPORT_MODE}" == "temp_account" && "${USER_LOOKUP_REASON:-}" == "support_user_no_encontrado" ]]; then
+      clear_meta
+      SUPPORT_REASON=""
+      return
+    fi
     SUPPORT_REASON="${USER_LOOKUP_REASON:-support_user_lookup_failed}"
     return
   fi
@@ -781,6 +1060,7 @@ write_state() {
     --arg expires_at "${META_EXPIRES_AT}" \
     --arg support_user "${SUPPORT_USER}" \
     --arg support_user_id "${SUPPORT_USER_ID}" \
+    --arg support_mode "${SUPPORT_MODE:-static_user}" \
     --argjson expires_epoch "${META_EXPIRES_EPOCH}" \
     --argjson ttl_minutes "${META_TTL_MIN}" \
     --argjson support_enabled "$(json_bool "${SUPPORT_ENABLED}")" \
@@ -802,6 +1082,7 @@ write_state() {
       active:$active,
       support_user:$support_user,
       support_user_id:$support_user_id,
+      support_mode:$support_mode,
       support_user_exists:$support_user_exists,
       support_user_active:$support_user_active,
       support_user_active_known:$support_user_active_known,
@@ -821,11 +1102,20 @@ disable_running_access() {
   details=""
   rc=0
 
-  if ! set_support_user_active false; then
-    details="user_disable_error:${USER_OP_REASON}"
-    rc=1
+  if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
+    if ! delete_temp_support_account; then
+      details="temp_user_delete_error:${USER_OP_REASON}"
+      rc=1
+    else
+      details="temp_user_delete_ok:${USER_OP_REASON}"
+    fi
   else
-    details="user_disable_ok:${USER_OP_REASON}"
+    if ! set_support_user_active false; then
+      details="user_disable_error:${USER_OP_REASON}"
+      rc=1
+    else
+      details="user_disable_ok:${USER_OP_REASON}"
+    fi
   fi
 
   if (( rc == 0 )); then
@@ -864,16 +1154,27 @@ status_cmd() {
         active=false
       fi
     else
-      # If support user lookup couldn't run in this cycle (e.g. backend state gate),
-      # preserve the active window until we can verify user state again.
-      active=true
+      if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
+        clear_meta
+        SUPPORT_REASON="support_temp_user_not_found"
+        active=false
+      else
+        # If support user lookup couldn't run in this cycle (e.g. backend state gate),
+        # preserve the active window until we can verify user state again.
+        active=true
+      fi
     fi
   fi
 
   eligible=false
-  if [[ "${SUPPORT_ENABLED}" == "true" && "${SUPPORT_TAILNET_MATCH}" == "true" && "${SUPPORT_BACKEND}" == "Running" ]] && \
-    [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
-    eligible=true
+  if [[ "${SUPPORT_ENABLED}" == "true" && "${SUPPORT_TAILNET_MATCH}" == "true" && "${SUPPORT_BACKEND}" == "Running" ]]; then
+    if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
+      if [[ -z "${SUPPORT_REASON:-}" ]]; then
+        eligible=true
+      fi
+    elif [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
+      eligible=true
+    fi
   fi
 
   write_state "${active}" "${eligible}"
@@ -884,14 +1185,35 @@ enable_cmd() {
   local ttl_minutes details
   build_eligibility
 
-  if [[ "${SUPPORT_ENABLED}" != "true" || "${SUPPORT_TAILNET_MATCH}" != "true" || "${SUPPORT_BACKEND}" != "Running" ]] || \
-    [[ "${SUPPORT_USER_EXISTS}" != "true" || "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
+  if [[ "${SUPPORT_ENABLED}" != "true" || "${SUPPORT_TAILNET_MATCH}" != "true" || "${SUPPORT_BACKEND}" != "Running" ]]; then
     write_state false false
     jq -nc \
       --arg error "support access no permitido en este estado" \
       --arg reason "${SUPPORT_REASON:-support_not_eligible}" \
       '{ok:false,error:$error,reason:$reason}'
     exit 1
+  fi
+  if [[ "${SUPPORT_MODE:-static_user}" != "temp_account" ]]; then
+    if [[ "${SUPPORT_USER_EXISTS}" != "true" || "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
+      write_state false false
+      jq -nc \
+        --arg error "support access no permitido en este estado" \
+        --arg reason "${SUPPORT_REASON:-support_not_eligible}" \
+        '{ok:false,error:$error,reason:$reason}'
+      exit 1
+    fi
+  else
+    if [[ "${SUPPORT_REASON:-}" == "support_temp_create_service_not_configured" || \
+      "${SUPPORT_REASON:-}" == "support_temp_create_service_invalid" || \
+      "${SUPPORT_REASON:-}" == "support_temp_delete_service_not_configured" || \
+      "${SUPPORT_REASON:-}" == "support_temp_delete_service_invalid" ]]; then
+      write_state false false
+      jq -nc \
+        --arg error "servicios de soporte temporal no configurados" \
+        --arg reason "${SUPPORT_REASON}" \
+        '{ok:false,error:$error,reason:$reason}'
+      exit 1
+    fi
   fi
 
   read_meta
@@ -915,7 +1237,8 @@ enable_cmd() {
       --arg support_user_id "${SUPPORT_USER_ID:-}" \
       --arg support_user_login_name "${SUPPORT_USER_LOGIN_NAME:-}" \
       --arg op_path "${USER_OP_PATH:-}" \
-      '{ok:false,error:$error,reason:$reason,lookup_source:$lookup_source,lookup_reason:$lookup_reason,support_user:$support_user,support_user_id:$support_user_id,support_user_login_name:$support_user_login_name,op_path:$op_path}'
+      --arg support_mode "${SUPPORT_MODE:-static_user}" \
+      '{ok:false,error:$error,reason:$reason,lookup_source:$lookup_source,lookup_reason:$lookup_reason,support_user:$support_user,support_user_id:$support_user_id,support_user_login_name:$support_user_login_name,op_path:$op_path,support_mode:$support_mode}'
     exit 1
   fi
 
@@ -923,10 +1246,23 @@ enable_cmd() {
   prepare_meta "${ttl_minutes}"
   write_meta
 
-  details="user_enable_ok:${USER_OP_REASON}"
+  if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
+    details="temp_user_enable_ok:${USER_OP_REASON}:${SUPPORT_USER}"
+  else
+    details="user_enable_ok:${USER_OP_REASON}"
+  fi
   audit_event "enabled" "ok" "${details}"
   write_state true true
-  cat "${STATE_FILE}"
+  if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" && -n "${SUPPORT_TEMP_USERNAME:-}" ]]; then
+    jq -c \
+      --arg support_temp_username "${SUPPORT_TEMP_USERNAME:-}" \
+      --arg support_temp_password "${SUPPORT_TEMP_PASSWORD:-}" \
+      --arg support_mode "${SUPPORT_MODE:-temp_account}" \
+      '. + {support_mode:$support_mode,support_temp_username:$support_temp_username,support_temp_password:$support_temp_password}' \
+      "${STATE_FILE}"
+  else
+    cat "${STATE_FILE}"
+  fi
 }
 
 disable_cmd() {
@@ -944,7 +1280,8 @@ disable_cmd() {
       --arg op_path "${USER_OP_PATH:-}" \
       --arg lookup_source "${USER_LOOKUP_SOURCE:-}" \
       --arg lookup_reason "${USER_LOOKUP_REASON:-}" \
-      '{ok:false,error:$error,reason:$reason,support_user:$support_user,support_user_id:$support_user_id,support_user_login_name:$support_user_login_name,op_path:$op_path,lookup_source:$lookup_source,lookup_reason:$lookup_reason}'
+      --arg support_mode "${SUPPORT_MODE:-static_user}" \
+      '{ok:false,error:$error,reason:$reason,support_user:$support_user,support_user_id:$support_user_id,support_user_login_name:$support_user_login_name,op_path:$op_path,lookup_source:$lookup_source,lookup_reason:$lookup_reason,support_mode:$support_mode}'
     exit 1
   fi
 
@@ -964,6 +1301,7 @@ audit_cmd() {
 debug_cmd() {
   local cfg_enabled cfg_dns cfg_user cfg_password cfg_password_set
   local cfg_enable_service cfg_disable_service
+  local cfg_temp_mode cfg_temp_prefix cfg_temp_password_length
   local status_json self_dns_name self_host_name magic_dns_suffix current_tailnet_name
   local lookup_forced lookup_rc lookup_hint
   local debug_eligible now_epoch debug_active
@@ -978,6 +1316,12 @@ debug_cmd() {
   cfg_password="$(bashio::config "support_user_password" "" 2>/dev/null || true)"
   cfg_enable_service="$(trim_spaces "$(bashio::config "support_enable_service" "" 2>/dev/null || true)")"
   cfg_disable_service="$(trim_spaces "$(bashio::config "support_disable_service" "" 2>/dev/null || true)")"
+  cfg_temp_mode=false
+  if temp_mode_enabled; then
+    cfg_temp_mode=true
+  fi
+  cfg_temp_prefix="$(sanitize_username "$(bashio::config "support_temp_user_prefix" "nodalia_support")")"
+  cfg_temp_password_length="$(sanitize_uint_range "$(bashio::config "support_temp_password_length" "20")" 12 64)"
   cfg_password_set=false
   if [[ -n "${cfg_password}" ]]; then
     cfg_password_set=true
@@ -1001,9 +1345,14 @@ debug_cmd() {
   fi
 
   debug_eligible=false
-  if [[ "${SUPPORT_ENABLED}" == "true" && "${SUPPORT_TAILNET_MATCH}" == "true" && "${SUPPORT_BACKEND}" == "Running" ]] && \
-    [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
-    debug_eligible=true
+  if [[ "${SUPPORT_ENABLED}" == "true" && "${SUPPORT_TAILNET_MATCH}" == "true" && "${SUPPORT_BACKEND}" == "Running" ]]; then
+    if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
+      if [[ -z "${SUPPORT_REASON:-}" ]]; then
+        debug_eligible=true
+      fi
+    elif [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
+      debug_eligible=true
+    fi
   fi
 
   now_epoch="$(date +%s)"
@@ -1026,11 +1375,15 @@ debug_cmd() {
     --arg cfg_user "${cfg_user}" \
     --arg cfg_enable_service "${cfg_enable_service}" \
     --arg cfg_disable_service "${cfg_disable_service}" \
+    --arg cfg_temp_prefix "${cfg_temp_prefix}" \
+    --arg cfg_temp_password_length "${cfg_temp_password_length}" \
     --arg backend_state "${SUPPORT_BACKEND:-Unknown}" \
     --arg support_reason "${SUPPORT_REASON:-}" \
     --arg support_user "${SUPPORT_USER:-}" \
     --arg support_user_id "${SUPPORT_USER_ID:-}" \
     --arg support_user_login_name "${SUPPORT_USER_LOGIN_NAME:-}" \
+    --arg support_mode "${SUPPORT_MODE:-static_user}" \
+    --arg meta_support_mode "${META_SUPPORT_MODE:-}" \
     --arg lookup_rc "${lookup_rc}" \
     --arg lookup_source "${USER_LOOKUP_SOURCE:-}" \
     --arg lookup_reason "${USER_LOOKUP_REASON:-}" \
@@ -1048,6 +1401,7 @@ debug_cmd() {
     --arg api_last_stderr "${API_LAST_STDERR:-}" \
     --argjson cfg_enabled "$(json_bool "${cfg_enabled}")" \
     --argjson cfg_password_set "$(json_bool "${cfg_password_set}")" \
+    --argjson cfg_temp_mode "$(json_bool "${cfg_temp_mode}")" \
     --argjson tailnet_match "$(json_bool "${SUPPORT_TAILNET_MATCH:-false}")" \
     --argjson eligible "$(json_bool "${debug_eligible}")" \
     --argjson active "$(json_bool "${debug_active}")" \
@@ -1068,7 +1422,10 @@ debug_cmd() {
         support_user:$cfg_user,
         support_user_password_set:$cfg_password_set,
         support_enable_service:$cfg_enable_service,
-        support_disable_service:$cfg_disable_service
+        support_disable_service:$cfg_disable_service,
+        support_temp_account_mode:$cfg_temp_mode,
+        support_temp_user_prefix:$cfg_temp_prefix,
+        support_temp_password_length:($cfg_temp_password_length|tonumber? // 20)
       },
       tailscale:{
         backend_state:$backend_state,
@@ -1085,6 +1442,8 @@ debug_cmd() {
         support_user:$support_user,
         support_user_id:$support_user_id,
         support_user_login_name:$support_user_login_name,
+        support_mode:$support_mode,
+        meta_support_mode:$meta_support_mode,
         support_user_exists:$support_user_exists,
         support_user_active:$support_user_active,
         support_user_active_known:$support_user_active_known,
@@ -1114,7 +1473,7 @@ debug_cmd() {
 }
 
 fallback_status_json() {
-  local reason cfg_dns cfg_user cfg_enabled
+  local reason cfg_dns cfg_user cfg_enabled cfg_mode
   reason="${1:-support_status_failed}"
   cfg_dns="$(bashio::config "support_tailnet_dns_suffix" 2>/dev/null || true)"
   if [[ -z "${cfg_dns}" ]]; then
@@ -1124,6 +1483,11 @@ fallback_status_json() {
   if [[ -z "${cfg_user}" ]]; then
     cfg_user="nodalia"
   fi
+  cfg_user="$(sanitize_username "${cfg_user}")"
+  cfg_mode="static_user"
+  if temp_mode_enabled; then
+    cfg_mode="temp_account"
+  fi
   cfg_enabled=false
   if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
     cfg_enabled=true
@@ -1132,6 +1496,7 @@ fallback_status_json() {
     --arg updated_at "$(now_utc)" \
     --arg support_target_dns_suffix "${cfg_dns}" \
     --arg support_user "${cfg_user}" \
+    --arg support_mode "${cfg_mode}" \
     --arg reason "${reason}" \
     --argjson support_enabled "$(json_bool "${cfg_enabled}")" \
     '{
@@ -1144,6 +1509,7 @@ fallback_status_json() {
       eligible:false,
       active:false,
       support_user:$support_user,
+      support_mode:$support_mode,
       support_user_id:"",
       support_user_exists:false,
       support_user_active:false,

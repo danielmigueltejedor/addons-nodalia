@@ -32,6 +32,7 @@ declare webui_http_code
 declare direct_webui_url
 declare support_json
 declare support_enabled
+declare support_mode
 declare support_target_id
 declare support_tailnet_dns_suffix
 declare support_tailnet_match
@@ -54,6 +55,7 @@ declare support_cached_json
 declare support_fallback_dns
 declare support_fallback_user
 declare support_fallback_enabled
+declare support_fallback_mode
 declare support_reason_fallback
 
 declare -i ready_streak=0
@@ -140,8 +142,12 @@ do
     support_fallback_dns="$(bashio::config "support_tailnet_dns_suffix" "tail37b857.ts.net")"
     support_fallback_user="$(bashio::config "support_user" "nodalia")"
     support_fallback_enabled="false"
+    support_fallback_mode="static_user"
     if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
       support_fallback_enabled="true"
+    fi
+    if bashio::config.has_value "support_temp_account_mode" && bashio::config.true "support_temp_account_mode"; then
+      support_fallback_mode="temp_account"
     fi
     support_reason_fallback="support_status_failed_rc_${support_cmd_rc}"
     if (( support_cmd_rc == 0 )); then
@@ -150,11 +156,13 @@ do
     support_json="$(jq -nc \
       --arg support_target_dns_suffix "${support_fallback_dns}" \
       --arg support_user "${support_fallback_user}" \
+      --arg support_mode "${support_fallback_mode}" \
       --arg reason "${support_reason_fallback}" \
       --arg support_enabled "${support_fallback_enabled}" \
-      '{support_enabled:($support_enabled=="true"),support_target_dns_suffix:$support_target_dns_suffix,tailnet_match:false,eligible:false,active:false,reason:$reason,support_user:$support_user}')"
+      '{support_enabled:($support_enabled=="true"),support_mode:$support_mode,support_target_dns_suffix:$support_target_dns_suffix,tailnet_match:false,eligible:false,active:false,reason:$reason,support_user:$support_user}')"
   fi
   support_enabled="$(jq -r '.support_enabled // false' <<< "${support_json}" 2>/dev/null || echo "false")"
+  support_mode="$(jq -r '.support_mode // "static_user"' <<< "${support_json}" 2>/dev/null || echo "static_user")"
   support_target_id="$(jq -r '.support_target_id // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_tailnet_dns_suffix="$(jq -r '.support_target_dns_suffix // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_tailnet_match="$(jq -r '.tailnet_match // false' <<< "${support_json}" 2>/dev/null || echo "false")"
@@ -201,6 +209,7 @@ do
     --argjson webui_ready_streak "${ready_streak}" \
     --argjson uptime_sec "${uptime_sec}" \
     --arg support_enabled "${support_enabled}" \
+    --arg support_mode "${support_mode}" \
     --arg support_target_id "${support_target_id}" \
     --arg support_tailnet_dns_suffix "${support_tailnet_dns_suffix}" \
     --arg support_tailnet_match "${support_tailnet_match}" \
@@ -231,6 +240,7 @@ do
       setup_profile:$setup_profile,
       share_mode:$share_mode,
       support_enabled: ($support_enabled == "true"),
+      support_mode:$support_mode,
       support_target_id:$support_target_id,
       support_tailnet_dns_suffix:$support_tailnet_dns_suffix,
       support_tailnet_match: ($support_tailnet_match == "true"),

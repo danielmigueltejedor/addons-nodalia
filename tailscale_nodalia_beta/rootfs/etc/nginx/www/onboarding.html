@@ -596,6 +596,7 @@
       <p class="small">Disponible solo si el DNS de esta instancia coincide con el DNS de soporte configurado.</p>
       <div class="kv">
         <div>Soporte habilitado:</div><div><code id="sup-enabled">-</code></div>
+        <div>Modo soporte:</div><div><code id="sup-mode">-</code></div>
         <div>DNS objetivo:</div><div><code id="sup-tailnet">-</code></div>
         <div>DNS coincide:</div><div><code id="sup-match">-</code></div>
         <div>Elegible:</div><div><code id="sup-eligible">-</code></div>
@@ -638,7 +639,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta120</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta122</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -666,6 +667,7 @@
     const copyAclWebuiBtn = document.getElementById("copy-acl-webui-btn");
     const copyTagOwnersBtn = document.getElementById("copy-tagowners-btn");
     const supportEnabled = document.getElementById("sup-enabled");
+    const supportMode = document.getElementById("sup-mode");
     const supportTailnet = document.getElementById("sup-tailnet");
     const supportMatch = document.getElementById("sup-match");
     const supportEligible = document.getElementById("sup-eligible");
@@ -979,6 +981,8 @@
 
     function renderSupportFromRuntime(runtime) {
       const enabled = Boolean(runtime?.support_enabled);
+      const mode = String(runtime?.support_mode || "static_user");
+      const modeLabel = mode === "temp_account" ? "temporal" : "estatico";
       const match = Boolean(runtime?.support_tailnet_match ?? runtime?.tailnet_match);
       const eligible = Boolean(runtime?.support_eligible ?? runtime?.eligible);
       const active = Boolean(runtime?.support_active ?? runtime?.active);
@@ -988,6 +992,7 @@
       const targetDns = String(runtime?.support_tailnet_dns_suffix || runtime?.support_target_dns_suffix || "");
       const targetId = String(runtime?.support_target_id || "");
       supportEnabled.textContent = enabled ? "true" : "false";
+      supportMode.textContent = modeLabel;
       supportTailnet.textContent = targetDns || targetId || "-";
       supportMatch.textContent = match ? "true" : "false";
       supportEligible.textContent = eligible ? "true" : "false";
@@ -996,7 +1001,7 @@
       supportExpires.textContent = expiresAt || "-";
       supportReason.textContent = reason || "-";
       supportRules = {
-        enable: enabled && eligible,
+        enable: enabled && eligible && !active,
         disable: active,
         audit: enabled,
         debug: true,
@@ -1067,6 +1072,7 @@
         Array.isArray(data?.ipv4) ? data.ipv4.join(",") : "",
         Array.isArray(data?.ipv6) ? data.ipv6.join(",") : "",
         data?.support_enabled,
+        data?.support_mode,
         data?.support_tailnet_dns_suffix,
         data?.support_tailnet_match,
         data?.support_eligible,
@@ -1180,6 +1186,7 @@
         reason: String(payload?.reason || ""),
         lookup_source: String(payload?.lookup_source || ""),
         lookup_reason: String(payload?.lookup_reason || ""),
+        support_mode: String(payload?.support_mode || runtime?.support_mode || ""),
         support_user: String(payload?.support_user || runtime?.support_user || ""),
         support_user_id: String(payload?.support_user_id || ""),
         support_user_login_name: String(payload?.support_user_login_name || ""),
@@ -1189,6 +1196,24 @@
         runtime_support_active: Boolean(runtime?.support_active),
         payload,
       }, null, 2);
+    }
+
+    function formatTempCredentials(data) {
+      const mode = String(data?.support_mode || "");
+      const username = String(data?.support_temp_username || "");
+      const password = String(data?.support_temp_password || "");
+      if (mode !== "temp_account" || !username || !password) {
+        return "";
+      }
+      const ttlMinutes = Number(data?.ttl_minutes || lastRuntime?.support_ttl_minutes || 30);
+      const expiresAt = String(data?.expires_at || lastRuntime?.support_expires_at || "-");
+      return [
+        "Credenciales temporales de soporte",
+        "Usuario: " + username,
+        "Password: " + password,
+        "TTL(min): " + ttlMinutes,
+        "Expira: " + expiresAt
+      ].join("\n");
     }
 
     async function callSupportApi(action, method = "GET", allowGetFallback = false) {
@@ -1567,17 +1592,38 @@
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("core_user_patch_failed")) {
         suggestions.push("No se pudo cambiar is_active del usuario de soporte. Revisa permisos del add-on y existencia del usuario local.");
       }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("password_rotated_but_user_still_active")) {
-        suggestions.push("Revocación parcial: se cambió password pero el usuario sigue activo. Tu versión de HA no permite desactivar is_active por API con este método.");
-      }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_id_vacio")) {
-        suggestions.push("La API devolvio usuario sin ID. En beta120 se intenta fallback por login_name/password, rutas alternativas de API y servicios opcionales.");
+        suggestions.push("La API devolvio usuario sin ID. En modo estatico, define support_enable_service/support_disable_service para control total.");
       }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_disable_service_not_configured")) {
         suggestions.push("Configura support_disable_service (por ejemplo script.nodalia_support_disable) para forzar revocación en instalaciones sin API de usuarios completa.");
       }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_disable_service_no_effect")) {
         suggestions.push("El servicio de revocación se ejecutó pero no desactivó el usuario. Revisa el script de Home Assistant para que marque nodalia como inactivo.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("auth_user_patch_failed")) {
+        suggestions.push("No existe endpoint Auth válido para cambiar is_active en tu instalación. Define support_disable_service para completar la revocación real.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_create_service_not_configured")) {
+        suggestions.push("Modo temporal activo: configura support_enable_service para crear usuario+password temporal.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_create_service_invalid")) {
+        suggestions.push("support_enable_service debe ir en formato dominio.servicio (por ejemplo script.nodalia_support_enable).");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_delete_service_not_configured")) {
+        suggestions.push("Modo temporal activo: configura support_disable_service (o reutiliza support_enable_service) para eliminar el usuario al revocar/expirar.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_delete_service_invalid")) {
+        suggestions.push("support_disable_service no tiene formato válido dominio.servicio.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_delete_service_no_effect")) {
+        suggestions.push("El servicio de borrado temporal se ejecutó pero el usuario sigue activo. Revisa que realmente desactive o elimine la cuenta.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("ttl_expired_disable_failed")) {
+        suggestions.push("El TTL expiró pero no se pudo revocar acceso. Revisa support_disable_service y vuelve a revocar manualmente.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_user_not_found")) {
+        suggestions.push("El usuario temporal ya no existe; el estado se limpiará y podrás generar uno nuevo al habilitar soporte.");
       }
       if (String(lastRuntime?.support_reason || "").includes("support_status")) {
         suggestions.push("El backend de soporte devolvio fallo interno. Pulsa Recargar y revisa logs del add-on para ver el error exacto.");
@@ -1740,6 +1786,7 @@
         rtUptime.textContent = "n/a";
         rtUpdated.textContent = "n/a";
         supportEnabled.textContent = "n/a";
+        supportMode.textContent = "n/a";
         supportTailnet.textContent = "n/a";
         supportMatch.textContent = "n/a";
         supportEligible.textContent = "n/a";
@@ -1819,8 +1866,17 @@
       setSupportButtonState(true);
       supportMessage.textContent = "Habilitando acceso temporal para soporte...";
       try {
-        await callSupportApi("enable", "POST", true);
-        supportMessage.textContent = "Acceso de soporte habilitado.";
+        const payload = await callSupportApi("enable", "POST", true);
+        const tempCreds = formatTempCredentials(payload);
+        if (tempCreds) {
+          supportMessage.textContent = "Acceso de soporte habilitado con usuario temporal.";
+          supportAuditOutput.hidden = false;
+          supportAuditOutput.textContent = tempCreds;
+        } else {
+          supportMessage.textContent = "Acceso de soporte habilitado.";
+          supportAuditOutput.hidden = true;
+          supportAuditOutput.textContent = "";
+        }
         await refreshRuntime(1500);
       } catch (error) {
         supportMessage.textContent = "No se pudo habilitar el acceso: " + error.message;
@@ -1841,6 +1897,8 @@
       try {
         await callSupportApi("disable", "POST", true);
         supportMessage.textContent = "Acceso de soporte revocado.";
+        supportAuditOutput.hidden = true;
+        supportAuditOutput.textContent = "";
         await refreshRuntime(1500);
       } catch (error) {
         supportMessage.textContent = "No se pudo revocar el acceso: " + error.message;

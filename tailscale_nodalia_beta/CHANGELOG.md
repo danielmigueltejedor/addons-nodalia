@@ -4,6 +4,38 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta122 - 2026-02-17
+### Added
+- Modo de soporte temporal completo (`support_temp_account_mode`):
+  - al habilitar soporte crea usuario+password temporales vía servicio HA.
+  - al revocar soporte o expirar TTL elimina/revoca ese usuario temporal.
+  - nuevas opciones: `support_temp_user_prefix` y `support_temp_password_length`.
+- Runtime:
+  - se expone `support_mode` en `runtime.json` para diagnóstico/UI.
+
+### Fixed
+- Elegibilidad de soporte temporal más estricta:
+  - valida servicios de creación/revocación antes de permitir habilitar.
+  - evita activar soporte temporal cuando no hay camino de revocación.
+  - si `support_disable_service` está vacío, reutiliza `support_enable_service` para `action=delete`.
+- Recuperación ante metadatos stale en modo temporal:
+  - si el usuario temporal guardado ya no existe, limpia meta y permite recrearlo.
+- UI onboarding:
+  - nuevo campo `Modo soporte`.
+  - al habilitar soporte temporal muestra credenciales generadas (usuario/password).
+  - sugerencias nuevas para causas de error específicas del modo temporal.
+  - marcador visual actualizado a `UI build: 3.0.0-beta122`.
+
+## 3.0.0-beta121 - 2026-02-17
+### Fixed
+- Revocación soporte en instalaciones sin `support_user_id`:
+  - se elimina el fallback de rotación de password en `disable` (no revocaba acceso real cuando `is_active` seguía en `true`).
+  - ahora devuelve motivo explícito `support_disable_service_not_configured` cuando falta configurar el servicio de revocación y no hay API de usuario utilizable.
+  - evita resultados confusos tipo `password_rotated_but_user_still_active` como “último recurso”.
+- UI:
+  - nuevas sugerencias para casos `auth_user_patch_failed` y falta de `support_disable_service`.
+- Marcador visual actualizado a `UI build: 3.0.0-beta121`.
+
 ## 3.0.0-beta120 - 2026-02-17
 ### Fixed
 - Fallback por servicios de Home Assistant para soporte:

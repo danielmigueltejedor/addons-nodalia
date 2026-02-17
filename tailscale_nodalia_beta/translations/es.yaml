@@ -156,6 +156,22 @@ configuration:
       Servicio de Home Assistant a ejecutar al revocar soporte (formato `dominio.servicio`).
       Útil cuando tu instalación no permite cambiar `is_active` por API.
       Ejemplo: `script.nodalia_support_disable`.
+  support_temp_account_mode:
+    name: Modo cuenta temporal soporte
+    description: >-
+      Si se activa, al habilitar soporte se crea un usuario temporal con password aleatoria.
+      Al revocar o expirar TTL, ese usuario temporal se elimina.
+      Requiere servicios de Home Assistant para crear y borrar usuario.
+  support_temp_user_prefix:
+    name: Prefijo usuario temporal
+    description: >-
+      Prefijo para el username temporal de soporte (ejemplo `nodalia_support`).
+      El add-on añade un sufijo aleatorio en cada activación.
+  support_temp_password_length:
+    name: Longitud password temporal
+    description: >-
+      Longitud de la password aleatoria del usuario temporal.
+      Rango permitido: 12-64.
   support_target_url:
     name: URL objetivo legacy (apps externas)
     description: >-
