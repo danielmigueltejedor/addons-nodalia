@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta112 - 2026-02-17
+### Fixed
+- Onboarding: corrección de errores genéricos `support_api_failed` al activar/revocar soporte:
+  - el frontend ahora parsea respuestas JSON robustamente aunque vengan con líneas extra (usa fallback a última línea JSON válida).
+  - cuando la llamada falla, muestra `error/reason/output` reales del backend en lugar de un mensaje genérico.
+- Misma mejora de parseo aplicada a `control-api` para diagnósticos más claros en acciones operativas.
+- Marcador visual actualizado a `UI build: 3.0.0-beta112`.
+
 ## 3.0.0-beta111 - 2026-02-17
 ### Fixed
 - Soporte: `support_user_id_vacio` deja de bloquear el flujo cuando el API expone usuario pero no devuelve `id` explícito:

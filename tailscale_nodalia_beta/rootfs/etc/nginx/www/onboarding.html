@@ -637,7 +637,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta111</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta112</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -1126,6 +1126,26 @@
       }
     }
 
+    function parseApiPayload(payload) {
+      const text = String(payload || "");
+      try {
+        return JSON.parse(text);
+      } catch (_) {
+      }
+      const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        try {
+          return JSON.parse(lines[i]);
+        } catch (_) {
+        }
+      }
+      return {
+        ok: false,
+        error: text ? text.slice(0, 600) : "api_payload_parse_failed",
+        raw: text,
+      };
+    }
+
     async function callSupportApi(action, method = "GET", allowGetFallback = false) {
       const request = async (httpMethod) => {
         try {
@@ -1135,12 +1155,7 @@
             headers: { "X-Nodalia-Action": action },
           });
           const payload = await response.text();
-          let data;
-          try {
-            data = JSON.parse(payload);
-          } catch (_) {
-            data = { ok: false, raw: payload };
-          }
+          const data = parseApiPayload(payload);
           return { response, data, error: null };
         } catch (error) {
           return { response: null, data: null, error };
@@ -1168,7 +1183,7 @@
         return first.data;
       }
       throw new Error(
-        String(first.data?.error || first.error?.message || "support_api_failed")
+        String(first.data?.error || first.data?.reason || first.data?.output || first.error?.message || "support_api_failed")
       );
     }
 
@@ -1181,12 +1196,7 @@
             headers: { "X-Nodalia-Action": action },
           });
           const payload = await response.text();
-          let data;
-          try {
-            data = JSON.parse(payload);
-          } catch (_) {
-            data = { ok: false, raw: payload };
-          }
+          const data = parseApiPayload(payload);
           return { response, data, error: null };
         } catch (error) {
           return { response: null, data: null, error };
@@ -1521,7 +1531,7 @@
         suggestions.push("No se pudo cambiar is_active del usuario de soporte. Revisa permisos del add-on y existencia del usuario local.");
       }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_id_vacio")) {
-        suggestions.push("La API devolvio usuario sin ID. En beta111 se intenta fallback por login_name; reinicia el add-on y prueba de nuevo.");
+        suggestions.push("La API devolvio usuario sin ID. En beta112 se intenta fallback por login_name; reinicia el add-on y prueba de nuevo.");
       }
       if (String(lastRuntime?.support_reason || "").includes("support_status")) {
         suggestions.push("El backend de soporte devolvio fallo interno. Pulsa Recargar y revisa logs del add-on para ver el error exacto.");
