@@ -145,14 +145,9 @@ do
     support_fallback_target_url="$(bashio::config "support_target_url" "" 2>/dev/null || true)"
     support_fallback_user="$(bashio::config "support_user" "nodalia")"
     support_fallback_enabled="false"
-    support_fallback_mode="static_user"
+    support_fallback_mode="virtual_keys_token"
     if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
       support_fallback_enabled="true"
-    fi
-    if bashio::config.has_value "support_virtual_keys_mode" && bashio::config.true "support_virtual_keys_mode"; then
-      support_fallback_mode="virtual_keys_token"
-    elif bashio::config.has_value "support_temp_account_mode" && bashio::config.true "support_temp_account_mode"; then
-      support_fallback_mode="temp_account"
     fi
     support_reason_fallback="support_status_failed_rc_${support_cmd_rc}"
     if (( support_cmd_rc == 0 )); then
@@ -168,7 +163,7 @@ do
       '{support_enabled:($support_enabled=="true"),support_mode:$support_mode,support_target_dns_suffix:$support_target_dns_suffix,support_target_url:$support_target_url,tailnet_match:false,eligible:false,active:false,reason:$reason,support_user:$support_user}')"
   fi
   support_enabled="$(jq -r '.support_enabled // false' <<< "${support_json}" 2>/dev/null || echo "false")"
-  support_mode="$(jq -r '.support_mode // "static_user"' <<< "${support_json}" 2>/dev/null || echo "static_user")"
+  support_mode="$(jq -r '.support_mode // "virtual_keys_token"' <<< "${support_json}" 2>/dev/null || echo "virtual_keys_token")"
   support_target_id="$(jq -r '.support_target_id // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_target_url="$(jq -r '.support_target_url // empty' <<< "${support_json}" 2>/dev/null || true)"
   support_tailnet_dns_suffix="$(jq -r '.support_target_dns_suffix // empty' <<< "${support_json}" 2>/dev/null || true)"

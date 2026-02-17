@@ -662,29 +662,29 @@
         <button id="copy-tagowners-btn" type="button" class="ghost">Copiar bloque tagOwners</button>
       </div>
     </section>
-    <section id="support-panel" class="panel advanced-only">
+    <section id="support-panel" class="panel">
       <h2>Acceso soporte Nodalia</h2>
       <p class="small">Disponible solo si el DNS de esta instancia coincide con el DNS de soporte configurado.</p>
       <div class="kv">
         <div>Soporte habilitado:</div><div><code id="sup-enabled">-</code></div>
-        <div>Modo soporte:</div><div><code id="sup-mode">-</code></div>
-        <div>DNS objetivo:</div><div><code id="sup-tailnet">-</code></div>
-        <div>DNS coincide:</div><div><code id="sup-match">-</code></div>
-        <div>Elegible:</div><div><code id="sup-eligible">-</code></div>
-        <div>Acceso activo:</div><div><code id="sup-active">-</code></div>
-        <div>Usuario soporte:</div><div><code id="sup-user">-</code></div>
-        <div>Token soporte:</div><div><code id="sup-token-name">-</code></div>
-        <div>Notificacion Telegram:</div><div><code id="sup-notify-status">-</code></div>
-        <div>Motivo notificacion:</div><div><code id="sup-notify-reason">-</code></div>
-        <div>Expira en:</div><div><code id="sup-expires">-</code></div>
-        <div>Motivo:</div><div><code id="sup-reason">-</code></div>
+        <div class="advanced-only">Modo soporte:</div><div class="advanced-only"><code id="sup-mode">-</code></div>
+        <div class="advanced-only">DNS objetivo:</div><div class="advanced-only"><code id="sup-tailnet">-</code></div>
+        <div class="advanced-only">DNS coincide:</div><div class="advanced-only"><code id="sup-match">-</code></div>
+        <div class="advanced-only">Elegible:</div><div class="advanced-only"><code id="sup-eligible">-</code></div>
+        <div class="advanced-only">Acceso activo:</div><div class="advanced-only"><code id="sup-active">-</code></div>
+        <div class="advanced-only">Usuario soporte:</div><div class="advanced-only"><code id="sup-user">-</code></div>
+        <div class="advanced-only">Token soporte:</div><div class="advanced-only"><code id="sup-token-name">-</code></div>
+        <div class="advanced-only">Notificacion Telegram:</div><div class="advanced-only"><code id="sup-notify-status">-</code></div>
+        <div class="advanced-only">Motivo notificacion:</div><div class="advanced-only"><code id="sup-notify-reason">-</code></div>
+        <div class="advanced-only">Expira en:</div><div class="advanced-only"><code id="sup-expires">-</code></div>
+        <div class="advanced-only">Motivo:</div><div class="advanced-only"><code id="sup-reason">-</code></div>
       </div>
       <div class="actions" style="margin-top:10px;">
         <button id="sup-enable-btn" type="button" class="ghost">Habilitar acceso soporte</button>
         <button id="sup-disable-btn" type="button" class="ghost">Revocar ahora</button>
-        <button id="sup-notify-test-btn" type="button" class="ghost">Probar Telegram</button>
-        <button id="sup-audit-btn" type="button" class="ghost debug-only">Ver auditoria</button>
-        <button id="sup-debug-btn" type="button" class="ghost debug-only">Debug soporte</button>
+        <button id="sup-audit-btn" type="button" class="ghost">Ver auditoria</button>
+        <button id="sup-notify-test-btn" type="button" class="ghost advanced-only">Probar Telegram</button>
+        <button id="sup-debug-btn" type="button" class="ghost advanced-only debug-only">Debug soporte</button>
       </div>
       <p id="sup-message" class="small"></p>
       <div id="sup-audit-output" class="mono" hidden></div>
@@ -714,7 +714,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-beta137</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-beta139</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -1017,11 +1017,6 @@
     }
 
     function openSupportMode() {
-      if (!advancedModeEnabled) {
-        advancedModeEnabled = true;
-        renderAdvancedMode();
-        saveUiPrefs();
-      }
       if (supportPanel) {
         supportPanel.classList.remove("panel-focus");
         supportPanel.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1084,8 +1079,8 @@
 
     function renderSupportFromRuntime(runtime) {
       const enabled = Boolean(runtime?.support_enabled);
-      const mode = String(runtime?.support_mode || "static_user");
-      const modeLabel = mode === "temp_account" ? "temporal" : (mode === "virtual_keys_token" ? "token (virtual-keys)" : "estatico");
+      const mode = String(runtime?.support_mode || "virtual_keys_token");
+      const modeLabel = mode === "virtual_keys_token" ? "token (virtual-keys)" : mode;
       const match = Boolean(runtime?.support_tailnet_match ?? runtime?.tailnet_match);
       const eligible = Boolean(runtime?.support_eligible ?? runtime?.eligible);
       const active = Boolean(runtime?.support_active ?? runtime?.active);
@@ -1316,22 +1311,6 @@
 
     function formatSupportActivationInfo(data) {
       const mode = String(data?.support_mode || "");
-      if (mode === "temp_account") {
-        const username = String(data?.support_temp_username || "");
-        const password = String(data?.support_temp_password || "");
-        if (!username || !password) {
-          return "";
-        }
-        const ttlMinutes = Number(data?.ttl_minutes || lastRuntime?.support_ttl_minutes || 30);
-        const expiresAt = String(data?.expires_at || lastRuntime?.support_expires_at || "-");
-        return [
-          "Credenciales temporales de soporte",
-          "Usuario: " + username,
-          "Password: " + password,
-          "TTL(min): " + ttlMinutes,
-          "Expira: " + expiresAt
-        ].join("\n");
-      }
       if (mode === "virtual_keys_token") {
         const tokenName = String(data?.support_virtual_keys_token_name || "");
         const loginPath = String(data?.support_virtual_keys_login_path || "");
@@ -1743,37 +1722,10 @@
         suggestions.push("No se pudo cambiar is_active del usuario de soporte. Revisa permisos del aplicación y existencia del usuario local.");
       }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_id_vacio")) {
-        suggestions.push("La API devolvio usuario sin ID. En modo estatico, define support_enable_service/support_disable_service para control total.");
-      }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_disable_service_not_configured")) {
-        suggestions.push("Configura support_disable_service (por ejemplo script.nodalia_support_disable) para forzar revocación en instalaciones sin API de usuarios completa.");
-      }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_disable_service_no_effect")) {
-        suggestions.push("El servicio de revocación se ejecutó pero no desactivó el usuario. Revisa el script de Home Assistant para que marque nodalia como inactivo.");
-      }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("auth_user_patch_failed")) {
-        suggestions.push("No existe endpoint Auth válido para cambiar is_active en tu instalación. Define support_disable_service para completar la revocación real.");
-      }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_create_service_not_configured")) {
-        suggestions.push("Modo temporal activo: configura support_enable_service para crear usuario+password temporal.");
-      }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_create_service_invalid")) {
-        suggestions.push("support_enable_service debe ir en formato dominio.servicio (por ejemplo script.nodalia_support_enable).");
-      }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_delete_service_not_configured")) {
-        suggestions.push("Modo temporal activo: configura support_disable_service (o reutiliza support_enable_service) para eliminar el usuario al revocar/expirar.");
-      }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_delete_service_invalid")) {
-        suggestions.push("support_disable_service no tiene formato válido dominio.servicio.");
-      }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_delete_service_no_effect")) {
-        suggestions.push("El servicio de borrado temporal se ejecutó pero el usuario sigue activo. Revisa que realmente desactive o elimine la cuenta.");
+        suggestions.push("La API devolvio usuario sin ID; en modo virtual-keys esta limitación no debería bloquear el soporte si la integración responde.");
       }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("ttl_expired_disable_failed")) {
-        suggestions.push("El TTL expiró pero no se pudo revocar acceso. Revisa support_disable_service y vuelve a revocar manualmente.");
-      }
-      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_user_not_found")) {
-        suggestions.push("El usuario temporal ya no existe; el estado se limpiará y podrás generar uno nuevo al habilitar soporte.");
+        suggestions.push("El TTL expiró pero no se pudo revocar el token de soporte. Pulsa revocar y revisa Debug soporte.");
       }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_virtual_keys_status_failed")) {
         suggestions.push("Fallo al consultar virtual-keys por WebSocket. Revisa que la integración esté instalada y activa.");

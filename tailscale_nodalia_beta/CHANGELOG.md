@@ -4,6 +4,36 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta139 - 2026-02-17
+### Changed
+- Onboarding soporte:
+  - el panel `Acceso soporte Nodalia` deja de depender del modo avanzado y ahora siempre es visible.
+  - en modo básico muestra formato reducido con:
+    - `Soporte habilitado`
+    - botones `Habilitar acceso soporte`, `Revocar ahora` y `Ver auditoria`.
+  - los detalles técnicos y acciones extra (`Probar Telegram`, `Debug soporte`) quedan en `advanced-only`.
+- El botón de soporte del header ya no fuerza activar `Modo avanzado`.
+- Marcador visual actualizado a `UI build: 3.0.0-beta139`.
+
+## 3.0.0-beta138 - 2026-02-17
+### Changed
+- Preparación para release estable del soporte:
+  - se eliminan de configuración las opciones legacy no usadas:
+    - `support_tailnet_id`
+    - `support_user_password`
+    - `support_enable_service`
+    - `support_disable_service`
+    - `support_temp_account_mode`
+    - `support_temp_user_prefix`
+    - `support_temp_password_length`
+    - `support_virtual_keys_mode`
+  - el flujo de soporte queda fijado a un único modo soportado: `virtual_keys_token`.
+- Limpieza de UI/runtime/docs para reflejar el modo único:
+  - `runtime-status` usa `virtual_keys_token` como fallback de modo.
+  - onboarding elimina sugerencias de configuración de modos/servicios legacy.
+  - traducciones y README alineados con soporte solo vía `virtual-keys`.
+- Marcador visual actualizado a `UI build: 3.0.0-beta138`.
+
 ## 3.0.0-beta137 - 2026-02-17
 ### Changed
 - `support debug` ahora expone también el token completo configurado:

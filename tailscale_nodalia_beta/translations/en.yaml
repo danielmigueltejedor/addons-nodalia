@@ -140,47 +140,8 @@ configuration:
   support_user:
     name: Support local user
     description: >-
-      Home Assistant local username enabled/revoked for support access (for example `Nodalia`).
+      Home Assistant local username used by virtual-keys support tokens (for example `nodalia`).
       It should be a dedicated support user and not an owner account.
-  support_user_password:
-    name: Support password (fallback)
-    description: >-
-      Preferred password used when enabling support and API activation by user ID is unavailable.
-      If left empty, the aplicación derives a fallback from the username.
-  support_enable_service:
-    name: HA service to enable support (optional)
-    description: >-
-      Home Assistant service to call when enabling support (format `domain.service`).
-      Useful when your installation cannot toggle `is_active` via API.
-      Example: `script.nodalia_support_enable`.
-  support_disable_service:
-    name: HA service to disable support (optional)
-    description: >-
-      Home Assistant service to call when disabling support (format `domain.service`).
-      Useful when your installation cannot toggle `is_active` via API.
-      Example: `script.nodalia_support_disable`.
-  support_temp_account_mode:
-    name: Temporary support account mode
-    description: >-
-      When enabled, support activation creates a temporary user with a random password.
-      On revoke or TTL expiry, that temporary user is deleted.
-      Requires Home Assistant services to create and delete users.
-  support_temp_user_prefix:
-    name: Temporary user prefix
-    description: >-
-      Prefix used for temporary support usernames (example `nodalia_support`).
-      The aplicación appends a random suffix on each activation.
-  support_temp_password_length:
-    name: Temporary password length
-    description: >-
-      Length of the random password generated for the temporary user.
-      Allowed range: 12-64.
-  support_virtual_keys_mode:
-    name: Virtual-keys token mode
-    description: >-
-      Uses the virtual-keys integration to create/revoke temporary support tokens
-      instead of toggling support user activation state.
-      Requires virtual-keys integration to be installed and running.
   support_virtual_keys_token_prefix:
     name: Virtual-keys token prefix
     description: >-

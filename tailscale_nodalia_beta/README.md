@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta137`
+`3.0.0-beta139`
 
 Cambios destacados (resumen de betas recientes):
 - Flujo de Web UI por ingress estabilizado:
@@ -30,9 +30,7 @@ Cambios destacados (resumen de betas recientes):
 - Soporte Nodalia orientado a acceso local:
   - el botón de soporte deja de depender de túnel Cloudflare y controla directamente un usuario local de Home Assistant.
   - lookup de usuario endurecido (primero `core/api/config/users`, fallback `auth/list`) para evitar falsos `ha_users_api_error`.
-  - modo estático: activación/revocación prioriza `is_active` por API de Home Assistant y servicios opcionales.
-  - modo temporal (nuevo): al habilitar soporte crea usuario+password temporales; al revocar o expirar TTL elimina ese usuario.
-  - modo token (`virtual-keys`, opcional): genera/revoca token temporal del usuario de soporte y devuelve login URL temporal.
+  - modo soporte único: `virtual-keys` (crea/revoca token temporal y devuelve login URL temporal).
   - nueva ventana temporal con TTL, auditoría y elegibilidad por DNS de tailnet (`support_tailnet_dns_suffix`).
   - el usuario de soporte se define en `support_user` (por defecto `nodalia`).
   - nuevo endpoint y botón `Debug soporte` para capturar causa técnica real (`reason`, `lookup_source`, `lookup_reason`, usuario/ID/login y último error API) y facilitar soporte.
@@ -368,108 +366,10 @@ La elegibilidad del acceso se valida con este valor.
 
 Usuario local de soporte (por defecto: `nodalia`).
 
-Se usa en modo estático (`support_temp_account_mode: false`).
+Se usa como usuario base para crear/revocar tokens temporales en `virtual-keys`.
 
 Recomendación: que sea un usuario local dedicado de soporte (no owner).
 Para crearlo: `Ajustes -> Personas -> Usuarios -> Añadir usuario`.
-
----
-
-### `support_user_password`
-
-Password preferida para habilitar el usuario de soporte cuando la API no permite activar por `id`.
-
-Aplica al modo estático.
-
-- Si está vacía (por defecto), el aplicación usa fallback con el nombre de usuario (`support_user`).
-- Si la defines, se usa ese valor para el flujo de habilitación.
-
----
-
-### `support_enable_service`
-
-Servicio opcional de Home Assistant a ejecutar al habilitar soporte (formato `dominio.servicio`).
-
-Útil si tu instalación no permite cambiar `is_active` por API (`support_user_id_vacio`).
-
-En modo temporal, este servicio debe crear el usuario temporal y establecer su password.
-El aplicación enviará payload con:
-- `action: "create"`
-- `support_mode: "temp_account"`
-- `support_user` (username temporal generado)
-- `support_password` (password temporal generada)
-- `ttl_minutes`
-
-Ejemplos:
-- `script.nodalia_support_enable`
-- `python_script.nodalia_support_enable`
-
----
-
-### `support_disable_service`
-
-Servicio opcional de Home Assistant a ejecutar al revocar soporte (formato `dominio.servicio`).
-
-Útil si tu instalación no permite revocar `is_active` por API.
-
-En modo temporal, este servicio debe desactivar/eliminar el usuario temporal.
-El aplicación enviará payload con:
-- `action: "delete"`
-- `support_mode: "temp_account"`
-- `support_user` (username temporal activo)
-
-Ejemplos:
-- `script.nodalia_support_disable`
-- `python_script.nodalia_support_disable`
-
-El aplicación verifica después del servicio si el usuario realmente quedó inactivo.
-
-Si este valor está vacío y tu HA no expone APIs de usuario con `id`, la revocación devolverá:
-`support_disable_service_not_configured`.
-
----
-
-### `support_temp_account_mode`
-
-Activa modo de cuenta temporal para soporte.
-
-- `false` (por defecto): modo estático (usa `support_user`).
-- `true`: crea usuario+password temporales al habilitar, y elimina al revocar o por TTL.
-
-Requisitos:
-- `support_enable_service` configurado.
-- `support_disable_service` configurado (si está vacío, se reutiliza `support_enable_service` para `action=delete`).
-
----
-
-### `support_temp_user_prefix`
-
-Prefijo para el usuario temporal generado.
-
-Por defecto: `nodalia_support`.
-El username final será `prefijo_<sufijo_aleatorio>`.
-
----
-
-### `support_temp_password_length`
-
-Longitud de la password temporal aleatoria.
-
-Rango permitido: `12` a `64`.
-Por defecto: `20`.
-
----
-
-### `support_virtual_keys_mode`
-
-Activa modo de token temporal vía integración `virtual-keys`.
-
-- `false` (por defecto): no usa virtual-keys.
-- `true`: al habilitar soporte crea token temporal; al revocar o expirar TTL lo elimina.
-
-Notas:
-- Requiere tener instalada la integración `virtual-keys` en Home Assistant.
-- Este modo tiene prioridad sobre `support_temp_account_mode`.
 
 ---
 
