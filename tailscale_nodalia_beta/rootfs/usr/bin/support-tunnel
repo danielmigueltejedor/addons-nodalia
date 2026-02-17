@@ -160,6 +160,151 @@ telegram_http_reason() {
   printf '%s' "${reason}"
 }
 
+normalize_telegram_chat_target() {
+  local value
+  value="$(trim_spaces "${1:-}")"
+  if [[ -z "${value}" ]]; then
+    printf ''
+    return 0
+  fi
+  value="${value#https://t.me/}"
+  value="${value#http://t.me/}"
+  value="${value#t.me/}"
+  value="${value%%/*}"
+  value="$(trim_spaces "${value}")"
+  if [[ -z "${value}" ]]; then
+    printf ''
+    return 0
+  fi
+  if [[ "${value}" =~ ^-?[0-9]+$ ]]; then
+    printf '%s' "${value}"
+    return 0
+  fi
+  value="${value#@}"
+  value="$(printf '%s' "${value}" | tr -cd 'A-Za-z0-9_')"
+  if [[ -z "${value}" ]]; then
+    printf ''
+    return 0
+  fi
+  printf '@%s' "${value}"
+}
+
+telegram_send_message_once() {
+  local bot_token chat_id message response_with_status response_body http_status rc
+  bot_token="${1:-}"
+  chat_id="${2:-}"
+  message="${3:-}"
+
+  TELEGRAM_LAST_REASON=""
+  TELEGRAM_LAST_HTTP_STATUS=""
+  TELEGRAM_LAST_RESPONSE_BODY=""
+  TELEGRAM_LAST_CHAT_ID="${chat_id}"
+
+  set +e
+  response_with_status="$(curl -sS --connect-timeout 5 --max-time 15 \
+    --data-urlencode "chat_id=${chat_id}" \
+    --data-urlencode "text=${message}" \
+    --data-urlencode "disable_web_page_preview=true" \
+    -w '\n%{http_code}' \
+    "https://api.telegram.org/bot${bot_token}/sendMessage" 2>&1)"
+  rc=$?
+  set -e
+
+  if (( rc != 0 )); then
+    TELEGRAM_LAST_REASON="support_notify_telegram_request_failed"
+    return 1
+  fi
+
+  http_status="${response_with_status##*$'\n'}"
+  response_body="${response_with_status%$'\n'*}"
+  TELEGRAM_LAST_HTTP_STATUS="${http_status}"
+  TELEGRAM_LAST_RESPONSE_BODY="${response_body}"
+  if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
+    TELEGRAM_LAST_REASON="$(telegram_http_reason "${http_status}" "${response_body}")"
+    return 1
+  fi
+  if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response_body}"; then
+    TELEGRAM_LAST_REASON="support_notify_telegram_api_failed"
+    return 1
+  fi
+
+  return 0
+}
+
+telegram_discover_chat_id_from_updates() {
+  local bot_token hint hint_lc response_with_status response_body http_status rc candidate
+  bot_token="${1:-}"
+  hint="$(trim_spaces "${2:-}")"
+  hint="${hint#https://t.me/}"
+  hint="${hint#http://t.me/}"
+  hint="${hint#t.me/}"
+  hint="${hint#@}"
+  hint="${hint%%/*}"
+  hint_lc="$(normalize_lc "${hint}")"
+
+  set +e
+  response_with_status="$(curl -sS --connect-timeout 5 --max-time 15 \
+    -w '\n%{http_code}' \
+    "https://api.telegram.org/bot${bot_token}/getUpdates?limit=100" 2>&1)"
+  rc=$?
+  set -e
+
+  if (( rc != 0 )); then
+    return 1
+  fi
+
+  http_status="${response_with_status##*$'\n'}"
+  response_body="${response_with_status%$'\n'*}"
+  if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
+    return 1
+  fi
+  if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response_body}"; then
+    return 1
+  fi
+
+  if [[ -n "${hint_lc}" && ! "${hint_lc}" =~ ^-?[0-9]+$ ]]; then
+    candidate="$(jq -r --arg hint "${hint_lc}" '
+      [
+        .result[]? |
+        (.message.chat?, .edited_message.chat?, .channel_post.chat?, .edited_channel_post.chat?) |
+        select(type=="object" and ((.username // "") | ascii_downcase) == $hint)
+      ] | last | .id // empty
+    ' <<< "${response_body}" 2>/dev/null || true)"
+    if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  fi
+
+  if [[ "${hint_lc}" =~ ^-?[0-9]+$ ]]; then
+    candidate="$(jq -r --arg hint "${hint_lc}" '
+      [
+        .result[]? |
+        (.message.chat?, .edited_message.chat?, .channel_post.chat?, .edited_channel_post.chat?) |
+        select(type=="object" and ((.id|tostring) == $hint))
+      ] | last | .id // empty
+    ' <<< "${response_body}" 2>/dev/null || true)"
+    if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  fi
+
+  candidate="$(jq -r '
+    [
+      .result[]? |
+      (.message.chat?, .edited_message.chat?, .channel_post.chat?, .edited_channel_post.chat?) |
+      select(type=="object") |
+      .id
+    ] | last // empty
+  ' <<< "${response_body}" 2>/dev/null || true)"
+  if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+    printf '%s' "${candidate}"
+    return 0
+  fi
+  return 1
+}
+
 telegram_notify_enabled() {
   if bashio::config.has_value "support_notify_telegram_enabled" && bashio::config.true "support_notify_telegram_enabled"; then
     return 0
@@ -168,8 +313,7 @@ telegram_notify_enabled() {
 }
 
 send_support_notification_telegram() {
-  local bot_token chat_id login_url host_label ttl_minutes token_name message
-  local response_with_status response_body http_status rc
+  local bot_token chat_id_cfg chat_id login_url host_label ttl_minutes token_name message resolved_chat_id
   SUPPORT_NOTIFY_STATUS="disabled"
   SUPPORT_NOTIFY_REASON=""
 
@@ -181,7 +325,8 @@ send_support_notification_telegram() {
   SUPPORT_NOTIFY_STATUS="pending"
 
   bot_token="$(trim_spaces "$(bashio::config "support_notify_telegram_bot_token" "" 2>/dev/null || true)")"
-  chat_id="$(trim_spaces "$(bashio::config "support_notify_telegram_chat_id" "" 2>/dev/null || true)")"
+  chat_id_cfg="$(trim_spaces "$(bashio::config "support_notify_telegram_chat_id" "" 2>/dev/null || true)")"
+  chat_id="$(normalize_telegram_chat_target "${chat_id_cfg}")"
   if [[ -z "${bot_token}" || -z "${chat_id}" ]]; then
     SUPPORT_NOTIFY_STATUS="error"
     SUPPORT_NOTIFY_REASON="support_notify_telegram_config_incomplete"
@@ -221,32 +366,20 @@ Login URL: ${login_url}
 EOF
   )
 
-  set +e
-  response_with_status="$(curl -sS --connect-timeout 5 --max-time 15 \
-    --data-urlencode "chat_id=${chat_id}" \
-    --data-urlencode "text=${message}" \
-    -w '\n%{http_code}' \
-    "https://api.telegram.org/bot${bot_token}/sendMessage" 2>&1)"
-  rc=$?
-  set -e
-
-  if (( rc != 0 )); then
+  if ! telegram_send_message_once "${bot_token}" "${chat_id}" "${message}"; then
+    if [[ "${TELEGRAM_LAST_REASON:-}" == "support_notify_telegram_chat_not_found" ]]; then
+      resolved_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
+      if [[ -n "${resolved_chat_id}" && "${resolved_chat_id}" != "${chat_id}" ]]; then
+        if telegram_send_message_once "${bot_token}" "${resolved_chat_id}" "${message}"; then
+          SUPPORT_NOTIFY_STATUS="sent"
+          SUPPORT_NOTIFY_REASON=""
+          write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+          return 0
+        fi
+      fi
+    fi
     SUPPORT_NOTIFY_STATUS="error"
-    SUPPORT_NOTIFY_REASON="support_notify_telegram_request_failed"
-    write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
-    return 1
-  fi
-  http_status="${response_with_status##*$'\n'}"
-  response_body="${response_with_status%$'\n'*}"
-  if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
-    SUPPORT_NOTIFY_STATUS="error"
-    SUPPORT_NOTIFY_REASON="$(telegram_http_reason "${http_status}" "${response_body}")"
-    write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
-    return 1
-  fi
-  if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response_body}"; then
-    SUPPORT_NOTIFY_STATUS="error"
-    SUPPORT_NOTIFY_REASON="support_notify_telegram_api_failed"
+    SUPPORT_NOTIFY_REASON="${TELEGRAM_LAST_REASON:-support_notify_telegram_api_failed}"
     write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
     return 1
   fi
@@ -1886,6 +2019,43 @@ disable_cmd() {
   cat "${STATE_FILE}"
 }
 
+notify_test_cmd() {
+  local test_token_name login_base
+  build_eligibility
+
+  test_token_name="nodalia_support_notify_test_$(date +%s)"
+  SUPPORT_VK_TOKEN_NAME="${test_token_name}"
+  login_base="$(normalize_base_url "${SUPPORT_TARGET_URL:-}")"
+  if [[ -n "${login_base}" ]]; then
+    SUPPORT_VK_LOGIN_URL="${login_base}"
+  else
+    SUPPORT_VK_LOGIN_URL=""
+  fi
+
+  if send_support_notification_telegram; then
+    audit_event "notify_test" "ok" "status=${SUPPORT_NOTIFY_STATUS:-sent}"
+    jq -nc \
+      --arg action "notifytest" \
+      --arg status "${SUPPORT_NOTIFY_STATUS:-sent}" \
+      --arg reason "${SUPPORT_NOTIFY_REASON:-}" \
+      --arg token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
+      --arg login_url "${SUPPORT_VK_LOGIN_URL:-}" \
+      '{ok:true,action:$action,status:$status,reason:$reason,token_name:$token_name,login_url:$login_url}'
+    return 0
+  fi
+
+  audit_event "notify_test" "${SUPPORT_NOTIFY_REASON:-support_notify_failed}" "status=${SUPPORT_NOTIFY_STATUS:-error}"
+  jq -nc \
+    --arg action "notifytest" \
+    --arg status "${SUPPORT_NOTIFY_STATUS:-error}" \
+    --arg reason "${SUPPORT_NOTIFY_REASON:-support_notify_failed}" \
+    --arg error "telegram_notify_failed" \
+    --arg token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
+    --arg login_url "${SUPPORT_VK_LOGIN_URL:-}" \
+    '{ok:false,action:$action,status:$status,reason:$reason,error:$error,token_name:$token_name,login_url:$login_url}'
+  return 1
+}
+
 audit_cmd() {
   if [[ -f "${AUDIT_FILE}" ]]; then
     tail -n 100 "${AUDIT_FILE}"
@@ -2207,6 +2377,9 @@ case "${1:-status}" in
   disable)
     disable_cmd
     ;;
+  notifytest|notify-test)
+    notify_test_cmd
+    ;;
   audit)
     audit_cmd
     ;;
@@ -2220,7 +2393,7 @@ case "${1:-status}" in
     fi
     ;;
   *)
-    echo "Usage: support-tunnel [status|enable|disable|audit|debug]" >&2
+    echo "Usage: support-tunnel [status|enable|disable|notifytest|audit|debug]" >&2
     exit 2
     ;;
 esac

@@ -369,6 +369,9 @@
     .advanced-hidden .advanced-only {
       display: none;
     }
+    .final-release .debug-only {
+      display: none !important;
+    }
     .panel {
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -598,15 +601,15 @@
       </label>
       <p id="redirect-state" class="small"></p>
       <p id="op-message" class="small" aria-live="polite"></p>
-      <div id="op-output" class="mono" hidden></div>
+      <div id="op-output" class="mono debug-only" hidden></div>
     </div>
     <section class="panel">
       <h2>Salud y diagnostico</h2>
       <div class="score-row">
         <span id="health-score-pill" class="score-pill">&#10084; --</span>
-        <button id="run-health-btn" type="button" class="ghost">Test</button>
-        <button id="run-dns-btn" type="button" class="ghost">Test DNS tailnet</button>
-        <button id="download-report-btn" type="button" class="ghost">Descargar diagnostico JSON</button>
+        <button id="run-health-btn" type="button" class="ghost debug-only">Test</button>
+        <button id="run-dns-btn" type="button" class="ghost debug-only">Test DNS tailnet</button>
+        <button id="download-report-btn" type="button" class="ghost debug-only">Descargar diagnostico JSON</button>
       </div>
       <ul id="health-checks" class="diag-list"></ul>
     </section>
@@ -630,11 +633,11 @@
         <div class="advanced-only">Uptime(s):</div><div class="advanced-only"><code id="rt-uptime">-</code></div>
         <div class="advanced-only">Actualizado:</div><div class="advanced-only"><code id="rt-updated">-</code></div>
       </div>
-      <div class="actions advanced-only" style="margin-top:10px;">
+      <div class="actions advanced-only debug-only" style="margin-top:10px;">
         <button id="diag-btn" type="button" class="ghost">Ejecutar diagnóstico</button>
         <button id="copy-report-btn" type="button" class="ghost">Copiar reporte</button>
       </div>
-      <ul id="diag-list" class="diag-list advanced-only"></ul>
+      <ul id="diag-list" class="diag-list advanced-only debug-only"></ul>
     </section>
     <section class="panel advanced-only">
       <h2>Sugerencias inteligentes</h2>
@@ -664,8 +667,9 @@
       <div class="actions" style="margin-top:10px;">
         <button id="sup-enable-btn" type="button" class="ghost">Habilitar acceso soporte</button>
         <button id="sup-disable-btn" type="button" class="ghost">Revocar ahora</button>
-        <button id="sup-audit-btn" type="button" class="ghost">Ver auditoria</button>
-        <button id="sup-debug-btn" type="button" class="ghost">Debug soporte</button>
+        <button id="sup-notify-test-btn" type="button" class="ghost">Probar Telegram</button>
+        <button id="sup-audit-btn" type="button" class="ghost debug-only">Ver auditoria</button>
+        <button id="sup-debug-btn" type="button" class="ghost debug-only">Debug soporte</button>
       </div>
       <p id="sup-message" class="small"></p>
       <div id="sup-audit-output" class="mono" hidden></div>
@@ -687,7 +691,7 @@
         </article>
       </div>
     </section>
-    <section class="panel advanced-only">
+    <section class="panel advanced-only debug-only">
       <h2>Control de sesion</h2>
       <p class="small">Si ves "Viewing" en Web UI, usa acceso directo tailnet y revisa ACL/tagOwners. Todo el control de esta pagina se realiza con botones.</p>
       <div class="actions">
@@ -695,7 +699,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta127</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-beta130</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -710,6 +714,9 @@
     const hardRefreshBtn = document.getElementById("hard-refresh-btn");
     const toggleAdvancedBtn = document.getElementById("toggle-advanced-btn");
     const themeToggleBtn = document.getElementById("theme-toggle-btn");
+    const uiBuildVersionEl = document.getElementById("ui-build-version");
+    const UI_BUILD_VERSION = String(uiBuildVersionEl?.textContent || "");
+    const UI_IS_BETA = /beta/i.test(UI_BUILD_VERSION);
     const supportNavBtn = document.getElementById("support-nav-btn");
     const supportPanel = document.getElementById("support-panel");
     const logoutHint = document.getElementById("logout-hint");
@@ -739,6 +746,7 @@
     const supportMessage = document.getElementById("sup-message");
     const supportEnableBtn = document.getElementById("sup-enable-btn");
     const supportDisableBtn = document.getElementById("sup-disable-btn");
+    const supportNotifyTestBtn = document.getElementById("sup-notify-test-btn");
     const supportAuditBtn = document.getElementById("sup-audit-btn");
     const supportDebugBtn = document.getElementById("sup-debug-btn");
     const supportAuditOutput = document.getElementById("sup-audit-output");
@@ -788,7 +796,7 @@
     let redirectDeadlineMs = 0;
     let actionInFlight = 0;
     let supportBusy = false;
-    let supportRules = { enable: false, disable: false, audit: false, debug: true };
+    let supportRules = { enable: false, disable: false, notify_test: true, audit: false, debug: true };
     let opBusy = false;
     let opCanLogout = false;
     let logoutConfirmUntilMs = 0;
@@ -989,6 +997,10 @@
       syncLogoutTraceVisibility();
     }
 
+    function applyReleaseUiMode() {
+      document.body.classList.toggle("final-release", !UI_IS_BETA);
+    }
+
     function openSupportMode() {
       if (!advancedModeEnabled) {
         advancedModeEnabled = true;
@@ -1038,6 +1050,7 @@
     function renderSupportButtons() {
       setUiDisabled(supportEnableBtn, supportBusy || !supportRules.enable);
       setUiDisabled(supportDisableBtn, supportBusy || !supportRules.disable);
+      setUiDisabled(supportNotifyTestBtn, supportBusy || !supportRules.notify_test);
       setUiDisabled(supportAuditBtn, supportBusy || !supportRules.audit);
       setUiDisabled(supportDebugBtn, supportBusy || !supportRules.debug);
     }
@@ -1088,6 +1101,7 @@
       supportRules = {
         enable: enabled && eligible && !active,
         disable: active,
+        notify_test: true,
         audit: enabled,
         debug: true,
       };
@@ -1969,7 +1983,7 @@
         supportNotifyReason.textContent = "n/a";
         supportExpires.textContent = "n/a";
         supportReason.textContent = "runtime unavailable";
-        supportRules = { enable: false, disable: false, audit: false, debug: true };
+        supportRules = { enable: false, disable: false, notify_test: false, audit: false, debug: true };
         if (supportNavBtn) {
           supportNavBtn.classList.remove("support-on", "support-active");
         }
@@ -2085,6 +2099,32 @@
         supportMessage.textContent = "No se pudo revocar el acceso: " + error.message;
         supportAuditOutput.hidden = false;
         supportAuditOutput.textContent = formatSupportDebug("disable", error);
+      } finally {
+        setSupportButtonState(false);
+        endUiAction();
+      }
+    });
+    supportNotifyTestBtn.addEventListener("click", async () => {
+      if (isUiDisabled(supportNotifyTestBtn)) {
+        return;
+      }
+      beginUiAction();
+      setSupportButtonState(true);
+      supportMessage.textContent = "Enviando prueba de Telegram...";
+      try {
+        const payload = await callSupportApi("notify-test", "POST", true);
+        const status = String(payload?.status || payload?.support_notify_status || "");
+        const reason = String(payload?.reason || payload?.support_notify_reason || "");
+        if (payload?.ok) {
+          supportMessage.textContent = "Prueba Telegram enviada correctamente.";
+        } else {
+          supportMessage.textContent = "Prueba Telegram fallida: " + (reason || status || "error_desconocido");
+        }
+        supportAuditOutput.hidden = true;
+        supportAuditOutput.textContent = "";
+        await refreshRuntime(1500);
+      } catch (error) {
+        supportMessage.textContent = "No se pudo enviar prueba Telegram: " + error.message;
       } finally {
         setSupportButtonState(false);
         endUiAction();
@@ -2427,6 +2467,7 @@
     });
     diagBtn.addEventListener("click", runDiagnostics);
     copyReportBtn.addEventListener("click", copyReport);
+    applyReleaseUiMode();
     loadUiPrefs();
     renderAdvancedMode();
     hydrateRuntimeFromCache();

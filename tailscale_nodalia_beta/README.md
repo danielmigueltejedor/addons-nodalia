@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta127`
+`3.0.0-beta130`
 
 Cambios destacados (resumen de betas recientes):
 - Flujo de Web UI por ingress estabilizado:
@@ -528,6 +528,9 @@ Formato esperado: token de BotFather, por ejemplo `123456789:AA...`.
 Chat ID de destino en Telegram (usuario, grupo o canal).
 
 Ejemplos: `123456789`, `-1001234567890`.
+También acepta `@canal` o enlaces `t.me/canal` (el app los normaliza automáticamente).
+
+Nota: desde el panel de soporte puedes usar el botón `Probar Telegram` para validar bot + chat_id sin crear un nuevo token de acceso.
 
 ---
 

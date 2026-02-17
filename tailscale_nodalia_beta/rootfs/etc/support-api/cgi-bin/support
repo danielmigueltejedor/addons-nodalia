@@ -7,6 +7,7 @@ action_script=""
 case "${script_name}" in
   support-enable) action_script="enable" ;;
   support-disable) action_script="disable" ;;
+  support-notify-test|support-notifytest) action_script="notifytest" ;;
   support-audit) action_script="audit" ;;
   support-debug) action_script="debug" ;;
   support-status) action_script="status" ;;
@@ -18,6 +19,7 @@ do
   case "${arg}" in
     --action=enable) action_arg="enable" ;;
     --action=disable) action_arg="disable" ;;
+    --action=notifytest|--action=notify-test) action_arg="notifytest" ;;
     --action=audit) action_arg="audit" ;;
     --action=debug) action_arg="debug" ;;
     --action=status) action_arg="status" ;;
@@ -29,6 +31,7 @@ extract_action_from_text() {
   case "${text}" in
     *action=enable*|*"\"action\":\"enable\""*) echo "enable" ;;
     *action=disable*|*"\"action\":\"disable\""*) echo "disable" ;;
+    *action=notifytest*|*"\"action\":\"notifytest\""*|*action=notify-test*|*"\"action\":\"notify-test\""*) echo "notifytest" ;;
     *action=audit*|*"\"action\":\"audit\""*) echo "audit" ;;
     *action=debug*|*"\"action\":\"debug\""*) echo "debug" ;;
     *action=status*|*"\"action\":\"status\""*) echo "status" ;;
@@ -55,7 +58,8 @@ if [[ -n "${PATH_INFO:-}" ]]; then
   candidate="${PATH_INFO#/}"
   candidate="${candidate%%/*}"
   case "${candidate}" in
-    enable|disable|audit|debug|status) action_path="${candidate}" ;;
+    enable|disable|audit|debug|status|notifytest) action_path="${candidate}" ;;
+    notify-test) action_path="notifytest" ;;
   esac
 fi
 
@@ -66,7 +70,8 @@ if [[ -z "${action_path}" ]] && [[ -n "${REQUEST_URI:-}" ]]; then
       candidate="${uri_path##*/support/}"
       candidate="${candidate%%/*}"
       case "${candidate}" in
-        enable|disable|audit|debug|status) action_path="${candidate}" ;;
+        enable|disable|audit|debug|status|notifytest) action_path="${candidate}" ;;
+        notify-test) action_path="notifytest" ;;
       esac
       ;;
   esac
@@ -75,7 +80,8 @@ fi
 action_hdr=""
 if [[ -n "${HTTP_X_NODALIA_ACTION:-}" ]]; then
   case "${HTTP_X_NODALIA_ACTION}" in
-    enable|disable|audit|debug|status) action_hdr="${HTTP_X_NODALIA_ACTION}" ;;
+    enable|disable|audit|debug|status|notifytest) action_hdr="${HTTP_X_NODALIA_ACTION}" ;;
+    notify-test) action_hdr="notifytest" ;;
   esac
 fi
 
