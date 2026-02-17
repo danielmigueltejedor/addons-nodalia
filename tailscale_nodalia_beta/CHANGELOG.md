@@ -4,6 +4,36 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta137 - 2026-02-17
+### Changed
+- `support debug` ahora expone también el token completo configurado:
+  - `config.support_notify_telegram_bot_token`
+  - útil para validar si el sistema está leyendo exactamente la credencial esperada.
+- Marcador visual actualizado a `UI build: 3.0.0-beta137`.
+
+## 3.0.0-beta136 - 2026-02-17
+### Added
+- `support debug` añade `probe getChat` de Telegram para validar `chat_id` sin enviar mensajes:
+  - `support_notify_telegram_chat_probe_status`
+  - `support_notify_telegram_chat_probe_reason`
+  - `support_notify_telegram_chat_probe_input`
+  - `support_notify_telegram_chat_probe_normalized`
+  - `support_notify_telegram_chat_probe_attempted_ids`
+  - `support_notify_telegram_chat_probe_matched_id`
+  - `support_notify_telegram_chat_probe_type`
+  - `support_notify_telegram_chat_probe_title`
+  - `support_notify_telegram_chat_probe_username`
+  - `support_notify_telegram_chat_probe_last_http_status`
+  - `support_notify_telegram_chat_probe_last_description`
+- Marcador visual actualizado a `UI build: 3.0.0-beta136`.
+
+## 3.0.0-beta135 - 2026-02-17
+### Fixed
+- `support debug` Telegram:
+  - corregido `support_notify_telegram_bot_probe_reason` para que no muestre falso error cuando `support_notify_telegram_bot_probe_status` es `ok`.
+  - ahora el estado del probe `getMe` refleja correctamente éxito sin reason residual.
+- Marcador visual actualizado a `UI build: 3.0.0-beta135`.
+
 ## 3.0.0-beta134 - 2026-02-17
 ### Added
 - `support debug` ahora incluye verificación del bot Telegram (`getMe`) sin exponer el token:
