@@ -638,7 +638,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta117</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code>3.0.0-beta118</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -1567,8 +1567,11 @@
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("core_user_patch_failed")) {
         suggestions.push("No se pudo cambiar is_active del usuario de soporte. Revisa permisos del add-on y existencia del usuario local.");
       }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("password_rotated_but_user_still_active")) {
+        suggestions.push("Revocación parcial: se cambió password pero el usuario sigue activo. Tu versión de HA no permite desactivar is_active por API con este método.");
+      }
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_id_vacio")) {
-        suggestions.push("La API devolvio usuario sin ID. En beta115 se intenta fallback por login_name/password; reinicia el add-on y prueba de nuevo.");
+        suggestions.push("La API devolvio usuario sin ID. En beta118 se intenta fallback por login_name/password y rutas alternativas de API.");
       }
       if (String(lastRuntime?.support_reason || "").includes("support_status")) {
         suggestions.push("El backend de soporte devolvio fallo interno. Pulsa Recargar y revisa logs del add-on para ver el error exacto.");

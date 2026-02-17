@@ -4,6 +4,17 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta118 - 2026-02-17
+### Fixed
+- Revocación de soporte más estricta y real:
+  - si falla el patch de usuario y el fallback de password no deja al usuario realmente inactivo, `disable` ahora falla con `password_rotated_but_user_still_active` (ya no devuelve falso éxito).
+  - en fallo de revocación no se limpia la sesión/meta de soporte, evitando que la UI muestre `revocado` cuando el usuario sigue activo.
+  - cuando expira TTL y no se puede revocar realmente, el estado refleja `ttl_expired_disable_failed:*` en lugar de ocultar el problema.
+- Compatibilidad extra de API de usuarios:
+  - lookup core ahora intenta también `/core/api/users` además de `/core/api/config/users`.
+  - patch de usuario prueba rutas core alternativas (`/core/api/config/users`, `/core/api/users`, `/core/api/auth/users`) para mejorar compatibilidad entre versiones de Home Assistant/Supervisor.
+- Marcador visual actualizado a `UI build: 3.0.0-beta118`.
+
 ## 3.0.0-beta117 - 2026-02-17
 ### Fixed
 - Soporte debug robusto con `log_level=debug`:
