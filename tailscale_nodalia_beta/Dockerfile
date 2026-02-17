@@ -19,6 +19,8 @@ RUN \
     nginx \
     coreutils \
     networkmanager \
+    python3 \
+    py3-websockets \
   && ln -sf /sbin/xtables-nft-multi /sbin/ip6tables \
   && ln -sf /sbin/xtables-nft-multi /sbin/iptables \
   && if [ "${BUILD_ARCH}" = "aarch64" ]; then ARCH="arm64"; fi \
@@ -65,6 +67,7 @@ RUN set -eux; \
   # Permisos de scripts propios si existen (ajusta nombres si los tienes)
   chmod 0755 /usr/bin/subnet-routes 2>/dev/null || true; \
   chmod 0755 /usr/bin/support-tunnel 2>/dev/null || true; \
+  chmod 0755 /usr/bin/ha-virtual-keys 2>/dev/null || true; \
   chmod 0755 /etc/support-api/cgi-bin/support 2>/dev/null || true; \
   chmod 0755 /etc/support-api/cgi-bin/control 2>/dev/null || true
 

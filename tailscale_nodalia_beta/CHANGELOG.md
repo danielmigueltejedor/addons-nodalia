@@ -10,6 +10,10 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   - al habilitar soporte crea usuario+password temporales vía servicio HA.
   - al revocar soporte o expirar TTL elimina/revoca ese usuario temporal.
   - nuevas opciones: `support_temp_user_prefix` y `support_temp_password_length`.
+- Modo opcional de soporte por token con integración `virtual-keys`:
+  - nuevas opciones `support_virtual_keys_mode` y `support_virtual_keys_token_prefix`.
+  - al habilitar soporte crea token temporal y devuelve login URL temporal.
+  - al revocar o expirar TTL elimina el token temporal asociado.
 - Runtime:
   - se expone `support_mode` en `runtime.json` para diagnóstico/UI.
 

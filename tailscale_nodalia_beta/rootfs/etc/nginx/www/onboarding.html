@@ -602,6 +602,7 @@
         <div>Elegible:</div><div><code id="sup-eligible">-</code></div>
         <div>Acceso activo:</div><div><code id="sup-active">-</code></div>
         <div>Usuario soporte:</div><div><code id="sup-user">-</code></div>
+        <div>Token soporte:</div><div><code id="sup-token-name">-</code></div>
         <div>Expira en:</div><div><code id="sup-expires">-</code></div>
         <div>Motivo:</div><div><code id="sup-reason">-</code></div>
       </div>
@@ -673,6 +674,7 @@
     const supportEligible = document.getElementById("sup-eligible");
     const supportActive = document.getElementById("sup-active");
     const supportUser = document.getElementById("sup-user");
+    const supportTokenName = document.getElementById("sup-token-name");
     const supportExpires = document.getElementById("sup-expires");
     const supportReason = document.getElementById("sup-reason");
     const supportMessage = document.getElementById("sup-message");
@@ -982,13 +984,14 @@
     function renderSupportFromRuntime(runtime) {
       const enabled = Boolean(runtime?.support_enabled);
       const mode = String(runtime?.support_mode || "static_user");
-      const modeLabel = mode === "temp_account" ? "temporal" : "estatico";
+      const modeLabel = mode === "temp_account" ? "temporal" : (mode === "virtual_keys_token" ? "token (virtual-keys)" : "estatico");
       const match = Boolean(runtime?.support_tailnet_match ?? runtime?.tailnet_match);
       const eligible = Boolean(runtime?.support_eligible ?? runtime?.eligible);
       const active = Boolean(runtime?.support_active ?? runtime?.active);
       const expiresAt = String(runtime?.support_expires_at || runtime?.expires_at || "");
       const reason = String(runtime?.support_reason || runtime?.reason || "");
       const supportUserValue = String(runtime?.support_user || "nodalia");
+      const tokenNameValue = String(runtime?.support_token_name || "");
       const targetDns = String(runtime?.support_tailnet_dns_suffix || runtime?.support_target_dns_suffix || "");
       const targetId = String(runtime?.support_target_id || "");
       supportEnabled.textContent = enabled ? "true" : "false";
@@ -998,6 +1001,7 @@
       supportEligible.textContent = eligible ? "true" : "false";
       supportActive.textContent = active ? "true" : "false";
       supportUser.textContent = supportUserValue || "-";
+      supportTokenName.textContent = tokenNameValue || "-";
       supportExpires.textContent = expiresAt || "-";
       supportReason.textContent = reason || "-";
       supportRules = {
@@ -1078,6 +1082,8 @@
         data?.support_eligible,
         data?.support_active,
         data?.support_user,
+        data?.support_token_name,
+        data?.support_token_count,
         data?.support_reason,
         data?.support_expires_at,
         data?.direct_webui_url
@@ -1198,22 +1204,44 @@
       }, null, 2);
     }
 
-    function formatTempCredentials(data) {
+    function formatSupportActivationInfo(data) {
       const mode = String(data?.support_mode || "");
-      const username = String(data?.support_temp_username || "");
-      const password = String(data?.support_temp_password || "");
-      if (mode !== "temp_account" || !username || !password) {
-        return "";
+      if (mode === "temp_account") {
+        const username = String(data?.support_temp_username || "");
+        const password = String(data?.support_temp_password || "");
+        if (!username || !password) {
+          return "";
+        }
+        const ttlMinutes = Number(data?.ttl_minutes || lastRuntime?.support_ttl_minutes || 30);
+        const expiresAt = String(data?.expires_at || lastRuntime?.support_expires_at || "-");
+        return [
+          "Credenciales temporales de soporte",
+          "Usuario: " + username,
+          "Password: " + password,
+          "TTL(min): " + ttlMinutes,
+          "Expira: " + expiresAt
+        ].join("\n");
       }
-      const ttlMinutes = Number(data?.ttl_minutes || lastRuntime?.support_ttl_minutes || 30);
-      const expiresAt = String(data?.expires_at || lastRuntime?.support_expires_at || "-");
-      return [
-        "Credenciales temporales de soporte",
-        "Usuario: " + username,
-        "Password: " + password,
-        "TTL(min): " + ttlMinutes,
-        "Expira: " + expiresAt
-      ].join("\n");
+      if (mode === "virtual_keys_token") {
+        const tokenName = String(data?.support_virtual_keys_token_name || "");
+        const loginPath = String(data?.support_virtual_keys_login_path || "");
+        if (!tokenName || !loginPath) {
+          return "";
+        }
+        let loginUrl = loginPath;
+        try {
+          loginUrl = new URL(loginPath, window.location.origin).toString();
+        } catch (_) {
+        }
+        const ttlMinutes = Number(data?.ttl_minutes || lastRuntime?.support_ttl_minutes || 30);
+        return [
+          "Token temporal de soporte (virtual-keys)",
+          "Token: " + tokenName,
+          "TTL(min): " + ttlMinutes,
+          "Login URL: " + loginUrl
+        ].join("\n");
+      }
+      return "";
     }
 
     async function callSupportApi(action, method = "GET", allowGetFallback = false) {
@@ -1625,6 +1653,18 @@
       if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_temp_user_not_found")) {
         suggestions.push("El usuario temporal ya no existe; el estado se limpiará y podrás generar uno nuevo al habilitar soporte.");
       }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_virtual_keys_status_failed")) {
+        suggestions.push("Fallo al consultar virtual-keys por WebSocket. Revisa que la integración esté instalada y activa.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_virtual_keys_create_failed")) {
+        suggestions.push("No se pudo crear token temporal en virtual-keys. Revisa usuario, integración y permisos.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_virtual_keys_delete_failed")) {
+        suggestions.push("No se pudo revocar token en virtual-keys. Pulsa Debug soporte para ver reason/detail exacto.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_virtual_keys_token_not_found")) {
+        suggestions.push("La sesión/token temporal ya no existe en virtual-keys. Puedes habilitar soporte de nuevo.");
+      }
       if (String(lastRuntime?.support_reason || "").includes("support_status")) {
         suggestions.push("El backend de soporte devolvio fallo interno. Pulsa Recargar y revisa logs del add-on para ver el error exacto.");
       }
@@ -1792,6 +1832,7 @@
         supportEligible.textContent = "n/a";
         supportActive.textContent = "n/a";
         supportUser.textContent = "n/a";
+        supportTokenName.textContent = "n/a";
         supportExpires.textContent = "n/a";
         supportReason.textContent = "runtime unavailable";
         supportRules = { enable: false, disable: false, audit: false, debug: true };
@@ -1867,11 +1908,11 @@
       supportMessage.textContent = "Habilitando acceso temporal para soporte...";
       try {
         const payload = await callSupportApi("enable", "POST", true);
-        const tempCreds = formatTempCredentials(payload);
-        if (tempCreds) {
-          supportMessage.textContent = "Acceso de soporte habilitado con usuario temporal.";
+        const activationInfo = formatSupportActivationInfo(payload);
+        if (activationInfo) {
+          supportMessage.textContent = "Acceso de soporte habilitado.";
           supportAuditOutput.hidden = false;
-          supportAuditOutput.textContent = tempCreds;
+          supportAuditOutput.textContent = activationInfo;
         } else {
           supportMessage.textContent = "Acceso de soporte habilitado.";
           supportAuditOutput.hidden = true;

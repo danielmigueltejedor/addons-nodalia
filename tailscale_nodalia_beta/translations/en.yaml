@@ -175,6 +175,17 @@ configuration:
     description: >-
       Length of the random password generated for the temporary user.
       Allowed range: 12-64.
+  support_virtual_keys_mode:
+    name: Virtual-keys token mode
+    description: >-
+      Uses the virtual-keys integration to create/revoke temporary support tokens
+      instead of toggling support user activation state.
+      Requires virtual-keys integration to be installed and running.
+  support_virtual_keys_token_prefix:
+    name: Virtual-keys token prefix
+    description: >-
+      Prefix used for temporary token names created via virtual-keys.
+      A timestamp suffix is appended on each activation.
   support_target_url:
     name: Legacy target URL (external apps)
     description: >-

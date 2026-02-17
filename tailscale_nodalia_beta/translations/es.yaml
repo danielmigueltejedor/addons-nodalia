@@ -172,6 +172,17 @@ configuration:
     description: >-
       Longitud de la password aleatoria del usuario temporal.
       Rango permitido: 12-64.
+  support_virtual_keys_mode:
+    name: Modo token virtual-keys
+    description: >-
+      Usa la integración virtual-keys para crear/revocar tokens temporales
+      del usuario de soporte, en lugar de activar/desactivar cuenta.
+      Requiere tener instalada y operativa la integración virtual-keys.
+  support_virtual_keys_token_prefix:
+    name: Prefijo token virtual-keys
+    description: >-
+      Prefijo para el nombre de los tokens temporales creados con virtual-keys.
+      Se añade un sufijo con timestamp en cada activación.
   support_target_url:
     name: URL objetivo legacy (apps externas)
     description: >-

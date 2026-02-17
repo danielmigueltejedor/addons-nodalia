@@ -527,6 +527,200 @@ temp_mode_enabled() {
   return 1
 }
 
+virtual_keys_mode_enabled() {
+  if bashio::config.has_value "support_virtual_keys_mode" && bashio::config.true "support_virtual_keys_mode"; then
+    return 0
+  fi
+  return 1
+}
+
+virtual_keys_token_prefix() {
+  local prefix
+  prefix="$(sanitize_username "$(bashio::config "support_virtual_keys_token_prefix" "nodalia_support_key")")"
+  if [[ -z "${prefix}" ]]; then
+    prefix="nodalia_support_key"
+  fi
+  printf '%s' "${prefix}"
+}
+
+extract_last_json_line() {
+  local raw payload line
+  raw="${1:-}"
+  payload=""
+  while IFS= read -r line
+  do
+    if [[ -n "${line}" ]] && jq -e . >/dev/null 2>&1 <<< "${line}"; then
+      payload="${line}"
+    fi
+  done <<< "${raw}"
+  printf '%s' "${payload}"
+}
+
+virtual_keys_call() {
+  local action username token_name token_prefix token_id minutes
+  local output rc payload ok reason
+  local -a cmd
+  action="${1:-status}"
+  username="${2:-}"
+  token_name="${3:-}"
+  token_prefix="${4:-}"
+  token_id="${5:-}"
+  minutes="$(sanitize_uint_range "${6:-30}" 1 1440)"
+
+  VK_LAST_JSON=""
+  VK_LAST_RAW=""
+  VK_LAST_REASON=""
+
+  if [[ ! -x /usr/bin/ha-virtual-keys ]]; then
+    VK_LAST_REASON="virtual_keys_helper_missing"
+    return 1
+  fi
+  if [[ -z "${username}" ]]; then
+    VK_LAST_REASON="virtual_keys_username_empty"
+    return 1
+  fi
+
+  cmd=(/usr/bin/ha-virtual-keys "${action}" --username "${username}" --timeout "8")
+  if [[ -n "${token_name}" ]]; then
+    cmd+=(--token-name "${token_name}")
+  fi
+  if [[ -n "${token_prefix}" ]]; then
+    cmd+=(--token-prefix "${token_prefix}")
+  fi
+  if [[ -n "${token_id}" ]]; then
+    cmd+=(--token-id "${token_id}")
+  fi
+  if [[ "${action}" == "create" ]]; then
+    cmd+=(--minutes "${minutes}")
+  fi
+
+  set +e
+  output="$("${cmd[@]}" 2>&1)"
+  rc=$?
+  set -e
+
+  VK_LAST_RAW="${output}"
+  API_LAST_RC="${rc}"
+  API_LAST_STDERR=""
+  API_LAST_OUTPUT="$(printf '%s\n' "${output}" | tail -n 80)"
+  API_LAST_JSON=""
+  payload="$(extract_last_json_line "${output}")"
+  if [[ -z "${payload}" ]]; then
+    VK_LAST_REASON="virtual_keys_output_not_json"
+    return 1
+  fi
+  VK_LAST_JSON="${payload}"
+  API_LAST_JSON="${payload}"
+
+  if ! jq -e . >/dev/null 2>&1 <<< "${payload}"; then
+    VK_LAST_REASON="virtual_keys_payload_invalid"
+    return 1
+  fi
+
+  ok="$(jq -r '.ok // false' <<< "${payload}" 2>/dev/null || echo "false")"
+  if [[ "${ok}" != "true" || "${rc}" -ne 0 ]]; then
+    reason="$(jq -r '.reason // empty' <<< "${payload}" 2>/dev/null || true)"
+    if [[ -z "${reason}" ]]; then
+      reason="virtual_keys_call_failed"
+    fi
+    VK_LAST_REASON="${reason}"
+    return 1
+  fi
+  return 0
+}
+
+virtual_keys_status_lookup() {
+  local token_prefix token_name token_id user_exists
+  token_prefix="$(virtual_keys_token_prefix)"
+  token_name="${META_SUPPORT_TOKEN_NAME:-${SUPPORT_VK_TOKEN_NAME:-}}"
+  token_id="${META_SUPPORT_TOKEN_ID:-${SUPPORT_VK_TOKEN_ID:-}}"
+
+  if ! virtual_keys_call "status" "${SUPPORT_USER}" "${token_name}" "${token_prefix}" "${token_id}" "0"; then
+    return 1
+  fi
+
+  user_exists="$(jq -r '.user_exists // false' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "false")"
+  SUPPORT_USER_EXISTS="${user_exists}"
+  SUPPORT_USER_ID="$(jq -r '.user_id // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_USER_LOGIN_NAME="$(jq -r '.username // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  if [[ -z "${SUPPORT_USER_LOGIN_NAME}" ]]; then
+    SUPPORT_USER_LOGIN_NAME="${SUPPORT_USER}"
+  fi
+  SUPPORT_USER_IS_OWNER="$(jq -r 'if .is_owner then "true" else "false" end' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "false")"
+  SUPPORT_USER_ACTIVE_KNOWN="$(jq -r 'if has("is_active") then "true" else "false" end' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "false")"
+  SUPPORT_USER_ACTIVE="$(jq -r 'if .is_active then "true" else "false" end' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "false")"
+  SUPPORT_VK_TOKEN_COUNT="$(jq -r '.token_count // 0' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "0")"
+  SUPPORT_VK_TOKEN_NAME="${token_name}"
+  SUPPORT_VK_TOKEN_ID="${token_id}"
+  if [[ "${user_exists}" == "true" ]]; then
+    USER_LOOKUP_SOURCE="virtual_keys_ws"
+    USER_LOOKUP_REASON=""
+  else
+    USER_LOOKUP_SOURCE="virtual_keys_ws"
+    USER_LOOKUP_REASON="support_user_no_encontrado"
+  fi
+  if [[ "$(sanitize_uint "${SUPPORT_VK_TOKEN_COUNT}")" -gt 0 ]]; then
+    SUPPORT_VK_TOKEN_PRESENT="true"
+  else
+    SUPPORT_VK_TOKEN_PRESENT="false"
+  fi
+  return 0
+}
+
+create_virtual_keys_token() {
+  local ttl_minutes token_prefix token_name
+  ttl_minutes="$(sanitize_uint_range "${1:-30}" 5 180)"
+  token_prefix="$(virtual_keys_token_prefix)"
+  token_name="${token_prefix}_$(date +%s)"
+  if ! virtual_keys_call "create" "${SUPPORT_USER}" "${token_name}" "${token_prefix}" "" "${ttl_minutes}"; then
+    USER_OP_REASON="support_virtual_keys_create_failed:${VK_LAST_REASON:-virtual_keys_call_failed}"
+    return 1
+  fi
+
+  SUPPORT_VK_TOKEN_ID="$(jq -r '.token_id // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_VK_TOKEN_NAME="$(jq -r '.token_name // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_VK_LOGIN_PATH="$(jq -r '.login_path // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_VK_TOKEN_VALUE="$(jq -r '.token // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_VK_TOKEN_COUNT="1"
+  SUPPORT_VK_TOKEN_PRESENT="true"
+
+  SUPPORT_USER_EXISTS="true"
+  SUPPORT_USER_ACTIVE_KNOWN="true"
+  SUPPORT_USER_ACTIVE="true"
+  USER_LOOKUP_SOURCE="virtual_keys_ws"
+  USER_LOOKUP_REASON=""
+  USER_OP_REASON="support_virtual_keys_create_ok"
+  USER_OP_PATH="WS:virtual_keys/create_token"
+  return 0
+}
+
+delete_virtual_keys_token() {
+  local token_prefix token_name token_id deleted_count matched_count
+  token_prefix="$(virtual_keys_token_prefix)"
+  token_name="${META_SUPPORT_TOKEN_NAME:-${SUPPORT_VK_TOKEN_NAME:-}}"
+  token_id="${META_SUPPORT_TOKEN_ID:-${SUPPORT_VK_TOKEN_ID:-}}"
+
+  if ! virtual_keys_call "delete" "${SUPPORT_USER}" "${token_name}" "${token_prefix}" "${token_id}" "0"; then
+    USER_OP_REASON="support_virtual_keys_delete_failed:${VK_LAST_REASON:-virtual_keys_call_failed}"
+    return 1
+  fi
+  deleted_count="$(jq -r '.deleted_count // 0' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "0")"
+  matched_count="$(jq -r '.matched_count // 0' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "0")"
+  deleted_count="$(sanitize_uint "${deleted_count}")"
+  matched_count="$(sanitize_uint "${matched_count}")"
+
+  if (( deleted_count > 0 || matched_count == 0 )); then
+    SUPPORT_VK_TOKEN_PRESENT="false"
+    SUPPORT_VK_TOKEN_COUNT="0"
+    SUPPORT_VK_TOKEN_VALUE=""
+    USER_OP_REASON="support_virtual_keys_delete_ok"
+    USER_OP_PATH="WS:virtual_keys/delete_token"
+    return 0
+  fi
+  USER_OP_REASON="support_virtual_keys_delete_no_effect"
+  return 1
+}
+
 resolve_service_endpoint() {
   local service_cfg service_domain service_name
   service_cfg="$(trim_spaces "${1:-}")"
@@ -735,8 +929,27 @@ set_support_user_active() {
   USER_OP_PATH=""
   SUPPORT_TEMP_USERNAME=""
   SUPPORT_TEMP_PASSWORD=""
+  SUPPORT_VK_TOKEN_NAME=""
+  SUPPORT_VK_TOKEN_ID=""
+  SUPPORT_VK_TOKEN_VALUE=""
+  SUPPORT_VK_LOGIN_PATH=""
+  SUPPORT_VK_TOKEN_COUNT="0"
+  SUPPORT_VK_TOKEN_PRESENT="false"
 
-  if temp_mode_enabled; then
+  if [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+    if [[ "${desired}" == "true" ]]; then
+      if create_virtual_keys_token "$(bashio::config "support_tunnel_ttl_minutes" "30")"; then
+        return 0
+      fi
+      return 1
+    fi
+    if delete_virtual_keys_token; then
+      return 0
+    fi
+    return 1
+  fi
+
+  if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
     if [[ "${desired}" == "true" ]]; then
       set +e
       create_temp_support_account "$(bashio::config "support_tunnel_ttl_minutes" "30")"
@@ -873,6 +1086,8 @@ read_meta() {
   META_TTL_MIN=0
   META_SUPPORT_USER=""
   META_SUPPORT_MODE=""
+  META_SUPPORT_TOKEN_ID=""
+  META_SUPPORT_TOKEN_NAME=""
   if [[ -f "${META_FILE}" ]]; then
     raw_epoch="$(jq -r '.expires_epoch // 0' "${META_FILE}" 2>/dev/null || echo "0")"
     META_EXPIRES_EPOCH="$(sanitize_uint "${raw_epoch}")"
@@ -881,6 +1096,8 @@ read_meta() {
     META_TTL_MIN="$(sanitize_uint "${raw_ttl}")"
     META_SUPPORT_USER="$(jq -r '.support_user // empty' "${META_FILE}" 2>/dev/null || true)"
     META_SUPPORT_MODE="$(jq -r '.support_mode // empty' "${META_FILE}" 2>/dev/null || true)"
+    META_SUPPORT_TOKEN_ID="$(jq -r '.support_token_id // empty' "${META_FILE}" 2>/dev/null || true)"
+    META_SUPPORT_TOKEN_NAME="$(jq -r '.support_token_name // empty' "${META_FILE}" 2>/dev/null || true)"
   fi
 }
 
@@ -908,9 +1125,11 @@ write_meta() {
     --arg expires_at "${META_NEW_EXPIRES_AT}" \
     --arg support_user "${SUPPORT_USER}" \
     --arg support_mode "${SUPPORT_MODE:-static_user}" \
+    --arg support_token_id "${SUPPORT_VK_TOKEN_ID:-}" \
+    --arg support_token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
     --argjson expires_epoch "${META_NEW_EXPIRES_EPOCH}" \
     --argjson ttl_minutes "${META_NEW_TTL_MIN}" \
-    '{created_at:$created_at,expires_at:$expires_at,expires_epoch:$expires_epoch,ttl_minutes:$ttl_minutes,support_user:$support_user,support_mode:$support_mode}' > "${META_FILE}"
+    '{created_at:$created_at,expires_at:$expires_at,expires_epoch:$expires_epoch,ttl_minutes:$ttl_minutes,support_user:$support_user,support_mode:$support_mode,support_token_id:$support_token_id,support_token_name:$support_token_name}' > "${META_FILE}"
 }
 
 clear_meta() {
@@ -945,16 +1164,24 @@ build_eligibility() {
   SUPPORT_REASON=""
   SUPPORT_TAILNET_MATCH="false"
   SUPPORT_USER="$(sanitize_username "$(bashio::config "support_user" "nodalia")")"
+  SUPPORT_VK_TOKEN_COUNT="0"
+  SUPPORT_VK_TOKEN_PRESENT="false"
+  SUPPORT_VK_TOKEN_NAME=""
+  SUPPORT_VK_TOKEN_ID=""
+  SUPPORT_VK_LOGIN_PATH=""
+  SUPPORT_VK_TOKEN_VALUE=""
 
   support_mode_cfg="static_user"
-  if temp_mode_enabled; then
+  if virtual_keys_mode_enabled; then
+    support_mode_cfg="virtual_keys_token"
+  elif temp_mode_enabled; then
     support_mode_cfg="temp_account"
   fi
   SUPPORT_MODE="${support_mode_cfg}"
   if [[ -n "${META_SUPPORT_MODE:-}" ]]; then
     SUPPORT_MODE="${META_SUPPORT_MODE}"
   fi
-  if [[ "${SUPPORT_MODE}" != "temp_account" && "${SUPPORT_MODE}" != "static_user" ]]; then
+  if [[ "${SUPPORT_MODE}" != "temp_account" && "${SUPPORT_MODE}" != "static_user" && "${SUPPORT_MODE}" != "virtual_keys_token" ]]; then
     SUPPORT_MODE="${support_mode_cfg}"
   fi
   if [[ "${SUPPORT_MODE}" == "temp_account" && -n "${META_SUPPORT_USER:-}" ]]; then
@@ -1028,6 +1255,31 @@ build_eligibility() {
     return
   fi
 
+  if [[ "${SUPPORT_MODE}" == "virtual_keys_token" ]]; then
+    if ! virtual_keys_status_lookup; then
+      SUPPORT_REASON="support_virtual_keys_status_failed:${VK_LAST_REASON:-virtual_keys_failed}"
+      USER_LOOKUP_SOURCE="virtual_keys_ws"
+      USER_LOOKUP_REASON="${VK_LAST_REASON:-virtual_keys_failed}"
+      return
+    fi
+    if [[ "${SUPPORT_USER_EXISTS}" != "true" ]]; then
+      SUPPORT_REASON="support_user_no_encontrado"
+      return
+    fi
+    if [[ "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
+      SUPPORT_REASON="support_user_es_owner_no_permitido"
+      return
+    fi
+    if [[ -n "${META_SUPPORT_TOKEN_NAME:-}" ]]; then
+      SUPPORT_VK_TOKEN_NAME="${META_SUPPORT_TOKEN_NAME}"
+    fi
+    if [[ -n "${META_SUPPORT_TOKEN_ID:-}" ]]; then
+      SUPPORT_VK_TOKEN_ID="${META_SUPPORT_TOKEN_ID}"
+    fi
+    SUPPORT_REASON=""
+    return
+  fi
+
   if ! lookup_support_user; then
     if [[ "${SUPPORT_MODE}" == "temp_account" && "${USER_LOOKUP_REASON:-}" == "support_user_no_encontrado" ]]; then
       clear_meta
@@ -1061,6 +1313,8 @@ write_state() {
     --arg support_user "${SUPPORT_USER}" \
     --arg support_user_id "${SUPPORT_USER_ID}" \
     --arg support_mode "${SUPPORT_MODE:-static_user}" \
+    --arg support_token_name "${SUPPORT_VK_TOKEN_NAME:-${META_SUPPORT_TOKEN_NAME:-}}" \
+    --argjson support_token_count "$(sanitize_uint "${SUPPORT_VK_TOKEN_COUNT:-0}")" \
     --argjson expires_epoch "${META_EXPIRES_EPOCH}" \
     --argjson ttl_minutes "${META_TTL_MIN}" \
     --argjson support_enabled "$(json_bool "${SUPPORT_ENABLED}")" \
@@ -1083,6 +1337,8 @@ write_state() {
       support_user:$support_user,
       support_user_id:$support_user_id,
       support_mode:$support_mode,
+      support_token_name:$support_token_name,
+      support_token_count:$support_token_count,
       support_user_exists:$support_user_exists,
       support_user_active:$support_user_active,
       support_user_active_known:$support_user_active_known,
@@ -1108,6 +1364,13 @@ disable_running_access() {
       rc=1
     else
       details="temp_user_delete_ok:${USER_OP_REASON}"
+    fi
+  elif [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+    if ! set_support_user_active false; then
+      details="virtual_keys_delete_error:${USER_OP_REASON}"
+      rc=1
+    else
+      details="virtual_keys_delete_ok:${USER_OP_REASON}"
     fi
   else
     if ! set_support_user_active false; then
@@ -1143,6 +1406,20 @@ status_cmd() {
         SUPPORT_REASON="ttl_expired_disable_failed:${USER_OP_REASON:-disable_failed}"
         active=true
       fi
+    elif [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+      if [[ "${SUPPORT_USER_EXISTS}" == "true" ]]; then
+        if [[ "${SUPPORT_VK_TOKEN_PRESENT:-false}" == "true" ]]; then
+          active=true
+        else
+          clear_meta
+          SUPPORT_REASON="support_virtual_keys_token_not_found"
+          active=false
+        fi
+      else
+        clear_meta
+        SUPPORT_REASON="support_user_no_encontrado"
+        active=false
+      fi
     elif [[ "${SUPPORT_USER_EXISTS}" == "true" ]]; then
       if [[ "${SUPPORT_USER_ACTIVE_KNOWN}" != "true" ]]; then
         active=true
@@ -1171,6 +1448,14 @@ status_cmd() {
     if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
       if [[ -z "${SUPPORT_REASON:-}" ]]; then
         eligible=true
+      fi
+    elif [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+      if [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
+        case "${SUPPORT_REASON:-}" in
+          ""|support_virtual_keys_token_not_found)
+            eligible=true
+            ;;
+        esac
       fi
     elif [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
       eligible=true
@@ -1218,7 +1503,13 @@ enable_cmd() {
 
   read_meta
   if [[ "${META_EXPIRES_EPOCH:-0}" -gt 0 ]]; then
-    if [[ "${SUPPORT_USER_ACTIVE}" == "true" ]] && (( $(date +%s) < META_EXPIRES_EPOCH )); then
+    if [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+      if [[ "${SUPPORT_VK_TOKEN_PRESENT:-false}" == "true" ]] && (( $(date +%s) < META_EXPIRES_EPOCH )); then
+        write_state true true
+        cat "${STATE_FILE}"
+        exit 0
+      fi
+    elif [[ "${SUPPORT_USER_ACTIVE}" == "true" ]] && (( $(date +%s) < META_EXPIRES_EPOCH )); then
       write_state true true
       cat "${STATE_FILE}"
       exit 0
@@ -1248,6 +1539,8 @@ enable_cmd() {
 
   if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
     details="temp_user_enable_ok:${USER_OP_REASON}:${SUPPORT_USER}"
+  elif [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+    details="virtual_keys_enable_ok:${USER_OP_REASON}:${SUPPORT_USER}:${SUPPORT_VK_TOKEN_NAME:-}"
   else
     details="user_enable_ok:${USER_OP_REASON}"
   fi
@@ -1259,6 +1552,13 @@ enable_cmd() {
       --arg support_temp_password "${SUPPORT_TEMP_PASSWORD:-}" \
       --arg support_mode "${SUPPORT_MODE:-temp_account}" \
       '. + {support_mode:$support_mode,support_temp_username:$support_temp_username,support_temp_password:$support_temp_password}' \
+      "${STATE_FILE}"
+  elif [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+    jq -c \
+      --arg support_mode "${SUPPORT_MODE:-virtual_keys_token}" \
+      --arg support_virtual_keys_token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
+      --arg support_virtual_keys_login_path "${SUPPORT_VK_LOGIN_PATH:-}" \
+      '. + {support_mode:$support_mode,support_virtual_keys_token_name:$support_virtual_keys_token_name,support_virtual_keys_login_path:$support_virtual_keys_login_path}' \
       "${STATE_FILE}"
   else
     cat "${STATE_FILE}"
@@ -1302,6 +1602,7 @@ debug_cmd() {
   local cfg_enabled cfg_dns cfg_user cfg_password cfg_password_set
   local cfg_enable_service cfg_disable_service
   local cfg_temp_mode cfg_temp_prefix cfg_temp_password_length
+  local cfg_virtual_keys_mode cfg_virtual_keys_token_prefix
   local status_json self_dns_name self_host_name magic_dns_suffix current_tailnet_name
   local lookup_forced lookup_rc lookup_hint
   local debug_eligible now_epoch debug_active
@@ -1322,6 +1623,11 @@ debug_cmd() {
   fi
   cfg_temp_prefix="$(sanitize_username "$(bashio::config "support_temp_user_prefix" "nodalia_support")")"
   cfg_temp_password_length="$(sanitize_uint_range "$(bashio::config "support_temp_password_length" "20")" 12 64)"
+  cfg_virtual_keys_mode=false
+  if virtual_keys_mode_enabled; then
+    cfg_virtual_keys_mode=true
+  fi
+  cfg_virtual_keys_token_prefix="$(virtual_keys_token_prefix)"
   cfg_password_set=false
   if [[ -n "${cfg_password}" ]]; then
     cfg_password_set=true
@@ -1338,16 +1644,31 @@ debug_cmd() {
   if [[ "${SUPPORT_BACKEND:-Unknown}" == "Running" ]]; then
     lookup_forced=true
     lookup_hint="lookup_ran"
-    set +e
-    lookup_support_user
-    lookup_rc=$?
-    set -e
+    if [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+      set +e
+      virtual_keys_status_lookup
+      lookup_rc=$?
+      set -e
+      USER_LOOKUP_SOURCE="virtual_keys_ws"
+      if (( lookup_rc != 0 )); then
+        USER_LOOKUP_REASON="${VK_LAST_REASON:-virtual_keys_failed}"
+      fi
+    else
+      set +e
+      lookup_support_user
+      lookup_rc=$?
+      set -e
+    fi
   fi
 
   debug_eligible=false
   if [[ "${SUPPORT_ENABLED}" == "true" && "${SUPPORT_TAILNET_MATCH}" == "true" && "${SUPPORT_BACKEND}" == "Running" ]]; then
     if [[ "${SUPPORT_MODE:-static_user}" == "temp_account" ]]; then
       if [[ -z "${SUPPORT_REASON:-}" ]]; then
+        debug_eligible=true
+      fi
+    elif [[ "${SUPPORT_MODE:-static_user}" == "virtual_keys_token" ]]; then
+      if [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
         debug_eligible=true
       fi
     elif [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
@@ -1377,12 +1698,16 @@ debug_cmd() {
     --arg cfg_disable_service "${cfg_disable_service}" \
     --arg cfg_temp_prefix "${cfg_temp_prefix}" \
     --arg cfg_temp_password_length "${cfg_temp_password_length}" \
+    --arg cfg_virtual_keys_token_prefix "${cfg_virtual_keys_token_prefix}" \
     --arg backend_state "${SUPPORT_BACKEND:-Unknown}" \
     --arg support_reason "${SUPPORT_REASON:-}" \
     --arg support_user "${SUPPORT_USER:-}" \
     --arg support_user_id "${SUPPORT_USER_ID:-}" \
     --arg support_user_login_name "${SUPPORT_USER_LOGIN_NAME:-}" \
     --arg support_mode "${SUPPORT_MODE:-static_user}" \
+    --arg support_token_name "${SUPPORT_VK_TOKEN_NAME:-${META_SUPPORT_TOKEN_NAME:-}}" \
+    --arg support_token_id "${SUPPORT_VK_TOKEN_ID:-${META_SUPPORT_TOKEN_ID:-}}" \
+    --arg support_token_count "${SUPPORT_VK_TOKEN_COUNT:-0}" \
     --arg meta_support_mode "${META_SUPPORT_MODE:-}" \
     --arg lookup_rc "${lookup_rc}" \
     --arg lookup_source "${USER_LOOKUP_SOURCE:-}" \
@@ -1402,6 +1727,8 @@ debug_cmd() {
     --argjson cfg_enabled "$(json_bool "${cfg_enabled}")" \
     --argjson cfg_password_set "$(json_bool "${cfg_password_set}")" \
     --argjson cfg_temp_mode "$(json_bool "${cfg_temp_mode}")" \
+    --argjson cfg_virtual_keys_mode "$(json_bool "${cfg_virtual_keys_mode}")" \
+    --argjson support_token_present "$(json_bool "${SUPPORT_VK_TOKEN_PRESENT:-false}")" \
     --argjson tailnet_match "$(json_bool "${SUPPORT_TAILNET_MATCH:-false}")" \
     --argjson eligible "$(json_bool "${debug_eligible}")" \
     --argjson active "$(json_bool "${debug_active}")" \
@@ -1425,7 +1752,9 @@ debug_cmd() {
         support_disable_service:$cfg_disable_service,
         support_temp_account_mode:$cfg_temp_mode,
         support_temp_user_prefix:$cfg_temp_prefix,
-        support_temp_password_length:($cfg_temp_password_length|tonumber? // 20)
+        support_temp_password_length:($cfg_temp_password_length|tonumber? // 20),
+        support_virtual_keys_mode:$cfg_virtual_keys_mode,
+        support_virtual_keys_token_prefix:$cfg_virtual_keys_token_prefix
       },
       tailscale:{
         backend_state:$backend_state,
@@ -1443,6 +1772,10 @@ debug_cmd() {
         support_user_id:$support_user_id,
         support_user_login_name:$support_user_login_name,
         support_mode:$support_mode,
+        support_token_name:$support_token_name,
+        support_token_id:$support_token_id,
+        support_token_count:($support_token_count|tonumber? // 0),
+        support_token_present:$support_token_present,
         meta_support_mode:$meta_support_mode,
         support_user_exists:$support_user_exists,
         support_user_active:$support_user_active,
@@ -1485,7 +1818,9 @@ fallback_status_json() {
   fi
   cfg_user="$(sanitize_username "${cfg_user}")"
   cfg_mode="static_user"
-  if temp_mode_enabled; then
+  if virtual_keys_mode_enabled; then
+    cfg_mode="virtual_keys_token"
+  elif temp_mode_enabled; then
     cfg_mode="temp_account"
   fi
   cfg_enabled=false
@@ -1510,6 +1845,8 @@ fallback_status_json() {
       active:false,
       support_user:$support_user,
       support_mode:$support_mode,
+      support_token_name:"",
+      support_token_count:0,
       support_user_id:"",
       support_user_exists:false,
       support_user_active:false,

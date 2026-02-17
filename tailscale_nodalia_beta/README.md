@@ -32,6 +32,7 @@ Cambios destacados (resumen de betas recientes):
   - lookup de usuario endurecido (primero `core/api/config/users`, fallback `auth/list`) para evitar falsos `ha_users_api_error`.
   - modo estático: activación/revocación prioriza `is_active` por API de Home Assistant y servicios opcionales.
   - modo temporal (nuevo): al habilitar soporte crea usuario+password temporales; al revocar o expirar TTL elimina ese usuario.
+  - modo token (`virtual-keys`, opcional): genera/revoca token temporal del usuario de soporte y devuelve login URL temporal.
   - nueva ventana temporal con TTL, auditoría y elegibilidad por DNS de tailnet (`support_tailnet_dns_suffix`).
   - el usuario de soporte se define en `support_user` (por defecto `nodalia`).
   - nuevo endpoint y botón `Debug soporte` para capturar causa técnica real (`reason`, `lookup_source`, `lookup_reason`, usuario/ID/login y último error API) y facilitar soporte.
@@ -456,6 +457,27 @@ Longitud de la password temporal aleatoria.
 
 Rango permitido: `12` a `64`.
 Por defecto: `20`.
+
+---
+
+### `support_virtual_keys_mode`
+
+Activa modo de token temporal vía integración `virtual-keys`.
+
+- `false` (por defecto): no usa virtual-keys.
+- `true`: al habilitar soporte crea token temporal; al revocar o expirar TTL lo elimina.
+
+Notas:
+- Requiere tener instalada la integración `virtual-keys` en Home Assistant.
+- Este modo tiene prioridad sobre `support_temp_account_mode`.
+
+---
+
+### `support_virtual_keys_token_prefix`
+
+Prefijo del nombre del token temporal creado con virtual-keys.
+
+Por defecto: `nodalia_support_key`.
 
 ---
 

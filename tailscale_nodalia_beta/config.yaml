@@ -67,6 +67,8 @@ options:
   support_temp_account_mode: false
   support_temp_user_prefix: "nodalia_support"
   support_temp_password_length: 20
+  support_virtual_keys_mode: false
+  support_virtual_keys_token_prefix: "nodalia_support_key"
   exit_node: ""
   login_server: "https://controlplane.tailscale.com"
 
@@ -102,4 +104,6 @@ schema:
   support_temp_account_mode: bool?
   support_temp_user_prefix: str?
   support_temp_password_length: int(12,64)?
+  support_virtual_keys_mode: bool?
+  support_virtual_keys_token_prefix: str?
   support_target_url: match(^https?://.+$)?
