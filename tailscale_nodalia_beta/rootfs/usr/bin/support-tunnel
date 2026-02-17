@@ -486,7 +486,7 @@ telegram_notify_enabled() {
 }
 
 send_support_notification_telegram() {
-  local bot_token chat_id_cfg chat_id login_url host_label ttl_minutes token_name message resolved_chat_id alt_chat_id
+  local bot_token chat_id_cfg chat_id login_url host_label ttl_minutes token_name message resolved_chat_id alt_chat_id discovered_chat_id
   SUPPORT_NOTIFY_STATUS="disabled"
   SUPPORT_NOTIFY_REASON=""
   reset_telegram_debug_context
@@ -512,12 +512,18 @@ send_support_notification_telegram() {
     return 1
   fi
 
+  # Preflight: siempre intentamos leer getUpdates para poblar debug y detectar
+  # posibles chat_id válidos observados por el bot.
+  discovered_chat_id=""
+  set +e
+  discovered_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
+  set -e
+
   # Si se configuró @username, intentamos resolverlo a chat_id numérico
   # para soportar chats privados (Telegram solo acepta @channelusername).
   if [[ "${chat_id}" == @* ]]; then
-    resolved_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
-    if [[ -n "${resolved_chat_id}" ]]; then
-      chat_id="${resolved_chat_id}"
+    if [[ -n "${discovered_chat_id}" ]]; then
+      chat_id="${discovered_chat_id}"
     fi
   fi
 
@@ -571,7 +577,12 @@ EOF
           return 0
         fi
       fi
-      resolved_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
+      resolved_chat_id="${discovered_chat_id}"
+      if [[ -z "${resolved_chat_id}" ]]; then
+        set +e
+        resolved_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
+        set -e
+      fi
       if [[ -n "${resolved_chat_id}" && "${resolved_chat_id}" != "${chat_id}" ]]; then
         append_telegram_attempted_chat_id "${resolved_chat_id}"
         if telegram_send_message_once "${bot_token}" "${resolved_chat_id}" "${message}"; then

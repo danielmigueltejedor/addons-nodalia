@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta133 - 2026-02-17
+### Fixed
+- Telegram soporte:
+  - `send_support_notification_telegram` ahora ejecuta `getUpdates` en preflight siempre, incluso antes del primer `sendMessage`, para poblar `telegram_debug.discovery` en todos los casos.
+  - el retry usa primero el resultado preflight de descubrimiento (si existe) y solo vuelve a consultar si sigue vacío.
+  - mejora de diagnóstico para casos `support_notify_telegram_chat_not_found` donde antes `discovery` podía quedar vacío.
+- Marcador visual actualizado a `UI build: 3.0.0-beta133`.
+
 ## 3.0.0-beta132 - 2026-02-17
 ### Added
 - Debug avanzado de Telegram en soporte:
