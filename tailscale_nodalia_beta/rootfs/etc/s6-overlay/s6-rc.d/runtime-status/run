@@ -1,7 +1,7 @@
 #!/command/with-contenv bashio
 # shellcheck shell=bash
 # ==============================================================================
-# Home Assistant Community Add-on: Tailscale
+# Home Assistant Community Aplicación: Tailscale
 # Periodically writes runtime status for onboarding diagnostics
 # ==============================================================================
 
@@ -124,7 +124,7 @@ do
     webui_reason="http-${webui_http_code}"
   fi
 
-  # In this add-on architecture, Web UI is served via ingress/web proxy.
+  # In this aplicación architecture, Web UI is served via ingress/web proxy.
   # Publishing a direct tailnet :5252 URL causes false expectations on many setups.
   direct_webui_url=""
 

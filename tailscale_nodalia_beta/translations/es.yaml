@@ -166,7 +166,7 @@ configuration:
     name: Prefijo usuario temporal
     description: >-
       Prefijo para el username temporal de soporte (ejemplo `nodalia_support`).
-      El add-on añade un sufijo aleatorio en cada activación.
+      El aplicación añade un sufijo aleatorio en cada activación.
   support_temp_password_length:
     name: Longitud password temporal
     description: >-

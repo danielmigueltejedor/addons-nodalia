@@ -146,7 +146,7 @@ configuration:
     name: Support password (fallback)
     description: >-
       Preferred password used when enabling support and API activation by user ID is unavailable.
-      If left empty, the add-on derives a fallback from the username.
+      If left empty, the aplicación derives a fallback from the username.
   support_enable_service:
     name: HA service to enable support (optional)
     description: >-
@@ -169,7 +169,7 @@ configuration:
     name: Temporary user prefix
     description: >-
       Prefix used for temporary support usernames (example `nodalia_support`).
-      The add-on appends a random suffix on each activation.
+      The aplicación appends a random suffix on each activation.
   support_temp_password_length:
     name: Temporary password length
     description: >-

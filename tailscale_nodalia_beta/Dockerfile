@@ -50,7 +50,7 @@ RUN \
 # Copy root filesystem
 COPY rootfs /
 
-# ✅ FIX seguro: solo scripts del add-on (NO tocar /usr/bin del sistema base)
+# ✅ FIX seguro: solo scripts de la aplicación (NO tocar /usr/bin del sistema base)
 RUN set -eux; \
   \
   # Normaliza CRLF SOLO en scripts típicos de add-ons

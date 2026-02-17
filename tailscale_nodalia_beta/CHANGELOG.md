@@ -52,7 +52,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ### Fixed
 - Fallback por servicios de Home Assistant para soporte:
   - nuevas opciones `support_enable_service` y `support_disable_service` (formato `dominio.servicio`).
-  - cuando falla la mutación por API (caso `support_user_id_vacio`), el add-on intenta ese servicio antes del fallback por password.
+  - cuando falla la mutación por API (caso `support_user_id_vacio`), el aplicación intenta ese servicio antes del fallback por password.
   - tras ejecutar el servicio, se verifica estado real del usuario para evitar falsos OK.
 - Compatibilidad adicional de endpoints:
   - lookup Auth/Core mantiene rutas alternativas para instalaciones con API parcial.
@@ -118,7 +118,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## 3.0.0-beta114 - 2026-02-17
 ### Fixed
 - Soporte: corrección del error `no se pudo habilitar support_user` cuando falla activación por API de usuario.
-  - fallback de habilitación endurecido: si falla `is_active` por `id/login`, el add-on intenta activar vía `auth/reset + auth` con password resuelta.
+  - fallback de habilitación endurecido: si falla `is_active` por `id/login`, el aplicación intenta activar vía `auth/reset + auth` con password resuelta.
   - nueva opción `support_user_password` (opcional) para controlar la password usada en ese fallback.
   - si no se define, se usa fallback derivado del `support_user` para evitar bloqueo del flujo.
 - `support-tunnel` ahora devuelve errores JSON con `reason` detallado en enable/disable, evitando mensajes genéricos.
@@ -173,7 +173,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## 3.0.0-beta104 - 2026-02-17
 ### Fixed
 - `ha_users_api_error` en el módulo de soporte:
-  - se eleva el rol del add-on a `hassio_role: manager` para permitir acceso consistente a endpoints de Supervisor/Auth requeridos por `support-tunnel`.
+  - se eleva el rol del aplicación a `hassio_role: manager` para permitir acceso consistente a endpoints de Supervisor/Auth requeridos por `support-tunnel`.
 - Marcador visual actualizado a `UI build: 3.0.0-beta104`.
 
 ## 3.0.0-beta103 - 2026-02-17
@@ -330,7 +330,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## 3.0.0-beta87 - 2026-02-12
 ### Fixed
-- `Logauth` ya no mata `tailscaled` con `SIGTERM` (que paraba el add-on por el `finish` de s6); ahora usa `SIGINT` + `SIGKILL` como fallback.
+- `Logauth` ya no mata `tailscaled` con `SIGTERM` (que paraba el aplicación por el `finish` de s6); ahora usa `SIGINT` + `SIGKILL` como fallback.
 
 ### Changed
 - Marcador visual actualizado a `UI build: 3.0.0-beta87`.
@@ -522,7 +522,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## 3.0.0-beta65 - 2026-02-12
 ### Fixed
-- `Cerrar sesión` ahora intenta primero un logout local directo contra `tailscaled` (`/localapi/v0/logout`) desde el propio add-on, sin depender de token de API de tailnet.
+- `Cerrar sesión` ahora intenta primero un logout local directo contra `tailscaled` (`/localapi/v0/logout`) desde el propio aplicación, sin depender de token de API de tailnet.
 - Ajustado el mensaje de onboarding en modo `readonly` para aclarar el comportamiento real:
   - bloquea cambios de Tailnet en la Web UI,
   - mantiene disponibles los controles locales de máquina (por ejemplo, `logout` y `reconnect`) desde el panel.
@@ -536,7 +536,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   - `control-api` deja de ejecutar comprobaciones DNS pesadas en acciones normales (`status`, `logout`, `reconnect`),
   - los checks intensivos quedan solo para `diag`/`dnsdiag`.
 - Aumentado `proxy_read_timeout` de `control-api` a `120s` para cubrir secuencias de logout forzado sin corte prematuro.
-- Añadida traza operativa de `control-api` para acciones no `status` en el log del add-on (`request`/`response`) para facilitar diagnóstico en campo.
+- Añadida traza operativa de `control-api` para acciones no `status` en el log del aplicación (`request`/`response`) para facilitar diagnóstico en campo.
 
 ## 3.0.0-beta63 - 2026-02-12
 ### Fixed
@@ -586,7 +586,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## 3.0.0-beta59 - 2026-02-12
 ### Fixed
 - Corregido el acceso a iframe Web UI para evitar caer en la ruta SPA inválida `/webui` (que mostraba `Page not found`):
-  - el botón `Entrar Web UI` y la autoentrada ahora abren la raíz real de ingress (`/` del addon),
+  - el botón `Entrar Web UI` y la autoentrada ahora abren la raíz real de ingress (`/` del aplicación),
   - se mantiene `webui-ready` solo para preflight técnico.
 - Corregido el botón de vuelta desde iframe para que no produzca `404`:
   - ahora calcula dinámicamente el prefijo real de ingress y vuelve a `/onboarding` de forma robusta.
@@ -660,14 +660,14 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## 3.0.0-beta51 - 2026-02-12
 ### Fixed
 - Corregido conflicto crítico entre forwarding y Web UI:
-  - el DNAT de `forwarding` ya no captura `TCP/5252` del IP tailnet del addon.
+  - el DNAT de `forwarding` ya no captura `TCP/5252` del IP tailnet del aplicación.
   - se añade regla de exclusión (`RETURN`) antes del DNAT para preservar el acceso/check de Web UI.
 - `forwarding/finish` ahora también limpia la regla de exclusión al parar el servicio.
 - Este ajuste ataca directamente el caso observado: backend `Running` + `upstream-unavailable-banner` permanente.
 
 ## 3.0.0-beta50 - 2026-02-11
 ### Fixed
-- Eliminada la autorrecuperación agresiva que terminaba reiniciando todo el addon al matar `tailscale web` desde `runtime-status`.
+- Eliminada la autorrecuperación agresiva que terminaba reiniciando todo el aplicación al matar `tailscale web` desde `runtime-status`.
 - Se mantiene diagnóstico fuerte pero sin acciones destructivas:
   - ahora se registra un `webui_banner_excerpt` cuando aparece `upstream-unavailable-banner`, para identificar la causa textual exacta del propio frontend de Tailscale.
 
@@ -699,7 +699,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## 3.0.0-beta46 - 2026-02-11
 ### Added
-- Telemetria de runtime mucho mas util en logs del addon para depuracion:
+- Telemetria de runtime mucho mas util en logs del aplicación para depuracion:
   - log en cada cambio de estado relevante (`backend`, `webui_ready`, `webui_http`, `dns_degraded`, soporte),
   - heartbeat periodico con resumen operativo (cada ~60s),
   - razon de no disponibilidad de Web UI (`probe-timeout`, `http-xxx`, `upstream-unavailable-banner`).
@@ -778,7 +778,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## 3.0.0-beta38 - 2026-02-11
 ### Fixed
-- Removed misleading direct Web UI tailnet URL behavior (`http://<tailscale-ip>:5252`) for this add-on architecture.
+- Removed misleading direct Web UI tailnet URL behavior (`http://<tailscale-ip>:5252`) for this aplicación architecture.
 - `runtime.json` no longer publishes `direct_webui_url` to avoid exposing a path that is typically unreachable here.
 - Onboarding messaging updated:
   - direct tailnet button clearly marked as unavailable in this app.
@@ -1300,7 +1300,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   - `subnet_router`
   - `exit_node`
   - `custom` (manual control, backward-compatible behavior)
-- Added Spanish translation file for add-on options (`translations/es.yaml`), including the new `setup_profile`.
+- Added Spanish translation file for aplicación options (`translations/es.yaml`), including the new `setup_profile`.
 - Adopted versioning strategy from this release onward:
   - `X`: major changes.
   - `Y`: Tailscale upstream version updates.
@@ -1335,7 +1335,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   - Verify downloaded Tailscale archive with SHA256 before extracting.
 - Improve CI quality gates:
   - Add dedicated workflow for shellcheck + multi-arch image build (`amd64`, `arm64`).
-- Update documentation wording from add-on terminology to app/aplicación in README.
+- Update documentation wording from aplicación terminology to app/aplicación in README.
 
 ## 1.2.3 - 2026-01-29
 ### Fixed

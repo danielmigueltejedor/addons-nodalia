@@ -1,7 +1,7 @@
 #!/command/with-contenv bashio
 # shellcheck shell=bash
 # ==============================================================================
-# Home Assistant Community Add-on: Tailscale
+# Home Assistant Community Aplicación: Tailscale
 # Runs after the machine has been logged in into the Tailscale network
 # ==============================================================================
 declare interface
@@ -396,7 +396,7 @@ if bashio::var.equals "${backend_state}" "Running"; then
   fi
 
   # Delete previously created persistent tailscale serve configuration ONCE
-  # After the add-on's share-homeassistant (serve and funnel) service is a longrun service, we do not modify the serve state permanently
+  # After the aplicación's share-homeassistant (serve and funnel) service is a longrun service, we do not modify the serve state permanently
   # This step can be removed in a later version with the file in the data folder also
   if ! bashio::fs.file_exists "/data/final_serve_reset_is_done"; then
     if ! /opt/tailscale serve reset; then
@@ -409,7 +409,7 @@ if bashio::var.equals "${backend_state}" "Running"; then
   if keyexpiry=$(/opt/tailscale status --self=true --peers=false --json | jq -rce '.Self.KeyExpiry'); then
     bashio::log.warning "The connection's key will expire on: ${keyexpiry}"
     bashio::log.warning "Consider disabling key expiry to avoid losing connection to your Home Assistant device."
-    bashio::log.warning "Please check your configuration based on the add-on's documentation under \"Configuration\""
+    bashio::log.warning "Please check your configuration based on the aplicación's documentation under \"Configuration\""
   fi
 
   # Warn about colliding subnet routes if non-userspace networking and accepting routes are enabled
@@ -444,10 +444,10 @@ fi
 if bashio::var.true "${userspace_networking_enabled}";
 then
   bashio::log.notice \
-    "The add-on uses userspace networking mode."
+    "The aplicación uses userspace networking mode."
   bashio::log.notice \
     "If you need to access other clients on your tailnet from your Home Assistant instance," \
     "disable userspace networking mode, that will create a \"tailscale0\" network interface on your host."
   bashio::log.notice \
-    "Please check your configuration based on the add-on's documentation under \"Option: userspace_networking\""
+    "Please check your configuration based on the aplicación's documentation under \"Option: userspace_networking\""
 fi

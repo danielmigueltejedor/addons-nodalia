@@ -2,9 +2,9 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-# This script performs a local identity reset ("logauth") for the add-on.
+# This script performs a local identity reset ("logauth") for the aplicación.
 # Goal: make the node require login again so the user can join a different tailnet
-# without uninstalling/reinstalling the add-on.
+# without uninstalling/reinstalling the aplicación.
 #
 # Important: we don't use tailscale.com public API here. Everything is local:
 # - tailscale localapi via the unix socket
@@ -73,7 +73,7 @@ else
   log "Socket not present yet; skipping tailscale down/logout pre-flight"
 fi
 
-# Avoid SIGTERM: tailscaled/finish halts the whole add-on on signal 15.
+# Avoid SIGTERM: tailscaled/finish halts the whole aplicación on signal 15.
 # Use SIGINT first, then SIGKILL as fallback; keep retrying in case s6 respawns
 # briefly before honoring the reset lock.
 if [[ -n "$(list_tailscaled_pids)" ]] || [[ -S "${SOCK}" ]]; then

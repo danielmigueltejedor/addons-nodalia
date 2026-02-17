@@ -381,7 +381,7 @@ Password preferida para habilitar el usuario de soporte cuando la API no permite
 
 Aplica al modo estático.
 
-- Si está vacía (por defecto), el add-on usa fallback con el nombre de usuario (`support_user`).
+- Si está vacía (por defecto), el aplicación usa fallback con el nombre de usuario (`support_user`).
 - Si la defines, se usa ese valor para el flujo de habilitación.
 
 ---
@@ -393,7 +393,7 @@ Servicio opcional de Home Assistant a ejecutar al habilitar soporte (formato `do
 Útil si tu instalación no permite cambiar `is_active` por API (`support_user_id_vacio`).
 
 En modo temporal, este servicio debe crear el usuario temporal y establecer su password.
-El add-on enviará payload con:
+El aplicación enviará payload con:
 - `action: "create"`
 - `support_mode: "temp_account"`
 - `support_user` (username temporal generado)
@@ -413,7 +413,7 @@ Servicio opcional de Home Assistant a ejecutar al revocar soporte (formato `domi
 Útil si tu instalación no permite revocar `is_active` por API.
 
 En modo temporal, este servicio debe desactivar/eliminar el usuario temporal.
-El add-on enviará payload con:
+El aplicación enviará payload con:
 - `action: "delete"`
 - `support_mode: "temp_account"`
 - `support_user` (username temporal activo)
@@ -422,7 +422,7 @@ Ejemplos:
 - `script.nodalia_support_disable`
 - `python_script.nodalia_support_disable`
 
-El add-on verifica después del servicio si el usuario realmente quedó inactivo.
+El aplicación verifica después del servicio si el usuario realmente quedó inactivo.
 
 Si este valor está vacío y tu HA no expone APIs de usuario con `id`, la revocación devolverá:
 `support_disable_service_not_configured`.
@@ -487,7 +487,7 @@ Base URL pública opcional para construir el enlace de acceso de soporte en modo
 
 Ejemplo: `https://homeassistant.getnodalia.com`
 
-Si está vacío, el add-on intentará construirla automáticamente como:
+Si está vacío, el aplicación intentará construirla automáticamente como:
 `https://<hostname>.<support_target_domain_suffix>`.
 
 ---

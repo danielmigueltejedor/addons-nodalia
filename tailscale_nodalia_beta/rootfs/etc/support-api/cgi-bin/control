@@ -147,9 +147,9 @@ log_control_action() {
   if [[ "${action}" == "status" ]]; then
     return
   fi
-  # Best-effort audit trail in /data for users that don't have add-on logs open.
+  # Best-effort audit trail in /data for users that don't have aplicación logs open.
   printf '%s control-api: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${1}" >> /data/control-api.log 2>/dev/null || true
-  # Write operational traces to the add-on log without polluting CGI stdout.
+  # Write operational traces to the aplicación log without polluting CGI stdout.
   printf '%s control-api: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${1}" > /proc/1/fd/1 2>/dev/null || \
     printf '%s control-api: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${1}" >&2 || true
 }
