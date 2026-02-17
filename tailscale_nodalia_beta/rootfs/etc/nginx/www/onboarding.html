@@ -201,7 +201,8 @@
       justify-content: center;
       text-align: center;
       white-space: nowrap;
-      border-color: #3d628f;
+      border-color: var(--ghost-border);
+      color: var(--ghost-text);
     }
     .support-icon {
       width: 19px;
@@ -226,6 +227,20 @@
       border-color: #39b883;
       color: #deffef;
       box-shadow: 0 8px 18px rgba(18, 88, 57, 0.35);
+    }
+    body.theme-light .support-btn {
+      border-color: #c3d5ee;
+      color: #17355b;
+    }
+    body.theme-light .support-btn.support-on {
+      border-color: #5e92cd;
+      color: #0e3f78;
+      box-shadow: 0 8px 18px rgba(23, 84, 161, 0.2);
+    }
+    body.theme-light .support-btn.support-active {
+      border-color: #3f9b6c;
+      color: #0e5c3e;
+      box-shadow: 0 8px 18px rgba(22, 109, 71, 0.2);
     }
     .power-btn {
       min-width: 48px;
