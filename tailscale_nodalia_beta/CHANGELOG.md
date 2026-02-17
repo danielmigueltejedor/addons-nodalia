@@ -4,6 +4,15 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta140 - 2026-02-17
+### Changed
+- Header de onboarding renovado:
+  - se reemplaza el bloque antiguo de icono + texto `Nodalia` por un único logo horizontal (`logo.png`).
+  - el logo se renderiza sin borde, sin fondo blanco y sin sombra para mantener transparencia limpia.
+  - se mantiene fallback automático a `nodalia-logo.png` si `logo.png` no carga.
+- Nginx ingress añade ruta estática explícita para `/logo.png`.
+- Marcador visual actualizado a `UI build: 3.0.0-beta140`.
+
 ## 3.0.0-beta139 - 2026-02-17
 ### Changed
 - Onboarding soporte:

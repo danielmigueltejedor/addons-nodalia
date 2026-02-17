@@ -144,24 +144,16 @@
     .brand {
       display: inline-flex;
       align-items: center;
-      gap: 12px;
       width: fit-content;
     }
     .brand img {
-      width: 46px;
-      height: 46px;
+      width: clamp(150px, 24vw, 220px);
+      height: auto;
       object-fit: contain;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: #fff;
-      padding: 2px;
-      box-shadow: 0 6px 16px rgba(11, 28, 52, 0.1);
-    }
-    .brand-name {
-      font-size: 1.02rem;
-      font-weight: 700;
-      color: var(--brand);
-      letter-spacing: 0.01em;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      box-shadow: none;
     }
     .badge {
       display: inline-flex;
@@ -558,8 +550,7 @@
     <section class="hero">
       <div class="hero-head">
         <div class="brand">
-          <img id="brand-logo" src="nodalia-logo.png" alt="Nodalia logo">
-          <span class="brand-name">Nodalia</span>
+          <img id="brand-logo" src="logo.png" alt="Nodalia Connect logo">
         </div>
         <div class="hero-actions">
           <span id="logout-hint" class="logout-hint" hidden></span>
@@ -714,7 +705,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-beta139</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-beta140</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -873,7 +864,11 @@
 
     const brandLogoEl = document.getElementById("brand-logo");
     if (brandLogoEl) {
-      brandLogoEl.src = ingressUrl("nodalia-logo.png");
+      brandLogoEl.src = ingressUrl("logo.png");
+      brandLogoEl.onerror = () => {
+        brandLogoEl.onerror = null;
+        brandLogoEl.src = ingressUrl("nodalia-logo.png");
+      };
     }
     openWebuiBtn.href = ingressRootUrl();
 

@@ -26,6 +26,12 @@ server {
         try_files /nodalia-logo.png =404;
     }
 
+    location = /logo.png {
+        root /etc/nginx/www;
+        add_header Cache-Control "no-store";
+        try_files /logo.png =404;
+    }
+
     location = /runtime.json {
         alias /data/tailscale-runtime.json;
         default_type application/json;
