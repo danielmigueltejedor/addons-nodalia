@@ -4,6 +4,17 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta146 - 2026-02-18
+### Changed
+- Onboarding UI:
+  - el botón de `Modo avanzado` pasa a formato icon-only en la cabecera.
+  - el bloque de pasos (`Paso 1/2/3`) se oculta automáticamente cuando el backend ya está conectado.
+
+### Fixed
+- Logout/Power:
+  - se fuerza limpieza de caché de estado tras `logauth` para evitar estados antiguos en pantalla.
+  - mejora de confirmación post-logout usando también `onboarding.json` para reflejar antes el estado de login requerido.
+
 ## 3.0.0-beta145 - 2026-02-18
 ### Changed
 - Onboarding UI (pre-RC visual cleanup):

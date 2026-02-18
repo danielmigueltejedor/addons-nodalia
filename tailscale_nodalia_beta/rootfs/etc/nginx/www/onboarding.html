@@ -112,15 +112,21 @@
       box-shadow: none;
     }
     .advanced-toggle {
-      min-width: 130px;
-      padding: 10px 12px;
-      font-size: 0.83rem;
+      min-width: 48px;
+      width: 48px;
+      padding: 10px 0;
+      font-size: 1rem;
       line-height: 1;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       text-align: center;
       white-space: nowrap;
+    }
+    .advanced-toggle.is-on {
+      border-color: #4b8bca;
+      color: #dbefff;
+      box-shadow: 0 8px 18px rgba(17, 65, 126, 0.32);
     }
     .support-btn {
       min-width: 48px;
@@ -136,14 +142,18 @@
       border-color: var(--ghost-border);
       color: var(--ghost-text);
     }
-    .support-icon {
+    .support-icon,
+    .advanced-icon {
       width: 19px;
       height: 19px;
       display: block;
     }
     .support-icon circle,
     .support-icon path,
-    .support-icon rect {
+    .support-icon rect,
+    .advanced-icon circle,
+    .advanced-icon path,
+    .advanced-icon rect {
       fill: none;
       stroke: currentColor;
       stroke-width: 1.8;
@@ -458,7 +468,7 @@
       button, a.btn { width: 100%; justify-content: center; text-align: center; }
       .actions { display: grid; grid-template-columns: 1fr; }
       .hero-head { align-items: center; }
-      .advanced-toggle { min-width: 122px; width: auto; }
+      .advanced-toggle { width: 48px; min-width: 48px; }
       .support-btn { width: 48px; min-width: 48px; }
       .hero-actions { width: 100%; }
       .power-btn { min-width: 0; }
@@ -486,7 +496,16 @@
               <path d="M20.5 16.8v.4a2.6 2.6 0 0 1-2.6 2.6h-2"></path>
             </svg>
           </button>
-          <button id="toggle-advanced-btn" type="button" class="ghost advanced-toggle" aria-label="Alternar modo avanzado" title="Alternar modo avanzado">Avanzado: ON</button>
+          <button id="toggle-advanced-btn" type="button" class="ghost advanced-toggle" aria-label="Modo avanzado activado" title="Modo avanzado activado" aria-pressed="true">
+            <svg class="advanced-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 6h16"></path>
+              <circle cx="9" cy="6" r="2"></circle>
+              <path d="M4 12h16"></path>
+              <circle cx="15" cy="12" r="2"></circle>
+              <path d="M4 18h16"></path>
+              <circle cx="11" cy="18" r="2"></circle>
+            </svg>
+          </button>
         </div>
       </div>
       <h1>Asistente de inicio de sesion</h1>
@@ -620,7 +639,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-beta145</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-beta146</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -687,6 +706,7 @@
     const stepAuth = document.getElementById("step-auth");
     const stepWarmup = document.getElementById("step-warmup");
     const stepAccess = document.getElementById("step-access");
+    const stepsBox = document.querySelector(".steps");
     const copyProfileHome = document.getElementById("copy-profile-home");
     const copyProfileSubnet = document.getElementById("copy-profile-subnet");
     const sessionDiagBtn = document.getElementById("session-diag-btn");
@@ -896,7 +916,13 @@
 
     function renderAdvancedMode() {
       document.body.classList.toggle("advanced-hidden", !advancedModeEnabled);
-      toggleAdvancedBtn.textContent = advancedModeEnabled ? "Avanzado: ON" : "Avanzado: OFF";
+      if (toggleAdvancedBtn) {
+        const label = advancedModeEnabled ? "Modo avanzado activado" : "Modo avanzado desactivado";
+        toggleAdvancedBtn.classList.toggle("is-on", advancedModeEnabled);
+        toggleAdvancedBtn.setAttribute("aria-pressed", advancedModeEnabled ? "true" : "false");
+        toggleAdvancedBtn.setAttribute("aria-label", label);
+        toggleAdvancedBtn.title = label;
+      }
       syncLogoutTraceVisibility();
     }
 
@@ -958,6 +984,12 @@
         clearLogoutConfirm();
       }
       setUiDisabled(opLogoutBtn, opBusy);
+    }
+
+    function setStepsVisible(visible) {
+      if (stepsBox) {
+        stepsBox.hidden = !visible;
+      }
     }
 
     function setSupportButtonState(busy) {
@@ -1419,6 +1451,17 @@
       opOutput.hidden = true;
     }
 
+    function resetStateCaches() {
+      lastOnboarding = null;
+      lastOnboardingFetchAtMs = 0;
+      lastRuntime = null;
+      lastRuntimeSignature = "";
+      try {
+        localStorage.removeItem(RUNTIME_CACHE_KEY);
+      } catch (_) {
+      }
+    }
+
     function reloadPanelSoon(delayMs = 900) {
       const ms = Math.max(0, Number(delayMs) || 0);
       setTimeout(() => {
@@ -1720,6 +1763,7 @@
         if (needsLogin) {
           cancelAutoRedirect();
           liveWebUiReadyStreak = 0;
+          setStepsVisible(true);
           setActiveStep("auth");
           setUiDisabled(openWebuiBtn, true);
           setUiDisabled(openDirectBtn, true);
@@ -1744,6 +1788,7 @@
           runningSinceMs = 0;
           cancelAutoRedirect();
           liveWebUiReadyStreak = 0;
+          setStepsVisible(true);
           setActiveStep("warmup");
           setUiDisabled(openWebuiBtn, true);
           updateStateView("Conectando...", "warn");
@@ -1756,6 +1801,7 @@
         }
 
         updateStateView("Conectado. Verificando Web UI...", "good");
+        setStepsVisible(false);
         if (runningSinceMs === 0) {
           runningSinceMs = Date.now();
         }
@@ -1798,6 +1844,7 @@
         isFirstRender = false;
         return;
       } catch (error) {
+        setStepsVisible(true);
         updateStateView("Estado no disponible. Reintentando...", "warn");
         okBox.hidden = false;
         loginBox.hidden = true;
@@ -1814,6 +1861,12 @@
         applyRuntimeData(data);
         return data;
       } catch (_) {
+        lastRuntime = null;
+        lastRuntimeSignature = "";
+        try {
+          localStorage.removeItem(RUNTIME_CACHE_KEY);
+        } catch (_) {
+        }
         rtBackend.textContent = "n/a";
         rtWebUi.textContent = "n/a";
         rtWebUiStreak.textContent = "n/a";
@@ -2138,11 +2191,24 @@
             finalMessage = "Desconectado • listo para nueva tailnet.";
             reloadAfterSuccess = true;
           } else {
-            const state = String(transition.status?.backend_state || "Unknown");
-            finalMessage = "Reset solicitado, pero el backend sigue en " + state + ". Pulsa Actualizar o revisa logs.";
-            logoutFailed = true;
+            let onboardingState = "";
+            try {
+              const freshOnboarding = await refreshOnboarding(2200, true);
+              onboardingState = String(freshOnboarding?.backend_state || "");
+            } catch (_) {
+            }
+            if (isAlreadyLoggedOutState(onboardingState)) {
+              transitionMatched = true;
+              finalMessage = "Desconectado • listo para nueva tailnet.";
+              reloadAfterSuccess = true;
+            } else {
+              const state = String(transition.status?.backend_state || onboardingState || "Unknown");
+              finalMessage = "Reset solicitado, pero el backend sigue en " + state + ". Pulsa Actualizar o revisa logs.";
+              logoutFailed = true;
+            }
           }
         }
+        resetStateCaches();
         await refreshRuntime(1800);
         await loadState();
         clearLogoutConfirm();
