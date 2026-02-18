@@ -110,33 +110,6 @@ if [[ "${REQUEST_METHOD:-GET}" != "POST" ]] && [[ "${REQUEST_METHOD:-GET}" != "G
   exit 0
 fi
 
-action_hdr_norm=""
-if [[ -n "${HTTP_X_NODALIA_ACTION:-}" ]]; then
-  action_hdr_norm="${HTTP_X_NODALIA_ACTION}"
-  case "${action_hdr_norm}" in
-    notify-test) action_hdr_norm="notifytest" ;;
-  esac
-fi
-
-if [[ "${action}" == "enable" || "${action}" == "disable" || "${action}" == "notifytest" ]] && [[ "${REQUEST_METHOD:-GET}" != "POST" ]]; then
-  # Prefer POST for side-effect actions. Allow GET only when our JS client
-  # explicitly sends the custom header (mitigates simple CSRF like <img src=...>).
-  if [[ "${REQUEST_METHOD:-GET}" == "GET" && -n "${action_hdr_norm}" && "${action_hdr_norm}" == "${action}" ]]; then
-    true
-  else
-    echo "Status: 405 Method Not Allowed"
-    echo "Content-Type: application/json"
-    echo "Cache-Control: no-store"
-    echo
-    jq -nc \
-      --arg action "${action}" \
-      --arg error "method_not_allowed" \
-      --arg reason "post_required_for_action" \
-      '{ok:false,action:$action,error:$error,reason:$reason}'
-    exit 0
-  fi
-fi
-
 set +e
 payload="$(/usr/bin/support-tunnel "${action}")"
 rc=$?

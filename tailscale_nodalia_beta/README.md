@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-rc7`
+`3.0.0-beta140`
 
 Cambios destacados (resumen de betas recientes):
 - Flujo de Web UI por ingress estabilizado:
@@ -35,7 +35,8 @@ Cambios destacados (resumen de betas recientes):
   - el usuario de soporte se define en `support_user` (por defecto `nodalia`).
   - nuevo endpoint y botón `Debug soporte` para capturar causa técnica real (`reason`, `lookup_source`, `lookup_reason`, usuario/ID/login y último error API) y facilitar soporte.
 - UI beta renovada:
-  - modo oscuro fijo (sin modo claro).
+  - tema oscuro por defecto.
+  - selector claro/oscuro en modo icon-only (`☀`/`🌙`).
   - limpieza de acciones redundantes en onboarding (se elimina `Control rapido`).
   - UX de `Logauth` más limpia:
     - tras éxito muestra estado corto (`Desconectado • listo para nueva tailnet`).
@@ -127,11 +128,6 @@ Perfil de configuración simplificada para no tener que ajustar todas las opcion
 - `exit_node`: activa el nodo como exit node con ajustes seguros para ese caso.
 
 Si quieres control total, usa `custom`.
-
-> Nota: con `setup_profile` distinto de `custom`, la aplicacion fuerza automaticamente los
-> parametros preset del perfil (por ejemplo `accept_dns`, `accept_routes`, `advertise_exit_node`,
-> `advertise_connector`, `stateful_filtering`, `snat_subnet_routes` y `userspace_networking`)
-> y los restaura en cada inicio.
 
 Perfil recomendado según caso:
 
@@ -340,6 +336,15 @@ El panel `/onboarding` mantiene controles locales de máquina (como `logauth`) i
 
 ---
 
+### `external_apps_compat_options`
+
+Toggle de compatibilidad para escenarios donde compartes valores legacy con otras apps.
+
+- `false` (por defecto): flujo normal recomendado.
+- `true`: habilita modo de compatibilidad para opciones legacy opcionales.
+
+---
+
 ### `support_tunnel_enabled`
 
 Activa el módulo de acceso temporal de soporte Nodalia.
@@ -351,9 +356,7 @@ Activa el módulo de acceso temporal de soporte Nodalia.
 
 ### `support_tailnet_dns_suffix`
 
-Sufijo DNS de la tailnet autorizada para soporte remoto (ejemplo: `example.ts.net`).
-
-Por defecto: vacío (debes configurarlo).
+Sufijo DNS de la tailnet autorizada para soporte remoto (ejemplo: `tail37b857.ts.net`).
 
 La elegibilidad del acceso se valida con este valor.
 

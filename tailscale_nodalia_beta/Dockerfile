@@ -5,13 +5,12 @@ FROM ${BUILD_FROM}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG BUILD_ARCH=amd64
-ARG TAILSCALE_VERSION="1.94.1"
+ARG TAILSCALE_VERSION="1.94.2"
 ARG TAILSCALE_REPO="https://pkgs.tailscale.com/stable"
 ARG CLOUDFLARED_REPO="https://github.com/cloudflare/cloudflared/releases/latest/download"
 
 RUN \
   apk add --no-cache \
-    ca-certificates \
     busybox-extras \
     ethtool \
     ipcalc \

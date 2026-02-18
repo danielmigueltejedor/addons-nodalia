@@ -4,70 +4,6 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
-## 3.0.0-rc7 - 2026-02-18
-### Fixed
-- Soporte (virtual-keys):
-  - el cliente UI ahora reintenta `GET` automáticamente si un `POST` es degradado a `GET` por el proxy (evita 405 `post_required_for_action`).
-- Telegram (diagnóstico):
-  - `support debug` ahora incluye el error real de `curl` cuando fallan los probes `getMe/getChat` (útil para detectar problemas de DNS/TLS/red).
-- Build:
-  - se instala `ca-certificates` para evitar fallos TLS al llamar a `api.telegram.org`.
-- Marcador visual actualizado a `UI build: 3.0.0-rc7`.
-
-## 3.0.0-rc6 - 2026-02-18
-### Fixed
-- Soporte (virtual-keys):
-  - `support-api enable/disable/notify-test` ahora funciona aunque algún proxy degrade el método a `GET`:
-    - el cliente UI envía un body mínimo en `POST`.
-    - el backend permite `GET` solo si viene con `X-Nodalia-Action` (evita 405 `post_required_for_action`).
-- Marcador visual actualizado a `UI build: 3.0.0-rc6`.
-
-## 3.0.0-rc5 - 2026-02-18
-### Changed
-- Configuracion:
-  - eliminado `external_apps_compat_options` (ya no se muestra ni se acepta en schema).
-- Perfiles:
-  - con `setup_profile != custom`, los parametros preset del perfil se fuerzan y se restauran en cada inicio
-    para evitar overrides accidentales desde la configuracion.
-- Marcador visual actualizado a `UI build: 3.0.0-rc5`.
-
-## 3.0.0-rc4 - 2026-02-18
-### Fixed
-- Configuración:
-  - `support_target_url` ahora acepta valor vacío en el schema (antes fallaba con `^https?://.+$`).
-  - evita el error de Supervisor: `does not match regular expression ^https?://.+$`.
-- Marcador visual actualizado a `UI build: 3.0.0-rc4`.
-
-## 3.0.0-rc3 - 2026-02-18
-### Fixed
-- Supervisor build:
-  - corregido un problema de empaquetado que podia provocar `dockerfile is missing` al actualizar la aplicacion desde el repositorio.
-- Marcador visual actualizado a `UI build: 3.0.0-rc3`.
-
-## 3.0.0-rc2 - 2026-02-18
-### Changed
-- Onboarding UI:
-  - eliminado el selector de tema (modo oscuro fijo).
-  - se eliminan acciones rápidas redundantes (Ir a acciones / Recargar).
-  - el toggle de `Modo avanzado` pasa a la cabecera (icon-only) y queda desactivado por defecto.
-  - ajuste responsive: los botones de cabecera no se estiran a 100% en móvil.
-- Marcador visual actualizado a `UI build: 3.0.0-rc2`.
-
-## 3.0.0-rc1 - 2026-02-17
-### Changed
-- Release Candidate 1:
-  - `support_tailnet_dns_suffix` pasa a venir vacío por defecto (debe configurarse).
-  - eliminado código legado del modo de soporte temporal y sus fallbacks hardcodeados.
-  - ejemplos/documentación ya no incluyen un sufijo real de tailnet (se usa `example.ts.net`).
-- Marcador visual actualizado a `UI build: 3.0.0-rc1`.
-
-## 3.0.0-beta141 - 2026-02-17
-### Changed
-- Panel de soporte:
-  - añade aviso contextual en la propia sección cuando falla `virtual-keys` (`support_virtual_keys_status_failed`).
-  - el aviso guía explícitamente a instalar/configurar la integración `virtual-keys` en Home Assistant para poder usar soporte temporal.
-- Marcador visual actualizado a `UI build: 3.0.0-beta141`.
-
 ## 3.0.0-beta140 - 2026-02-17
 ### Changed
 - Header de onboarding renovado:
@@ -83,7 +19,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   - el panel `Acceso soporte Nodalia` deja de depender del modo avanzado y ahora siempre es visible.
   - en modo básico muestra formato reducido con:
     - `Soporte habilitado`
-    - botones `Habilitar acceso soporte` y `Revocar ahora`.
+    - botones `Habilitar acceso soporte`, `Revocar ahora` y `Ver auditoria`.
   - los detalles técnicos y acciones extra (`Probar Telegram`, `Debug soporte`) quedan en `advanced-only`.
 - El botón de soporte del header ya no fuerza activar `Modo avanzado`.
 - Marcador visual actualizado a `UI build: 3.0.0-beta139`.
@@ -96,6 +32,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
     - `support_user_password`
     - `support_enable_service`
     - `support_disable_service`
+    - `support_temp_account_mode`
     - `support_temp_user_prefix`
     - `support_temp_password_length`
     - `support_virtual_keys_mode`
@@ -186,7 +123,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## 3.0.0-beta130 - 2026-02-17
 ### Added
-- Modo de soporte temporal completo (legacy):
+- Modo de soporte temporal completo (`support_temp_account_mode`):
   - al habilitar soporte crea usuario+password temporales vía servicio HA.
   - al revocar soporte o expirar TTL elimina/revoca ese usuario temporal.
   - nuevas opciones: `support_temp_user_prefix` y `support_temp_password_length`.
@@ -792,7 +729,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## 3.0.0-beta58 - 2026-02-12
 ### Fixed
-- Corregida validación DNS del túnel de soporte cuando `Self.DNSName` llega con punto final (ej. `homeassistant-4.example.ts.net.`).
+- Corregida validación DNS del túnel de soporte cuando `Self.DNSName` llega con punto final (ej. `homeassistant-4.tail37b857.ts.net.`).
 - La detección ahora normaliza DNS (lowercase + trim de puntos) y valida por sufijo real del tailnet:
   - acepta formato `nombre-nodo.<dns-tailnet>`,
   - evita falsos negativos en nodos correctamente unidos a la tailnet de soporte.
@@ -844,7 +781,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## 3.0.0-beta52 - 2026-02-12
 ### Added
 - La elegibilidad de soporte ahora acepta coincidencia por DNS de tailnet:
-  - `support_tailnet_dns_suffix` (nuevo, por defecto vacío).
+  - `support_tailnet_dns_suffix` (nuevo, default: `tail37b857.ts.net`).
   - si `Self.DNSName` termina en ese sufijo, la app se considera dentro de Nodalia Net.
 
 ### Changed

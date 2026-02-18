@@ -5,8 +5,6 @@ configuration:
     description: >-
       Perfil de alto nivel para simplificar la configuracion.
       `custom` mantiene control manual (comportamiento actual).
-      Cuando el perfil no es `custom`, la aplicacion fuerza automaticamente
-      los parametros del perfil y evita overrides manuales (se restauran en cada inicio).
       `home_access` aplica valores seguros para acceso remoto a Home Assistant.
       `subnet_router` habilita aceptar rutas y (si advertise_routes esta vacio)
       anuncia automaticamente subredes locales.
@@ -119,6 +117,12 @@ configuration:
       Desactivalo solo si necesitas acciones completas de tailnet en la Web UI.
       El panel onboarding mantiene controles locales (logout/reconnect) en modo readonly.
       Si no se configura, esta opcion esta activada por defecto.
+  external_apps_compat_options:
+    name: Compatibilidad con apps externas (opcional)
+    description: >-
+      Modo de compatibilidad para instalaciones que comparten
+      configuraciones legacy con otras apps.
+      Si no lo necesitas, mantenlo desactivado.
   support_tunnel_enabled:
     name: Boton de acceso de soporte
     description: >-
@@ -128,7 +132,7 @@ configuration:
   support_tailnet_dns_suffix:
     name: DNS de tailnet para soporte
     description: >-
-      Sufijo DNS usado para validar soporte remoto (por ejemplo `example.ts.net`).
+      Sufijo DNS usado para validar soporte remoto (por ejemplo `tail37b857.ts.net`).
       El acceso de soporte solo se habilita cuando el DNS de este nodo coincide con ese sufijo.
   support_user:
     name: Usuario local de soporte

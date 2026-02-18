@@ -21,93 +21,9 @@ function try {
     set -e
 }
 
-ensure_option_bool() {
-    local key desired needs_update
-    key="${1:-}"
-    desired="${2:-false}"
-    needs_update=false
-
-    if [[ -z "${key}" ]]; then
-        return 0
-    fi
-
-    if [[ "${desired}" == "true" ]]; then
-        if ! bashio::config.has_value "${key}" || bashio::config.false "${key}"; then
-            needs_update=true
-        fi
-    else
-        if ! bashio::config.has_value "${key}" || bashio::config.true "${key}"; then
-            needs_update=true
-        fi
-    fi
-
-    if bashio::var.true "${needs_update}"; then
-        try bashio::addon.option "${key}" "${desired}"
-        if ((TRY_ERROR)); then
-            bashio::log.warning "Failed to lock ${key}=${desired} for setup_profile=${setup_profile}"
-        else
-            bashio::log.info "Locked ${key}=${desired} for setup_profile=${setup_profile}"
-        fi
-    fi
-}
-
-ensure_option_str() {
-    local key desired current
-    key="${1:-}"
-    desired="${2:-}"
-    if [[ -z "${key}" ]]; then
-        return 0
-    fi
-    current="$(bashio::config "${key}" "" 2>/dev/null || true)"
-    if [[ "${current}" != "${desired}" ]]; then
-        try bashio::addon.option "${key}" "${desired}"
-        if ((TRY_ERROR)); then
-            bashio::log.warning "Failed to lock ${key}=${desired} for setup_profile=${setup_profile}"
-        else
-            bashio::log.info "Locked ${key}=${desired} for setup_profile=${setup_profile}"
-        fi
-    fi
-}
-
 # Load aplicación options, even deprecated one to upgrade
 options=$(bashio::addon.options)
 setup_profile=$(bashio::config "setup_profile" "custom")
-
-# Lock profile preset parameters (Supervisor UI will reflect enforced values).
-# NOTE: Supervisor schema is static, so we enforce by rewriting options at boot.
-case "${setup_profile}" in
-    home_access)
-        ensure_option_bool "accept_dns" "true"
-        ensure_option_bool "accept_routes" "false"
-        ensure_option_bool "advertise_exit_node" "false"
-        ensure_option_bool "advertise_connector" "false"
-        ensure_option_bool "stateful_filtering" "false"
-        ensure_option_bool "snat_subnet_routes" "true"
-        ensure_option_bool "userspace_networking" "false"
-        ;;
-    subnet_router)
-        ensure_option_bool "accept_dns" "true"
-        ensure_option_bool "accept_routes" "true"
-        ensure_option_bool "advertise_exit_node" "false"
-        ensure_option_bool "advertise_connector" "false"
-        ensure_option_bool "stateful_filtering" "false"
-        ensure_option_bool "snat_subnet_routes" "true"
-        ensure_option_bool "userspace_networking" "false"
-        ;;
-    exit_node)
-        ensure_option_bool "accept_dns" "true"
-        ensure_option_bool "accept_routes" "false"
-        ensure_option_bool "advertise_exit_node" "true"
-        ensure_option_bool "advertise_connector" "false"
-        ensure_option_bool "stateful_filtering" "false"
-        ensure_option_bool "snat_subnet_routes" "true"
-        ensure_option_bool "userspace_networking" "false"
-        # Avoid an invalid combination when advertising as exit node.
-        ensure_option_str "exit_node" ""
-        ;;
-    *)
-        ;;
-esac
 
 # Effective values based on current defaults
 userspace_networking_enabled=false

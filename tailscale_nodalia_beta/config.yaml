@@ -1,5 +1,5 @@
 name: Nodalia Connect (BETA)
-version: 3.0.0-rc7
+version: 3.0.0-beta140
 slug: tailscale_nodalia_beta
 description: Zero config VPN for building secure networks (Nodalia beta build)
 url: https://github.com/danielmigueltejedor/apps-nodalia
@@ -56,8 +56,9 @@ options:
   taildrop: true
   userspace_networking: false
   webui_readonly: true
+  external_apps_compat_options: false
   support_tunnel_enabled: false
-  support_tailnet_dns_suffix: ""
+  support_tailnet_dns_suffix: "tail37b857.ts.net"
   support_tunnel_ttl_minutes: 30
   support_user: "nodalia"
   support_virtual_keys_token_prefix: "nodalia_support_key"
@@ -89,12 +90,13 @@ schema:
   taildrop: bool?
   userspace_networking: bool?
   webui_readonly: bool?
+  external_apps_compat_options: bool?
   support_tunnel_enabled: bool?
   support_tailnet_dns_suffix: str?
   support_tunnel_ttl_minutes: int(5,180)?
   support_user: str?
   support_virtual_keys_token_prefix: str?
-  support_target_url: match(^$|^https?://.+$)?
+  support_target_url: match(^https?://.+$)?
   support_target_domain_suffix: str?
   support_notify_telegram_enabled: bool?
   support_notify_telegram_bot_token: str?
