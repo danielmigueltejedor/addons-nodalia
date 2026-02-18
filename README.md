@@ -19,7 +19,7 @@ Añade este repositorio en la tienda de Apps de Home Assistant:
 
 ## Apps beta
 
-- `nodalia_connect_beta`
+- `tailscale_nodalia_beta`
   Canal beta de Nodalia Connect para validar cambios antes de estable.
 - `matter_hub_nodalia_beta`
   Canal beta de Matter Hub (Nodalia) para validar cambios antes de estable.

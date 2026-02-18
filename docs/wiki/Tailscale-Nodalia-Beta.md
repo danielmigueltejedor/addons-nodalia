@@ -17,6 +17,6 @@ Canal beta de Tailscale con cambios en validacion.
 
 ## Referencias locales
 
-- `nodalia_connect_beta/README.md`
-- `nodalia_connect_beta/DOCS.md`
-- `nodalia_connect_beta/CHANGELOG.md`
+- `tailscale_nodalia_beta/README.md`
+- `tailscale_nodalia_beta/DOCS.md`
+- `tailscale_nodalia_beta/CHANGELOG.md`
