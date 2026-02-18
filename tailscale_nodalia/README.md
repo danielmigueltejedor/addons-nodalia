@@ -1,4 +1,4 @@
-# Home Assistant App: Tailscale (Nodalia)
+# Home Assistant App: Nodalia Connect
 
 Tailscale es una VPN “zero config” que se instala en minutos, incluyendo tu instancia de Home Assistant.
 
@@ -9,33 +9,40 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`2.1.6`
+`3.0.0`
 
-Cambios destacados:
-- Optimización del onboarding y entrada a Web UI:
-  - onboarding con refresco automático más rápido y verificación de disponibilidad real.
-  - nuevo flujo de redirección estable a `/webui`.
-- Menos errores visibles en primer acceso:
-  - fallback a onboarding ante errores de backend web.
-  - reducción de casos de `502 Bad Gateway` durante arranque.
-- Mejoras de robustez en arranque de servicios:
-  - arranque garantizado del servicio `web` en el bundle `user`.
-  - telemetría de tiempos de arranque en logs (`timings_sec`).
-- Mejora de notificaciones de login:
-  - formato corregido de saltos de línea.
-  - evita intentos innecesarios de dismiss cuando no existe notificación.
-- Web UI más reactiva en primer acceso: timeout corto de proxy y fallback rápido a `/onboarding` si el backend web tarda en responder.
-- Arranque inicial más rápido en instalaciones/actualizaciones nuevas:
-  - menor espera de `local-network` en startup.
-  - timeout de espera de `post-tailscaled` reducido y paso a modo degradado (sin bloquear la Web UI).
-- Carga inicial de Web UI más rápida: NGINX ya no espera al backend y muestra onboarding como fallback si el web interno aún no está listo.
-- Nueva opción `webui_readonly` para elegir entre Web UI en solo lectura (seguro) o modo con control completo (incluye logout).
-- Nuevo onboarding sin logs: página `/onboarding` con URL de login, botón copiar y abrir enlace.
-- Notificación persistente en Home Assistant cuando el estado es `NeedsLogin`/`NeedsMachineAuth`.
-- Ajuste del proxy de Ingress para la Web UI con redirección segura fuera del iframe de Home Assistant.
-- Mejoras de estabilidad en arranque y diagnóstico de estado.
-- Comprobación de integridad (SHA256) del binario de Tailscale en build.
-- Mejora de CI para validar scripts y build multi-arquitectura.
+Cambios destacados (resumen de mejoras recientes):
+- Flujo de Web UI por ingress estabilizado:
+  - el botón `Entrar Web UI (ingress)` abre la raíz real del ingress (`.../`) y evita el `Page not found`.
+  - normalización de rutas para soportar correctamente URLs con y sin slash final.
+  - verificación de disponibilidad de Web UI más robusta para evitar falsos bloqueos.
+- Onboarding más predecible:
+  - detección de estado basada en señales runtime + preflight real de ingress.
+  - auto-entrada a Web UI desactivada por defecto (activable desde el panel).
+  - feedback de estado y diagnóstico en vivo mantenido en una sola pantalla.
+- `Logauth` local reforzado:
+  - el flujo de logout pasa a reset local de identidad (`logauth`) sin depender de token API de tailnet.
+  - doble confirmación en UI con feedback visual claro (estado armado, cuenta atrás y resultado).
+  - mejora de compatibilidad de llamadas de control (`POST` con fallback a `GET` cuando aplica).
+  - ingress: rutas tipo `/control-api/logout` se traducen internamente a query string para evitar setups que descartan `QUERY_STRING`/`PATH_INFO`.
+  - el botón power prueba primero `POST /control-api` con `action=logout` en body y mantiene fallbacks, para no depender de una sola vía de enrutado.
+  - fallback definitivo: rutas de acción apuntan a CGI dedicados por nombre (`control-logout`, etc.), sin depender de variables CGI que algunos entornos no propagan.
+- Soporte Nodalia orientado a acceso local:
+  - el botón de soporte deja de depender de túnel Cloudflare y controla directamente un usuario local de Home Assistant.
+  - lookup de usuario endurecido (primero `core/api/config/users`, fallback `auth/list`) para evitar falsos `ha_users_api_error`.
+  - modo soporte único: `virtual-keys` (crea/revoca token temporal y devuelve login URL temporal).
+  - nueva ventana temporal con TTL, auditoría y elegibilidad por DNS de tailnet (`support_tailnet_dns_suffix`).
+  - el usuario de soporte se define en `support_user` (por defecto `nodalia`).
+  - nuevo endpoint y botón `Debug soporte` para capturar causa técnica real (`reason`, `lookup_source`, `lookup_reason`, usuario/ID/login y último error API) y facilitar soporte.
+- UI renovada:
+  - tema oscuro por defecto.
+  - selector claro/oscuro en modo icon-only (`☀`/`🌙`).
+  - limpieza de acciones redundantes en onboarding (se elimina `Control rapido`).
+  - UX de `Logauth` más limpia:
+    - tras éxito muestra estado corto (`Desconectado • listo para nueva tailnet`).
+    - las trazas técnicas de logout solo se muestran en modo avanzado.
+    - al confirmar reset se recarga automáticamente el panel para reflejar inmediatamente el estado desconectado.
+    - si el nodo ya está desconectado, el botón power muestra aviso y no vuelve a ejecutar reset innecesario.
 
 Estrategia de versionado a partir de esta versión:
 - `X`: cambios mayores.
@@ -67,7 +74,7 @@ También puedes crear la cuenta durante el proceso de autenticación de la aplic
    https://github.com/danielmigueltejedor/apps-nodalia
 
 4. Menú (⋮) → **Reload**
-5. Instala la aplicación **Tailscale (Nodalia)**.
+5. Instala la aplicación **Nodalia Connect**.
 6. Inicia la aplicación.
 7. Abre el **Web UI** de la aplicación para completar la autenticación.
 
@@ -322,9 +329,110 @@ Más info: https://tailscale.com/kb/1112/userspace-networking
 Controla si la Web UI embebida se ejecuta en modo solo lectura.
 
 - `true` (por defecto): modo seguro, sin acciones destructivas.
-- `false`: habilita control completo en la Web UI (por ejemplo, `logout`).
+- `false`: habilita control completo de tailnet en la Web UI (por ejemplo, gestionar sesión desde la propia Web UI).
 
-Recomendación: mantener `true` salvo que necesites gestionar sesión directamente desde la Web UI.
+Recomendación: mantener `true` salvo que necesites gestionar tailnet directamente desde la Web UI.
+El panel `/onboarding` mantiene controles locales de máquina (como `logauth`) incluso en modo readonly.
+
+---
+
+### `support_tunnel_enabled`
+
+Activa el módulo de acceso temporal de soporte Nodalia.
+
+- `false` (por defecto): desactivado.
+- `true`: habilitado, sujeto a elegibilidad de DNS/configuración.
+
+---
+
+### `support_tailnet_dns_suffix`
+
+Sufijo DNS de la tailnet autorizada para soporte remoto (ejemplo: `tail123456.ts.net`).
+
+La elegibilidad del acceso se valida con este valor.
+
+Por defecto: vacío (si está vacío, el soporte no será elegible hasta configurarlo).
+
+---
+
+### `support_user`
+
+Usuario local de soporte (por defecto: `nodalia`).
+
+Se usa como usuario base para crear/revocar tokens temporales en `virtual-keys`.
+
+Recomendación: que sea un usuario local dedicado de soporte (no owner).
+Para crearlo: `Ajustes -> Personas -> Usuarios -> Añadir usuario`.
+
+---
+
+### `support_virtual_keys_token_prefix`
+
+Prefijo del nombre del token temporal creado con virtual-keys.
+
+Por defecto: `nodalia_support_key`.
+
+---
+
+### `support_target_url`
+
+Base URL pública opcional para construir el enlace de acceso de soporte en modo `virtual-keys`.
+
+Ejemplo: `https://homeassistant.getnodalia.com`
+
+Si está vacío, el aplicación intentará construirla automáticamente como:
+`https://<hostname>.<support_target_domain_suffix>`.
+
+Nota:
+- Si defines una URL local (`http://127.0.0.1`, `http://localhost`, `http://0.0.0.0`), se ignora automáticamente para evitar enlaces no accesibles desde soporte externo.
+
+---
+
+### `support_target_domain_suffix`
+
+Sufijo de dominio público usado para construir URL externa automática de soporte.
+
+Ejemplo: con `hostname=homeassistant` y `support_target_domain_suffix=getnodalia.com`,
+se genera `https://homeassistant.getnodalia.com`.
+
+Por defecto: `getnodalia.com`.
+
+---
+
+### `support_notify_telegram_enabled`
+
+Habilita envío automático por Telegram del enlace temporal de soporte al crear token (`virtual-keys`).
+
+- `false` (por defecto): no envía notificación.
+- `true`: envía mensaje con `HostName`, token, TTL y URL de acceso.
+
+---
+
+### `support_notify_telegram_bot_token`
+
+Token del bot de Telegram usado para enviar el mensaje.
+
+Formato esperado: token de BotFather, por ejemplo `123456789:AA...`.
+
+---
+
+### `support_notify_telegram_chat_id`
+
+Chat ID de destino en Telegram (usuario, grupo o canal).
+
+Ejemplos: `123456789`, `-1001234567890`.
+También acepta `@canal` o enlaces `t.me/canal` (el app los normaliza automáticamente).
+
+Nota: desde el panel de soporte puedes usar el botón `Probar Telegram` para validar bot + chat_id sin crear un nuevo token de acceso.
+
+---
+
+### `support_tunnel_ttl_minutes`
+
+Tiempo de vida (TTL) del acceso temporal de soporte en minutos.
+
+Rango permitido: `5` a `180`.
+Por defecto: `30`.
 
 ---
 

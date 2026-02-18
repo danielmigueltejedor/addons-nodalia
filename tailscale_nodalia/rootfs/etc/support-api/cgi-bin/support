@@ -1,0 +1,152 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -euo pipefail
+
+script_name="$(basename "${0:-support}")"
+action_script=""
+case "${script_name}" in
+  support-enable) action_script="enable" ;;
+  support-disable) action_script="disable" ;;
+  support-notify-test|support-notifytest) action_script="notifytest" ;;
+  support-audit) action_script="audit" ;;
+  support-debug) action_script="debug" ;;
+  support-status) action_script="status" ;;
+esac
+
+action_arg=""
+for arg in "$@"
+do
+  case "${arg}" in
+    --action=enable) action_arg="enable" ;;
+    --action=disable) action_arg="disable" ;;
+    --action=notifytest|--action=notify-test) action_arg="notifytest" ;;
+    --action=audit) action_arg="audit" ;;
+    --action=debug) action_arg="debug" ;;
+    --action=status) action_arg="status" ;;
+  esac
+done
+
+extract_action_from_text() {
+  local text="${1:-}"
+  case "${text}" in
+    *action=enable*|*"\"action\":\"enable\""*) echo "enable" ;;
+    *action=disable*|*"\"action\":\"disable\""*) echo "disable" ;;
+    *action=notifytest*|*"\"action\":\"notifytest\""*|*action=notify-test*|*"\"action\":\"notify-test\""*) echo "notifytest" ;;
+    *action=audit*|*"\"action\":\"audit\""*) echo "audit" ;;
+    *action=debug*|*"\"action\":\"debug\""*) echo "debug" ;;
+    *action=status*|*"\"action\":\"status\""*) echo "status" ;;
+    *) echo "" ;;
+  esac
+}
+
+action_qs="$(extract_action_from_text "${QUERY_STRING:-}")"
+
+request_body=""
+content_length_raw="${CONTENT_LENGTH:-0}"
+action_body=""
+if [[ "${REQUEST_METHOD:-GET}" == "POST" ]] && \
+  [[ "${content_length_raw}" =~ ^[0-9]+$ ]] && \
+  (( content_length_raw > 0 )) && \
+  (( content_length_raw <= 8192 ));
+then
+  IFS= read -r -n "${content_length_raw}" request_body || true
+  action_body="$(extract_action_from_text "${request_body}")"
+fi
+
+action_path=""
+if [[ -n "${PATH_INFO:-}" ]]; then
+  candidate="${PATH_INFO#/}"
+  candidate="${candidate%%/*}"
+  case "${candidate}" in
+    enable|disable|audit|debug|status|notifytest) action_path="${candidate}" ;;
+    notify-test) action_path="notifytest" ;;
+  esac
+fi
+
+if [[ -z "${action_path}" ]] && [[ -n "${REQUEST_URI:-}" ]]; then
+  uri_path="${REQUEST_URI%%\?*}"
+  case "${uri_path}" in
+    */support/*)
+      candidate="${uri_path##*/support/}"
+      candidate="${candidate%%/*}"
+      case "${candidate}" in
+        enable|disable|audit|debug|status|notifytest) action_path="${candidate}" ;;
+        notify-test) action_path="notifytest" ;;
+      esac
+      ;;
+  esac
+fi
+
+action_hdr=""
+if [[ -n "${HTTP_X_NODALIA_ACTION:-}" ]]; then
+  case "${HTTP_X_NODALIA_ACTION}" in
+    enable|disable|audit|debug|status|notifytest) action_hdr="${HTTP_X_NODALIA_ACTION}" ;;
+    notify-test) action_hdr="notifytest" ;;
+  esac
+fi
+
+action="${action_qs:-status}"
+if [[ -n "${action_body}" ]]; then
+  action="${action_body}"
+fi
+if [[ -n "${action_hdr}" ]]; then
+  action="${action_hdr}"
+fi
+if [[ -n "${action_path}" ]]; then
+  action="${action_path}"
+fi
+if [[ -n "${action_script}" ]]; then
+  action="${action_script}"
+fi
+if [[ -n "${action_arg}" ]]; then
+  action="${action_arg}"
+fi
+
+if [[ "${REQUEST_METHOD:-GET}" != "POST" ]] && [[ "${REQUEST_METHOD:-GET}" != "GET" ]]; then
+  echo "Status: 405 Method Not Allowed"
+  echo "Content-Type: application/json"
+  echo
+  echo '{"ok":false,"error":"method_not_allowed"}'
+  exit 0
+fi
+
+set +e
+payload="$(/usr/bin/support-tunnel "${action}")"
+rc=$?
+set -e
+
+content_type="application/json"
+if [[ "${action}" == "audit" ]]; then
+  content_type="text/plain; charset=utf-8"
+fi
+
+if [[ "${content_type}" == "application/json" ]]; then
+  if ! jq -e . >/dev/null 2>&1 <<< "${payload}"; then
+    payload_line=""
+    while IFS= read -r line
+    do
+      if [[ -n "${line}" ]] && jq -e . >/dev/null 2>&1 <<< "${line}"; then
+        payload_line="${line}"
+      fi
+    done <<< "${payload}"
+    if [[ -n "${payload_line}" ]]; then
+      payload="${payload_line}"
+    else
+      payload="$(jq -nc \
+        --arg error "support_api_payload_invalid" \
+        --arg action "${action}" \
+        --arg output "$(printf '%s' "${payload:-empty_response}" | tail -c 1800)" \
+        '{ok:false,error:$error,action:$action,output:$output}')"
+    fi
+  fi
+fi
+
+if (( rc == 0 )); then
+  echo "Status: 200 OK"
+else
+  echo "Status: 400 Bad Request"
+fi
+echo "Content-Type: ${content_type}"
+echo "Cache-Control: no-store"
+echo
+printf '%s\n' "${payload}"

@@ -1,7 +1,7 @@
 #!/command/with-contenv bashio
 # shellcheck shell=bash
 # ==============================================================================
-# Home Assistant Community Add-on: Tailscale
+# Home Assistant Community Aplicación: Tailscale
 # Runs after the machine has been logged in into the Tailscale network
 # ==============================================================================
 declare interface
@@ -74,7 +74,7 @@ notify_login_required() {
   fi
 
   notification_payload=$(jq -nc \
-    --arg title "Tailscale (Nodalia): login requerido" \
+    --arg title "Nodalia Connect: login requerido" \
     --arg message "${message}" \
     --arg notification_id "${LOGIN_NOTIFICATION_ID}" \
     '{title:$title, message:$message, notification_id:$notification_id}')
@@ -122,17 +122,17 @@ if ! bashio::config.has_value "accept_dns" || bashio::config.true "accept_dns"; 
 fi
 
 accept_routes_enabled=false
-if ! bashio::config.has_value "accept_routes" || bashio::config.true "accept_routes"; then
+if bashio::config.has_value "accept_routes" && bashio::config.true "accept_routes"; then
   accept_routes_enabled=true
 fi
 
 advertise_exit_node_enabled=false
-if ! bashio::config.has_value "advertise_exit_node" || bashio::config.true "advertise_exit_node"; then
+if bashio::config.has_value "advertise_exit_node" && bashio::config.true "advertise_exit_node"; then
   advertise_exit_node_enabled=true
 fi
 
 advertise_connector_enabled=false
-if ! bashio::config.has_value "advertise_connector" || bashio::config.true "advertise_connector"; then
+if bashio::config.has_value "advertise_connector" && bashio::config.true "advertise_connector"; then
   advertise_connector_enabled=true
 fi
 
@@ -147,7 +147,7 @@ if ! bashio::config.has_value "snat_subnet_routes" || bashio::config.true "snat_
 fi
 
 userspace_networking_enabled=false
-if ! bashio::config.has_value "userspace_networking" || bashio::config.true "userspace_networking"; then
+if bashio::config.has_value "userspace_networking" && bashio::config.true "userspace_networking"; then
   userspace_networking_enabled=true
 fi
 
@@ -194,7 +194,7 @@ else
   options+=(--accept-dns=false)
 fi
 
-# Accept routes by default when not set, or when explicitly enabled
+# Accept routes only when explicitly enabled
 if bashio::var.true "${accept_routes_enabled}"; then
   options+=(--accept-routes)
 else
@@ -208,7 +208,7 @@ then
   bashio::exit.nok "You can't advertise this device as an exit node and at the same time specify an exit node to use"
 fi
 
-# Advertise as exit node by default when not set, or when explicitly enabled
+# Advertise as exit node only when explicitly enabled
 if bashio::var.true "${advertise_exit_node_enabled}"; then
   options+=(--advertise-exit-node)
 else
@@ -225,7 +225,7 @@ else
   options+=(--exit-node-allow-lan-access=false)
 fi
 
-# Advertise app connector by default when not set, or when explicitly enabled
+# Advertise app connector only when explicitly enabled
 if bashio::var.true "${advertise_connector_enabled}"; then
   options+=(--advertise-connector)
 else
@@ -291,18 +291,28 @@ tailscale_up_finished_at=$(date +%s)
 if (( up_rc != 0 )); then
   status_json=$(/opt/tailscale status --json --peers=false --self=false 2>/dev/null || true)
   backend_state=$(jq -r '.BackendState // "Unknown"' <<< "${status_json}" 2>/dev/null || echo "Unknown")
+  auth_url=$(jq -r '.AuthURL // .Self.AuthURL // empty' <<< "${status_json}" 2>/dev/null || true)
+  if ! bashio::var.has_value "${auth_url}"; then
+    auth_url=$(grep -Eo 'https://login\.tailscale\.com/[[:alnum:]/._-]+' <<< "${up_output}" | head -n1 || true)
+  fi
+
   if bashio::var.equals "${backend_state}" "NeedsLogin" || \
-    bashio::var.equals "${backend_state}" "NeedsMachineAuth";
+    bashio::var.equals "${backend_state}" "NeedsMachineAuth" || \
+    bashio::var.has_value "${auth_url}";
   then
-    auth_url=$(jq -r '.AuthURL // .Self.AuthURL // empty' <<< "${status_json}" 2>/dev/null || true)
-    if ! bashio::var.has_value "${auth_url}"; then
-      auth_url=$(grep -Eo 'https://login\.tailscale\.com/[[:alnum:]/._-]+' <<< "${up_output}" | head -n1 || true)
+    if ! bashio::var.has_value "${backend_state}" || bashio::var.equals "${backend_state}" "Unknown"; then
+      backend_state="NeedsLogin"
     fi
     write_onboarding_state "${backend_state}" true "${auth_url}"
     notify_login_required "${auth_url}"
     bashio::log.notice \
       "Tailscale startup requires interactive login (${backend_state})." \
       "Open /onboarding in the app Web UI to continue."
+  elif (( up_rc == 124 )) && bashio::var.equals "${backend_state}" "Starting"; then
+    write_onboarding_state "${backend_state}" false ""
+    bashio::log.warning \
+      "tailscale up timed out while backend is still Starting." \
+      "Continuing startup in onboarding mode to avoid blocking the app."
   else
     bashio::exit.nok \
       "Unable to start up Tailscale (state: ${backend_state}, exit: ${up_rc})" \
@@ -386,7 +396,7 @@ if bashio::var.equals "${backend_state}" "Running"; then
   fi
 
   # Delete previously created persistent tailscale serve configuration ONCE
-  # After the add-on's share-homeassistant (serve and funnel) service is a longrun service, we do not modify the serve state permanently
+  # After the aplicación's share-homeassistant (serve and funnel) service is a longrun service, we do not modify the serve state permanently
   # This step can be removed in a later version with the file in the data folder also
   if ! bashio::fs.file_exists "/data/final_serve_reset_is_done"; then
     if ! /opt/tailscale serve reset; then
@@ -399,7 +409,7 @@ if bashio::var.equals "${backend_state}" "Running"; then
   if keyexpiry=$(/opt/tailscale status --self=true --peers=false --json | jq -rce '.Self.KeyExpiry'); then
     bashio::log.warning "The connection's key will expire on: ${keyexpiry}"
     bashio::log.warning "Consider disabling key expiry to avoid losing connection to your Home Assistant device."
-    bashio::log.warning "Please check your configuration based on the add-on's documentation under \"Configuration\""
+    bashio::log.warning "Please check your configuration based on the aplicación's documentation under \"Configuration\""
   fi
 
   # Warn about colliding subnet routes if non-userspace networking and accepting routes are enabled
@@ -434,10 +444,10 @@ fi
 if bashio::var.true "${userspace_networking_enabled}";
 then
   bashio::log.notice \
-    "The add-on uses userspace networking mode."
+    "The aplicación uses userspace networking mode."
   bashio::log.notice \
     "If you need to access other clients on your tailnet from your Home Assistant instance," \
     "disable userspace networking mode, that will create a \"tailscale0\" network interface on your host."
   bashio::log.notice \
-    "Please check your configuration based on the add-on's documentation under \"Option: userspace_networking\""
+    "Please check your configuration based on the aplicación's documentation under \"Option: userspace_networking\""
 fi

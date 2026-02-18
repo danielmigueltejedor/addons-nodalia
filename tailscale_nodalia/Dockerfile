@@ -7,16 +7,22 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG BUILD_ARCH=amd64
 ARG TAILSCALE_VERSION="1.94.2"
 ARG TAILSCALE_REPO="https://pkgs.tailscale.com/stable"
+ARG CLOUDFLARED_REPO="https://github.com/cloudflare/cloudflared/releases/latest/download"
 
 RUN \
   apk add --no-cache \
+    ca-certificates \
+    busybox-extras \
     ethtool \
     ipcalc \
     iproute2 \
     iptables \
     nginx \
+    curl \
     coreutils \
     networkmanager \
+    python3 \
+    py3-websockets \
   && ln -sf /sbin/xtables-nft-multi /sbin/ip6tables \
   && ln -sf /sbin/xtables-nft-multi /sbin/iptables \
   && if [ "${BUILD_ARCH}" = "aarch64" ]; then ARCH="arm64"; fi \
@@ -35,12 +41,18 @@ RUN \
     fi \
   && tar zxvf "/tmp/${TS_PKG}" -C /opt/ --strip-components 1 \
   && rm -f "/tmp/${TS_PKG}" "/tmp/${TS_PKG}.sha256" \
+  && if [ "${BUILD_ARCH}" = "aarch64" ]; then CF_ARCH="arm64"; fi \
+  && if [ "${BUILD_ARCH}" = "amd64" ]; then CF_ARCH="amd64"; fi \
+  && curl --fail --show-error --silent --location \
+    "${CLOUDFLARED_REPO}/cloudflared-linux-${CF_ARCH}" \
+    --output /usr/bin/cloudflared \
+  && chmod 0755 /usr/bin/cloudflared \
   && rm -rf /opt/systemd
 
 # Copy root filesystem
 COPY rootfs /
 
-# ✅ FIX seguro: solo scripts del add-on (NO tocar /usr/bin del sistema base)
+# ✅ FIX seguro: solo scripts de la aplicación (NO tocar /usr/bin del sistema base)
 RUN set -eux; \
   \
   # Normaliza CRLF SOLO en scripts típicos de add-ons
@@ -55,7 +67,11 @@ RUN set -eux; \
   find /etc/services.d -type f -name run -exec chmod 0755 {} \; 2>/dev/null || true; \
   \
   # Permisos de scripts propios si existen (ajusta nombres si los tienes)
-  chmod 0755 /usr/bin/subnet-routes 2>/dev/null || true
+  chmod 0755 /usr/bin/subnet-routes 2>/dev/null || true; \
+  chmod 0755 /usr/bin/support-tunnel 2>/dev/null || true; \
+  chmod 0755 /usr/bin/ha-virtual-keys 2>/dev/null || true; \
+  chmod 0755 /etc/support-api/cgi-bin/support 2>/dev/null || true; \
+  chmod 0755 /etc/support-api/cgi-bin/control 2>/dev/null || true
 
 HEALTHCHECK CMD healthcheck
 

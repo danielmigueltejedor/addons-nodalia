@@ -3,43 +3,252 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tailscale Onboarding</title>
+  <title>Nodalia Connect Onboarding</title>
   <style>
     :root {
-      --bg: #f4f7fb;
-      --card: #ffffff;
-      --text: #10213a;
-      --muted: #5a6a80;
-      --accent: #0b63ce;
-      --accent-2: #084a9b;
-      --ok: #157347;
-      --warn: #9a3412;
-      --border: #dce5f0;
+      --bg: #0d1628;
+      --bg-2: #11233f;
+      --bg-3: #0e1c34;
+      --bg-glow-1: rgba(72, 131, 244, 0.22);
+      --bg-glow-2: rgba(46, 91, 178, 0.24);
+      --card-grad-top: rgba(20, 34, 58, 0.96);
+      --card-grad-bottom: rgba(14, 27, 48, 0.95);
+      --text: #e7efff;
+      --muted: #a1b4d3;
+      --brand: #f0f5ff;
+      --badge-text: #8cc0ff;
+      --badge-bg-top: #172e52;
+      --badge-bg-bottom: #132744;
+      --badge-border: #2c4f79;
+      --accent: #2c84ee;
+      --accent-2: #1858b7;
+      --ok: #37c988;
+      --warn: #f59a5b;
+      --pending: #f2c94c;
+      --danger: #ff5d5d;
+      --border: #2a3f63;
+      --line: rgba(155, 181, 224, 0.2);
+      --shadow: 0 20px 50px rgba(2, 8, 18, 0.5);
+      --input-bg: #152846;
+      --ghost-grad-top: #1e314f;
+      --ghost-grad-bottom: #182944;
+      --ghost-border: #375076;
+      --ghost-text: #dce7fb;
+      --panel-grad-top: #152843;
+      --panel-grad-bottom: #13223b;
+      --step-bg: #152643;
+      --step-active-bg: #1a3157;
+      --step-active-border: #5d8fd1;
+      --profile-bg: #172a47;
+      --mono-bg: #10233f;
+      --mono-border: #26466f;
+      --mono-text: #cad9f3;
+      --score-pill-bg: #1a2e4c;
+      --score-pill-border: #34547f;
+      --score-pill-text: #d2e2ff;
+      --button-shadow: 0 8px 18px rgba(14, 67, 148, 0.45);
+      --button-hover-shadow: 0 10px 22px rgba(23, 98, 205, 0.55);
     }
     * { box-sizing: border-box; }
+    [hidden] {
+      display: none !important;
+    }
     body {
       margin: 0;
-      font-family: "Segoe UI", "Noto Sans", sans-serif;
+      font-family: "Avenir Next", "Segoe UI", "Noto Sans", sans-serif;
       color: var(--text);
-      background: radial-gradient(circle at top right, #d8e9ff, var(--bg) 45%);
+      background:
+        radial-gradient(900px 480px at -10% -20%, var(--bg-glow-1), rgba(255, 255, 255, 0)),
+        radial-gradient(920px 520px at 110% 0%, var(--bg-glow-2), rgba(198, 218, 255, 0)),
+        linear-gradient(160deg, var(--bg), var(--bg-2) 48%, var(--bg-3) 100%);
       min-height: 100vh;
       display: grid;
       place-items: center;
-      padding: 20px;
+      padding: 24px;
+      position: relative;
+      overflow-x: hidden;
     }
     .card {
-      width: min(760px, 100%);
-      background: var(--card);
+      width: min(840px, 100%);
+      background:
+        linear-gradient(180deg, var(--card-grad-top), var(--card-grad-bottom));
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 20px;
-      box-shadow: 0 10px 30px rgba(16, 33, 58, 0.08);
+      border-radius: 20px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(2px);
+      animation: fade-in 260ms ease-out;
     }
-    h1 { margin: 0 0 10px; font-size: 1.4rem; }
+    .hero {
+      display: grid;
+      gap: 9px;
+      margin-bottom: 12px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .hero-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .hero-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+    }
+    .brand img {
+      width: clamp(168px, 25vw, 240px);
+      height: auto;
+      object-fit: contain;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      box-shadow: none;
+    }
+    .advanced-toggle {
+      min-width: 48px;
+      width: 48px;
+      padding: 10px 0;
+      font-size: 1rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .advanced-toggle.is-on {
+      border-color: #4b8bca;
+      color: #dbefff;
+      box-shadow: 0 8px 18px rgba(17, 65, 126, 0.32);
+    }
+    .support-btn {
+      min-width: 48px;
+      width: 48px;
+      padding: 10px 0;
+      font-size: 1.05rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      white-space: nowrap;
+      border-color: var(--ghost-border);
+      color: var(--ghost-text);
+    }
+    .support-icon,
+    .advanced-icon {
+      width: 19px;
+      height: 19px;
+      display: block;
+    }
+    .support-icon circle,
+    .support-icon path,
+    .support-icon rect,
+    .advanced-icon circle,
+    .advanced-icon path,
+    .advanced-icon rect {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .support-btn.support-on {
+      border-color: #4b8bca;
+      color: #dbefff;
+      box-shadow: 0 8px 18px rgba(17, 65, 126, 0.32);
+    }
+    .support-btn.support-active {
+      border-color: #39b883;
+      color: #deffef;
+      box-shadow: 0 8px 18px rgba(18, 88, 57, 0.35);
+    }
+    .power-btn {
+      min-width: 48px;
+      width: 48px;
+      padding: 10px 0;
+      font-size: 1.18rem;
+      line-height: 1;
+      justify-content: center;
+      border-color: #a14a4a;
+      background: linear-gradient(180deg, #5d1f2a, #4a1420);
+      color: #ffe9e9;
+      box-shadow: 0 8px 18px rgba(77, 18, 29, 0.45);
+    }
+    .power-btn:hover {
+      box-shadow: 0 10px 20px rgba(95, 27, 41, 0.55);
+      filter: saturate(1.07);
+    }
+    .power-btn.armed {
+      border-color: #d77777;
+      background: linear-gradient(180deg, #8a2b39, #6a1b2a);
+      box-shadow: 0 10px 22px rgba(138, 43, 57, 0.55);
+      filter: saturate(1.08);
+      animation: power-pulse 700ms ease-in-out infinite alternate;
+    }
+    .logout-hint {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #a45d5d;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #ffd6d6;
+      background: rgba(95, 27, 41, 0.22);
+      white-space: nowrap;
+    }
+    .logout-hint[hidden] {
+      display: none;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.45rem, 1.3rem + 0.6vw, 1.9rem);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+    }
     p { margin: 0 0 14px; color: var(--muted); }
-    .state { font-weight: 700; margin-bottom: 12px; }
-    .state.running { color: var(--ok); }
-    .state.login { color: var(--warn); }
+    .state {
+      font-weight: 800;
+      margin-bottom: 12px;
+      font-size: 1.06rem;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+    }
+    .state::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(155, 181, 224, 0.35);
+      box-shadow: 0 0 0 6px rgba(155, 181, 224, 0.07);
+      flex: 0 0 12px;
+    }
+    .state.good::before, .state.running::before {
+      background: var(--ok);
+      box-shadow: 0 0 0 6px rgba(55, 201, 136, 0.18);
+    }
+    .state.warn::before {
+      background: var(--pending);
+      box-shadow: 0 0 0 6px rgba(242, 201, 76, 0.2);
+    }
+    .state.bad::before, .state.login::before {
+      background: var(--danger);
+      box-shadow: 0 0 0 6px rgba(255, 93, 93, 0.18);
+    }
     .url-wrap {
       display: grid;
       gap: 10px;
@@ -48,37 +257,268 @@
     input[type="text"] {
       width: 100%;
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 12px;
+      border-radius: 12px;
+      padding: 11px 13px;
       font-size: 0.95rem;
+      color: var(--text);
+      background: var(--input-bg);
+      box-shadow: inset 0 1px 2px rgba(11, 28, 52, 0.05);
     }
     .actions {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
+      align-items: center;
     }
     button, a.btn {
-      border: 0;
-      border-radius: 10px;
+      border: 1px solid transparent;
+      border-radius: 12px;
       padding: 10px 14px;
-      font-weight: 600;
+      font-weight: 700;
+      font-size: 0.96rem;
       text-decoration: none;
       cursor: pointer;
-      background: var(--accent);
+      background: linear-gradient(180deg, var(--accent), var(--accent-2));
       color: #fff;
+      box-shadow: var(--button-shadow);
+      transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease, background 120ms ease;
     }
-    button:hover, a.btn:hover { background: var(--accent-2); }
+    button:hover, a.btn:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--button-hover-shadow);
+      filter: saturate(1.03);
+    }
+    button:active, a.btn:active { transform: translateY(0); }
     .ghost {
-      background: #e9eff7;
-      color: #123;
+      background: linear-gradient(180deg, var(--ghost-grad-top), var(--ghost-grad-bottom));
+      border-color: var(--ghost-border);
+      color: var(--ghost-text);
+      box-shadow: none;
     }
-    .small { font-size: 0.86rem; color: var(--muted); margin-top: 12px; }
+    .ghost:hover {
+      box-shadow: 0 6px 16px rgba(11, 28, 52, 0.12);
+    }
+    .small {
+      font-size: 0.87rem;
+      color: var(--muted);
+      margin-top: 12px;
+      line-height: 1.45;
+    }
+    .advanced-only {
+      display: block;
+    }
+    .advanced-hidden .advanced-only {
+      display: none;
+    }
+    .final-release .debug-only {
+      display: none !important;
+    }
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-top: 14px;
+      background: linear-gradient(180deg, var(--panel-grad-top), var(--panel-grad-bottom));
+      box-shadow: 0 6px 18px rgba(11, 28, 52, 0.05);
+      scroll-margin-top: 18px;
+    }
+    .panel-focus {
+      border-color: #5f98d9;
+      box-shadow: 0 0 0 3px rgba(93, 143, 209, 0.2), 0 10px 24px rgba(11, 28, 52, 0.22);
+    }
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 1.03rem;
+      letter-spacing: -0.01em;
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 6px 10px;
+      font-size: 0.9rem;
+    }
+    .kv code { word-break: break-all; }
+    .diag-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      display: grid;
+      gap: 6px;
+    }
+    .diag-list li {
+      position: relative;
+      padding-left: 16px;
+    }
+    .diag-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.7em;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--diag-dot, rgba(155, 181, 224, 0.55));
+      transform: translateY(-50%);
+      box-shadow: 0 0 0 4px rgba(155, 181, 224, 0.08);
+    }
+    .diag-ok { --diag-dot: var(--ok); }
+    .diag-ko { --diag-dot: var(--warn); }
+    .disabled {
+      opacity: 0.55;
+      pointer-events: none;
+      filter: grayscale(0.1);
+    }
+    .steps {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 14px;
+    }
+    .step {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 9px 11px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      background: var(--step-bg);
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+    .step.active {
+      border-color: var(--step-active-border);
+      color: var(--text);
+      background: var(--step-active-bg);
+      font-weight: 700;
+    }
+    .grid-2 {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .profile {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 11px;
+      background: var(--profile-bg);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+    .profile h3 {
+      margin: 0 0 6px;
+      font-size: 0.98rem;
+    }
+    .profile p {
+      margin: 0 0 8px;
+      font-size: 0.88rem;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.84rem;
+      background: var(--mono-bg);
+      border: 1px solid var(--mono-border);
+      border-radius: 10px;
+      padding: 7px 9px;
+      margin: 0 0 8px;
+      overflow-wrap: anywhere;
+      color: var(--mono-text);
+    }
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .check input {
+      inline-size: 16px;
+      block-size: 16px;
+      accent-color: var(--accent);
+    }
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 6px 0 10px;
+    }
+    .score-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 800;
+      border-radius: 999px;
+      padding: 6px 10px;
+      border: 1px solid var(--score-pill-border);
+      background: var(--score-pill-bg);
+      color: var(--score-pill-text);
+      font-size: 0.85rem;
+    }
+    .score-ok { background: #e7f7ef; border-color: #b7e3c8; color: #0f5f37; }
+    .score-warn { background: #fff2e8; border-color: #ffd0b0; color: #8a3a10; }
+    .score-bad { background: #fdecec; border-color: #f7c2c2; color: #8e1f1f; }
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes power-pulse {
+      from { transform: scale(1); }
+      to { transform: scale(1.08); }
+    }
+    @media (max-width: 640px) {
+      body { padding: 14px; }
+      .card { padding: 14px; border-radius: 14px; }
+      .kv { grid-template-columns: 1fr; }
+      button, a.btn { width: 100%; justify-content: center; text-align: center; }
+      .actions { display: grid; grid-template-columns: 1fr; }
+      .hero-head { align-items: center; }
+      .advanced-toggle { width: 48px; min-width: 48px; }
+      .support-btn { width: 48px; min-width: 48px; }
+      .hero-actions { width: 100%; }
+      .power-btn { min-width: 0; }
+      .logout-hint { width: 100%; justify-content: center; }
+    }
   </style>
 </head>
-<body>
+<body class="theme-dark">
   <main class="card">
-    <h1>Asistente de inicio de sesion</h1>
-    <p>Completa el login inicial sin revisar los logs de la aplicacion.</p>
+    <section class="hero">
+      <div class="hero-head">
+        <div class="brand">
+          <img id="brand-logo" src="logo.png" alt="Nodalia Connect logo">
+        </div>
+        <div class="hero-actions">
+          <span id="logout-hint" class="logout-hint" hidden></span>
+          <button id="op-logout-btn" type="button" class="power-btn" aria-label="Logauth y reset de identidad local" title="Logauth (reset tailnet)">&#x23FB;</button>
+          <button id="support-nav-btn" type="button" class="ghost support-btn" aria-label="Abrir modo soporte" title="Abrir modo soporte">
+            <svg class="support-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 12a8 8 0 1 1 16 0"></path>
+              <rect x="3.5" y="12" width="3.2" height="4.8" rx="1.2"></rect>
+              <rect x="17.3" y="12" width="3.2" height="4.8" rx="1.2"></rect>
+              <circle cx="12" cy="12.3" r="2.6"></circle>
+              <path d="M8.8 19c.8-1.1 1.9-1.7 3.2-1.7s2.4.6 3.2 1.7"></path>
+              <path d="M20.5 16.8v.4a2.6 2.6 0 0 1-2.6 2.6h-2"></path>
+            </svg>
+          </button>
+          <button id="toggle-advanced-btn" type="button" class="ghost advanced-toggle" aria-label="Modo avanzado activado" title="Modo avanzado activado" aria-pressed="true">
+            <svg class="advanced-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 6h16"></path>
+              <circle cx="9" cy="6" r="2"></circle>
+              <path d="M4 12h16"></path>
+              <circle cx="15" cy="12" r="2"></circle>
+              <path d="M4 18h16"></path>
+              <circle cx="11" cy="18" r="2"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <h1>Asistente de inicio de sesion</h1>
+      <p>Gestiona Tailscale desde aqui sin depender del iframe, con acceso directo cuando quieras.</p>
+    </section>
+    <div class="steps">
+      <div id="step-auth" class="step">Paso 1: Autenticacion en tu tailnet</div>
+      <div id="step-warmup" class="step">Paso 2: Inicializacion de Web UI</div>
+      <div id="step-access" class="step">Paso 3: Acceso operativo</div>
+    </div>
     <div id="state" class="state">Cargando estado...</div>
     <div id="login-box" hidden>
       <div class="url-wrap">
@@ -86,17 +526,116 @@
         <div class="actions">
           <button id="copy-btn" type="button">Copiar URL</button>
           <a id="open-btn" class="btn" href="#" target="_blank" rel="noopener noreferrer">Abrir URL</a>
-          <button id="refresh-btn" type="button" class="ghost">Actualizar estado</button>
+          <button id="refresh-btn" type="button" class="ghost" title="Actualizar estado">Actualizar ↻</button>
         </div>
       </div>
     </div>
     <div id="ok-box" hidden>
       <div class="actions">
-        <a id="open-webui-btn" class="btn" href="webui">Abrir Web UI</a>
-        <button id="refresh-ok-btn" type="button" class="ghost">Actualizar estado</button>
+        <a id="open-webui-btn" class="btn disabled" href="#" title="Abrir iframe Tailscale por ingress">Iframe Tailscale</a>
+        <a id="open-direct-btn" class="btn ghost disabled" href="#" target="_blank" rel="noopener noreferrer">Acceso directo tailnet (no disponible en esta app)</a>
+        <button id="refresh-ok-btn" type="button" class="ghost" title="Actualizar estado">Actualizar ↻</button>
       </div>
+      <p id="op-message" class="small" aria-live="polite"></p>
+      <div id="op-output" class="mono debug-only" hidden></div>
     </div>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> generado por la aplicacion.</p>
+    <section class="panel">
+      <h2>Salud y diagnostico</h2>
+      <div class="score-row">
+        <span id="health-score-pill" class="score-pill">&#10084; --</span>
+        <button id="run-health-btn" type="button" class="ghost debug-only">Test</button>
+        <button id="run-dns-btn" type="button" class="ghost debug-only">Test DNS tailnet</button>
+        <button id="download-report-btn" type="button" class="ghost debug-only">Descargar diagnostico JSON</button>
+      </div>
+      <ul id="health-checks" class="diag-list"></ul>
+    </section>
+    <section class="panel">
+      <h2>Estado en vivo</h2>
+      <div class="kv">
+        <div class="advanced-only">Backend:</div><div class="advanced-only"><code id="rt-backend">-</code></div>
+        <div class="advanced-only">Web UI lista:</div><div class="advanced-only"><code id="rt-webui">-</code></div>
+        <div class="advanced-only">Web UI streak:</div><div class="advanced-only"><code id="rt-webui-streak">-</code></div>
+        <div class="advanced-only">Web UI probe(s):</div><div class="advanced-only"><code id="rt-webui-probe">-</code></div>
+        <div class="advanced-only">Web UI readonly:</div><div class="advanced-only"><code id="rt-readonly">-</code></div>
+        <div class="advanced-only">Self online:</div><div class="advanced-only"><code id="rt-online">-</code></div>
+        <div class="advanced-only">Perfil:</div><div class="advanced-only"><code id="rt-profile">-</code></div>
+        <div class="advanced-only">Share mode:</div><div class="advanced-only"><code id="rt-share">-</code></div>
+        <div class="advanced-only">DNSName:</div><div class="advanced-only"><code id="rt-dnsname">-</code></div>
+        <div class="advanced-only">DNS resolvers:</div><div class="advanced-only"><code id="rt-dns-resolvers">-</code></div>
+        <div class="advanced-only">DNS warning:</div><div class="advanced-only"><code id="rt-dns-warning">-</code></div>
+        <div>HostName:</div><div><code id="rt-hostname">-</code></div>
+        <div>IPv4:</div><div><code id="rt-ipv4">-</code></div>
+        <div>IPv6:</div><div><code id="rt-ipv6">-</code></div>
+        <div class="advanced-only">Uptime(s):</div><div class="advanced-only"><code id="rt-uptime">-</code></div>
+        <div class="advanced-only">Actualizado:</div><div class="advanced-only"><code id="rt-updated">-</code></div>
+      </div>
+      <div class="actions advanced-only debug-only" style="margin-top:10px;">
+        <button id="diag-btn" type="button" class="ghost">Ejecutar diagnóstico</button>
+        <button id="copy-report-btn" type="button" class="ghost">Copiar reporte</button>
+      </div>
+      <ul id="diag-list" class="diag-list advanced-only debug-only"></ul>
+    </section>
+    <section class="panel advanced-only">
+      <h2>Sugerencias inteligentes</h2>
+      <ul id="suggestions-list" class="diag-list"></ul>
+      <div class="actions" style="margin-top:10px;">
+        <button id="copy-acl-webui-btn" type="button" class="ghost">Copiar ACL Web UI (self:5252)</button>
+        <button id="copy-tagowners-btn" type="button" class="ghost">Copiar bloque tagOwners</button>
+      </div>
+    </section>
+    <section id="support-panel" class="panel">
+      <h2>Acceso soporte Nodalia</h2>
+      <p class="small advanced-only">Disponible solo si el DNS de esta instancia coincide con el DNS de soporte configurado.</p>
+      <div class="kv advanced-only">
+        <div>Soporte habilitado:</div><div><code id="sup-enabled">-</code></div>
+        <div class="advanced-only">Modo soporte:</div><div class="advanced-only"><code id="sup-mode">-</code></div>
+        <div class="advanced-only">DNS objetivo:</div><div class="advanced-only"><code id="sup-tailnet">-</code></div>
+        <div class="advanced-only">DNS coincide:</div><div class="advanced-only"><code id="sup-match">-</code></div>
+        <div class="advanced-only">Elegible:</div><div class="advanced-only"><code id="sup-eligible">-</code></div>
+        <div class="advanced-only">Acceso activo:</div><div class="advanced-only"><code id="sup-active">-</code></div>
+        <div class="advanced-only">Usuario soporte:</div><div class="advanced-only"><code id="sup-user">-</code></div>
+        <div class="advanced-only">Token soporte:</div><div class="advanced-only"><code id="sup-token-name">-</code></div>
+        <div class="advanced-only">Notificacion Telegram:</div><div class="advanced-only"><code id="sup-notify-status">-</code></div>
+        <div class="advanced-only">Motivo notificacion:</div><div class="advanced-only"><code id="sup-notify-reason">-</code></div>
+        <div class="advanced-only">Expira en:</div><div class="advanced-only"><code id="sup-expires">-</code></div>
+        <div class="advanced-only">Motivo:</div><div class="advanced-only"><code id="sup-reason">-</code></div>
+      </div>
+      <div class="actions" style="margin-top:10px;">
+        <button id="sup-enable-btn" type="button" class="ghost">Habilitar acceso soporte</button>
+        <button id="sup-disable-btn" type="button" class="ghost">Revocar ahora</button>
+        <button id="sup-notify-test-btn" type="button" class="ghost advanced-only">Probar Telegram</button>
+        <button id="sup-debug-btn" type="button" class="ghost advanced-only debug-only">Debug soporte</button>
+      </div>
+      <p id="sup-message" class="small advanced-only"></p>
+      <p id="sup-countdown" class="small" hidden></p>
+      <div id="sup-audit-output" class="mono advanced-only" hidden></div>
+    </section>
+    <section class="panel advanced-only">
+      <h2>Perfiles recomendados</h2>
+      <div class="grid-2">
+        <article class="profile">
+          <h3>Acceso remoto basico</h3>
+          <p>Recomendado para entrar a Home Assistant desde fuera de casa.</p>
+          <div class="mono">setup_profile: home_access</div>
+          <button id="copy-profile-home" type="button" class="ghost">Copiar</button>
+        </article>
+        <article class="profile">
+          <h3>Router de subred</h3>
+          <p>Publica redes LAN para acceder desde tu tailnet.</p>
+          <div class="mono">setup_profile: subnet_router</div>
+          <button id="copy-profile-subnet" type="button" class="ghost">Copiar</button>
+        </article>
+      </div>
+    </section>
+    <section class="panel advanced-only debug-only">
+      <h2>Control de sesion</h2>
+      <p class="small">Si ves "Viewing" en Web UI, usa acceso directo tailnet y revisa ACL/tagOwners. Todo el control de esta pagina se realiza con botones.</p>
+      <div class="actions">
+        <button id="session-diag-btn" type="button" class="ghost">Ejecutar diagnostico</button>
+        <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
+      </div>
+    </section>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -106,119 +645,1715 @@
     const copyBtn = document.getElementById("copy-btn");
     const openBtn = document.getElementById("open-btn");
     const openWebuiBtn = document.getElementById("open-webui-btn");
+    const openDirectBtn = document.getElementById("open-direct-btn");
+    const toggleAdvancedBtn = document.getElementById("toggle-advanced-btn");
+    const uiBuildVersionEl = document.getElementById("ui-build-version");
+    const UI_BUILD_VERSION = String(uiBuildVersionEl?.textContent || "");
+    const UI_IS_BETA = /beta/i.test(UI_BUILD_VERSION);
+    const supportNavBtn = document.getElementById("support-nav-btn");
+    const supportPanel = document.getElementById("support-panel");
+    const logoutHint = document.getElementById("logout-hint");
     const refreshBtn = document.getElementById("refresh-btn");
     const refreshOkBtn = document.getElementById("refresh-ok-btn");
+    const diagBtn = document.getElementById("diag-btn");
+    const copyReportBtn = document.getElementById("copy-report-btn");
+    const diagList = document.getElementById("diag-list");
+    const suggestionsList = document.getElementById("suggestions-list");
+    const copyAclWebuiBtn = document.getElementById("copy-acl-webui-btn");
+    const copyTagOwnersBtn = document.getElementById("copy-tagowners-btn");
+    const supportEnabled = document.getElementById("sup-enabled");
+    const supportMode = document.getElementById("sup-mode");
+    const supportTailnet = document.getElementById("sup-tailnet");
+    const supportMatch = document.getElementById("sup-match");
+    const supportEligible = document.getElementById("sup-eligible");
+    const supportActive = document.getElementById("sup-active");
+    const supportUser = document.getElementById("sup-user");
+    const supportTokenName = document.getElementById("sup-token-name");
+    const supportNotifyStatus = document.getElementById("sup-notify-status");
+    const supportNotifyReason = document.getElementById("sup-notify-reason");
+    const supportExpires = document.getElementById("sup-expires");
+    const supportReason = document.getElementById("sup-reason");
+    const supportMessage = document.getElementById("sup-message");
+    const supportCountdown = document.getElementById("sup-countdown");
+    const supportEnableBtn = document.getElementById("sup-enable-btn");
+    const supportDisableBtn = document.getElementById("sup-disable-btn");
+    const supportNotifyTestBtn = document.getElementById("sup-notify-test-btn");
+    const supportDebugBtn = document.getElementById("sup-debug-btn");
+    const supportAuditOutput = document.getElementById("sup-audit-output");
+    const rtBackend = document.getElementById("rt-backend");
+    const rtWebUi = document.getElementById("rt-webui");
+    const rtWebUiStreak = document.getElementById("rt-webui-streak");
+    const rtWebUiProbe = document.getElementById("rt-webui-probe");
+    const rtReadonly = document.getElementById("rt-readonly");
+    const rtOnline = document.getElementById("rt-online");
+    const rtProfile = document.getElementById("rt-profile");
+    const rtShare = document.getElementById("rt-share");
+    const rtDnsName = document.getElementById("rt-dnsname");
+    const rtDnsResolvers = document.getElementById("rt-dns-resolvers");
+    const rtDnsWarning = document.getElementById("rt-dns-warning");
+    const rtHostName = document.getElementById("rt-hostname");
+    const rtIpv4 = document.getElementById("rt-ipv4");
+    const rtIpv6 = document.getElementById("rt-ipv6");
+    const rtUptime = document.getElementById("rt-uptime");
+    const rtUpdated = document.getElementById("rt-updated");
+    const stepAuth = document.getElementById("step-auth");
+    const stepWarmup = document.getElementById("step-warmup");
+    const stepAccess = document.getElementById("step-access");
+    const stepsBox = document.querySelector(".steps");
+    const copyProfileHome = document.getElementById("copy-profile-home");
+    const copyProfileSubnet = document.getElementById("copy-profile-subnet");
+    const sessionDiagBtn = document.getElementById("session-diag-btn");
+    const sessionDownloadBtn = document.getElementById("session-download-btn");
+    const opLogoutBtn = document.getElementById("op-logout-btn");
+    const opMessage = document.getElementById("op-message");
+    const opOutput = document.getElementById("op-output");
+    const runHealthBtn = document.getElementById("run-health-btn");
+    const runDnsBtn = document.getElementById("run-dns-btn");
+    const downloadReportBtn = document.getElementById("download-report-btn");
+    const healthChecks = document.getElementById("health-checks");
+    const healthScorePill = document.getElementById("health-score-pill");
     let pollHandle = null;
+    let lastOnboarding = null;
+    let lastRuntime = null;
+    let lastSuggestionsHtml = "";
+    let lastHealthHtml = "";
+    let lastRuntimeSignature = "";
+    let lastStateMessage = "";
+    let lastStateClass = "";
+    let isFirstRender = true;
+    let advancedModeEnabled = true;
+    let actionInFlight = 0;
+    let supportBusy = false;
+    let supportRules = { enable: false, disable: false, notify_test: true, debug: true };
+    let opBusy = false;
+    let opCanLogout = false;
+    let supportCountdownHandle = null;
+    let supportCountdownExpiresAtMs = 0;
+    let logoutConfirmUntilMs = 0;
+    let logoutConfirmHandle = null;
+    let logoutConfirmTickHandle = null;
+    let logoutHintHideHandle = null;
+    let logoutTraceLog = "";
+    let liveWebUiReadyStreak = 0;
+    let liveWebUiSeenAtMs = 0;
+    let lastWebUiProbeAtMs = 0;
+    let lastWebUiProbeOk = false;
+    let lastOnboardingFetchAtMs = 0;
+    let runningSinceMs = 0;
+    const RUNTIME_CACHE_KEY = "nodalia_runtime_cache_v1";
+    const UI_PREFS_KEY = "nodalia_ui_prefs_v1";
+    const aclWebUiSnippet = JSON.stringify({
+      acls: [
+        { action: "accept", src: ["autogroup:member"], dst: ["autogroup:self:5252"] }
+      ]
+    }, null, 2);
+    const tagOwnersSnippet = JSON.stringify({
+      tagOwners: {
+        "tag:ha": ["autogroup:admin"]
+      }
+    }, null, 2);
+    const LOGAUTH_IDLE_LABEL = "&#x23FB;";
+    const LOGAUTH_CONFIRM_LABEL = "&#9888;";
 
-    function schedulePoll() {
+    async function copyText(text, targetButton, okLabel, defaultLabel) {
+      try {
+        await navigator.clipboard.writeText(text);
+        if (targetButton) {
+          targetButton.textContent = okLabel;
+          setTimeout(() => { targetButton.textContent = defaultLabel; }, 1200);
+        }
+      } catch (_) {
+        window.prompt("Copia este texto:", text);
+      }
+    }
+
+    function ingressBasePath() {
+      let base = String(window.location.pathname || "/");
+      base = base.replace(/\/onboarding\/?$/, "/");
+      if (!base.endsWith("/")) {
+        base += "/";
+      }
+      return base.replace(/\/{2,}/g, "/");
+    }
+
+    function ingressUrl(pathWithQuery = "") {
+      const base = ingressBasePath();
+      const clean = String(pathWithQuery || "").replace(/^\/+/, "");
+      return clean ? (base + clean) : base;
+    }
+
+    function ingressRootUrl() {
+      return ingressBasePath();
+    }
+
+    const brandLogoEl = document.getElementById("brand-logo");
+    if (brandLogoEl) {
+      brandLogoEl.src = ingressUrl("logo.png");
+      brandLogoEl.onerror = () => {
+        brandLogoEl.onerror = null;
+        brandLogoEl.src = ingressUrl("nodalia-logo.png");
+      };
+    }
+    openWebuiBtn.href = ingressRootUrl();
+
+    async function fetchJsonWithTimeout(path, timeoutMs = 1200) {
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(ingressUrl(path), { cache: "no-store", signal: controller.signal });
+        if (!response.ok) {
+          throw new Error("http_" + response.status);
+        }
+        return await response.json();
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
+    }
+
+    async function refreshOnboarding(timeoutMs = 1500, force = false) {
+      const now = Date.now();
+      if (!force && lastOnboarding && (now - lastOnboardingFetchAtMs) < 10000) {
+        return lastOnboarding;
+      }
+      const data = await fetchJsonWithTimeout("onboarding.json?_ts=" + now, timeoutMs);
+      lastOnboarding = data;
+      lastOnboardingFetchAtMs = now;
+      return data;
+    }
+
+    function hasUnavailableWebUiBanner(html) {
+      const visibleText = String(html || "")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+      return visibleText.includes("tailscale web interface is unavailable");
+    }
+
+    async function probeIngressWebUiReady(timeoutMs = 2200, force = false) {
+      const now = Date.now();
+      if (!force && now - lastWebUiProbeAtMs < 1200) {
+        return lastWebUiProbeOk;
+      }
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+      let result = false;
+      try {
+        const response = await fetch(ingressUrl("webui-ready?_ts=" + Date.now()), {
+          cache: "no-store",
+          signal: controller.signal,
+          redirect: "manual",
+        });
+        if (response.type === "opaqueredirect") {
+          result = true;
+          return result;
+        }
+        const status = Number(response.status || 0);
+        const statusLooksReady = (
+          (status >= 200 && status < 400) ||
+          status === 401 ||
+          status === 403
+        );
+        if (!statusLooksReady) {
+          result = false;
+          return result;
+        }
+        // 401/403 is enough evidence of a reachable upstream endpoint.
+        if (status === 401 || status === 403) {
+          result = true;
+          return result;
+        }
+        const text = await response.text();
+        result = !hasUnavailableWebUiBanner(text);
+        return result;
+      } catch (_) {
+        result = false;
+        return result;
+      } finally {
+        clearTimeout(timeoutHandle);
+        lastWebUiProbeAtMs = Date.now();
+        lastWebUiProbeOk = result;
+      }
+    }
+
+    function enforceDarkTheme() {
+      document.body.classList.remove("theme-light");
+      document.body.classList.add("theme-dark");
+    }
+
+    function loadUiPrefs() {
+      advancedModeEnabled = true;
+      try {
+        const raw = localStorage.getItem(UI_PREFS_KEY);
+        if (raw) {
+          const prefs = JSON.parse(raw);
+          advancedModeEnabled = prefs?.advanced_mode !== false;
+        }
+      } catch (_) {
+      }
+      enforceDarkTheme();
+    }
+
+    function saveUiPrefs() {
+      try {
+        localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
+          advanced_mode: advancedModeEnabled,
+        }));
+      } catch (_) {
+      }
+    }
+
+    function renderAdvancedMode() {
+      document.body.classList.toggle("advanced-hidden", !advancedModeEnabled);
+      if (toggleAdvancedBtn) {
+        const label = advancedModeEnabled ? "Modo avanzado activado" : "Modo avanzado desactivado";
+        toggleAdvancedBtn.classList.toggle("is-on", advancedModeEnabled);
+        toggleAdvancedBtn.setAttribute("aria-pressed", advancedModeEnabled ? "true" : "false");
+        toggleAdvancedBtn.setAttribute("aria-label", label);
+        toggleAdvancedBtn.title = label;
+      }
+      syncLogoutTraceVisibility();
+    }
+
+    function applyReleaseUiMode() {
+      document.body.classList.toggle("final-release", !UI_IS_BETA);
+    }
+
+    function openSupportMode() {
+      if (supportPanel) {
+        supportPanel.classList.remove("panel-focus");
+        supportPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        setTimeout(() => supportPanel.classList.add("panel-focus"), 60);
+        setTimeout(() => supportPanel.classList.remove("panel-focus"), 980);
+      }
+    }
+
+    function setUiDisabled(element, disabled) {
+      if (!element) {
+        return;
+      }
+      if ("disabled" in element) {
+        element.disabled = disabled;
+      }
+      element.classList.toggle("disabled", disabled);
+      if (element.tagName === "A") {
+        if (disabled) {
+          element.setAttribute("aria-disabled", "true");
+        } else {
+          element.removeAttribute("aria-disabled");
+        }
+      }
+    }
+
+    function isUiDisabled(element) {
+      if (!element) {
+        return true;
+      }
+      return element.classList.contains("disabled") || ("disabled" in element && element.disabled);
+    }
+
+    function beginUiAction() {
+      actionInFlight += 1;
+    }
+
+    function endUiAction() {
+      actionInFlight = Math.max(0, actionInFlight - 1);
+    }
+
+    function renderSupportButtons() {
+      setUiDisabled(supportEnableBtn, supportBusy || !supportRules.enable);
+      setUiDisabled(supportDisableBtn, supportBusy || !supportRules.disable);
+      setUiDisabled(supportNotifyTestBtn, supportBusy || !supportRules.notify_test);
+      setUiDisabled(supportDebugBtn, supportBusy || !supportRules.debug);
+    }
+
+    function renderOpButtons() {
+      if (opBusy) {
+        clearLogoutConfirm();
+      }
+      setUiDisabled(opLogoutBtn, opBusy);
+    }
+
+    function setStepsVisible(visible) {
+      if (stepsBox) {
+        stepsBox.hidden = !visible;
+      }
+    }
+
+    function setSupportButtonState(busy) {
+      supportBusy = busy;
+      renderSupportButtons();
+    }
+
+    function formatSupportRemainingTime(totalSeconds) {
+      const safeSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+      const hours = Math.floor(safeSeconds / 3600);
+      const minutes = Math.floor((safeSeconds % 3600) / 60);
+      const seconds = safeSeconds % 60;
+      if (hours > 0) {
+        return String(hours) + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+      }
+      return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+    }
+
+    function clearSupportCountdown() {
+      if (supportCountdownHandle) {
+        clearInterval(supportCountdownHandle);
+        supportCountdownHandle = null;
+      }
+      supportCountdownExpiresAtMs = 0;
+      if (supportCountdown) {
+        supportCountdown.hidden = true;
+        supportCountdown.textContent = "";
+      }
+    }
+
+    function renderSupportCountdown(expiresAtRaw) {
+      if (!supportCountdown) {
+        return;
+      }
+      const expiresMs = Date.parse(String(expiresAtRaw || ""));
+      if (!Number.isFinite(expiresMs) || expiresMs <= 0) {
+        clearSupportCountdown();
+        return;
+      }
+      if (supportCountdownExpiresAtMs !== expiresMs) {
+        clearSupportCountdown();
+        supportCountdownExpiresAtMs = expiresMs;
+      }
+      const tick = () => {
+        const remainingSeconds = Math.ceil((supportCountdownExpiresAtMs - Date.now()) / 1000);
+        if (remainingSeconds <= 0) {
+          clearSupportCountdown();
+          return;
+        }
+        supportCountdown.hidden = false;
+        supportCountdown.textContent = "Tiempo restante: " + formatSupportRemainingTime(remainingSeconds);
+      };
+      tick();
+      if (!supportCountdownHandle) {
+        supportCountdownHandle = setInterval(tick, 1000);
+      }
+    }
+
+    function renderSupportFromRuntime(runtime) {
+      const enabled = Boolean(runtime?.support_enabled);
+      const mode = String(runtime?.support_mode || "virtual_keys_token");
+      const modeLabel = mode === "virtual_keys_token" ? "token (virtual-keys)" : mode;
+      const match = Boolean(runtime?.support_tailnet_match ?? runtime?.tailnet_match);
+      const eligible = Boolean(runtime?.support_eligible ?? runtime?.eligible);
+      const active = Boolean(runtime?.support_active ?? runtime?.active);
+      const expiresAt = String(runtime?.support_expires_at || runtime?.expires_at || "");
+      const reason = String(runtime?.support_reason || runtime?.reason || "");
+      const supportUserValue = String(runtime?.support_user || "nodalia");
+      const tokenNameValue = String(runtime?.support_token_name || "");
+      const notifyStatusValue = String(runtime?.support_notify_status || "disabled");
+      const notifyReasonValue = String(runtime?.support_notify_reason || "");
+      const targetDns = String(runtime?.support_tailnet_dns_suffix || runtime?.support_target_dns_suffix || "");
+      const targetId = String(runtime?.support_target_id || "");
+      supportEnabled.textContent = enabled ? "true" : "false";
+      supportMode.textContent = modeLabel;
+      supportTailnet.textContent = targetDns || targetId || "-";
+      supportMatch.textContent = match ? "true" : "false";
+      supportEligible.textContent = eligible ? "true" : "false";
+      supportActive.textContent = active ? "true" : "false";
+      supportUser.textContent = supportUserValue || "-";
+      supportTokenName.textContent = tokenNameValue || "-";
+      supportNotifyStatus.textContent = notifyStatusValue || "-";
+      supportNotifyReason.textContent = notifyReasonValue || "-";
+      supportExpires.textContent = expiresAt || "-";
+      supportReason.textContent = reason || "-";
+      if (active && expiresAt) {
+        renderSupportCountdown(expiresAt);
+      } else {
+        clearSupportCountdown();
+      }
+      if (supportNavBtn) {
+        supportNavBtn.classList.toggle("support-on", enabled);
+        supportNavBtn.classList.toggle("support-active", active);
+      }
+      supportRules = {
+        enable: enabled && eligible && !active,
+        disable: active,
+        notify_test: true,
+        debug: true,
+      };
+      renderSupportButtons();
+    }
+
+    function renderHealthFromRuntime(runtime) {
+      const backend = String(runtime?.backend_state || "Unknown");
+      const online = Boolean(runtime?.self_online);
+      const webui = Boolean(runtime?.webui_ready);
+      const supportEligible = Boolean(runtime?.support_eligible);
+      const dnsDegraded = Boolean(runtime?.dns_degraded);
+      let score = 0;
+      if (backend === "Running") {
+        score += 55;
+      } else if (backend === "NeedsLogin" || backend === "NeedsMachineAuth") {
+        score += 25;
+      }
+      if (online) score += 20;
+      if (webui) score += 15;
+      if (supportEligible) score += 15;
+      if (backend === "Running" && online && score < 65) score = 65;
+      if (dnsDegraded) score -= 5;
+      if (score < 0) score = 0;
+      if (score > 100) score = 100;
+      healthScorePill.textContent = "\u2764 " + score;
+      healthScorePill.classList.remove("score-ok", "score-warn", "score-bad");
+      if (score >= 80) {
+        healthScorePill.classList.add("score-ok");
+      } else if (score >= 50) {
+        healthScorePill.classList.add("score-warn");
+      } else {
+        healthScorePill.classList.add("score-bad");
+      }
+
+      const checks = [
+        { ok: backend === "Running", label: "Backend Running" },
+        { ok: online, label: "Self online" },
+        { ok: webui, label: "Web UI local disponible" },
+        { ok: !dnsDegraded, label: "DNS tailnet estable" },
+        { ok: !!runtime?.support_enabled, label: "Modo soporte habilitado" },
+      ];
+      const html = checks.map((c) =>
+        `<li class="${c.ok ? "diag-ok" : "diag-ko"}">${c.label}</li>`
+      ).join("");
+      if (html !== lastHealthHtml) {
+        healthChecks.innerHTML = html;
+        lastHealthHtml = html;
+      }
+    }
+
+    function applyRuntimeData(data) {
+      const signature = JSON.stringify([
+        data?.backend_state,
+        data?.self_online,
+        data?.webui_ready,
+        data?.webui_ready_streak,
+        data?.webui_probe_s,
+        data?.webui_readonly,
+        data?.setup_profile,
+        data?.share_mode,
+        data?.self_dns_name,
+        data?.dns_warning,
+        data?.dns_degraded,
+        Array.isArray(data?.dns_resolvers) ? data.dns_resolvers.join(",") : "",
+        data?.self_host_name,
+        Array.isArray(data?.ipv4) ? data.ipv4.join(",") : "",
+        Array.isArray(data?.ipv6) ? data.ipv6.join(",") : "",
+        data?.support_enabled,
+        data?.support_mode,
+        data?.support_tailnet_dns_suffix,
+        data?.support_tailnet_match,
+        data?.support_eligible,
+        data?.support_active,
+        data?.support_user,
+        data?.support_token_name,
+        data?.support_token_count,
+        data?.support_reason,
+        data?.support_expires_at,
+        data?.direct_webui_url
+      ]);
+      lastRuntime = data;
+      if (signature === lastRuntimeSignature) {
+        renderSupportFromRuntime(data);
+        opCanLogout = String(data?.backend_state || "") === "Running";
+        renderOpButtons();
+        return;
+      }
+      lastRuntimeSignature = signature;
+      rtBackend.textContent = String(data.backend_state || "-");
+      rtWebUi.textContent = data.webui_ready ? "true" : "false";
+      rtWebUiStreak.textContent = Number(data.webui_ready_streak || 0).toString();
+      rtWebUiProbe.textContent = String(data.webui_probe_s || "-");
+      rtReadonly.textContent = data.webui_readonly ? "true" : "false";
+      rtOnline.textContent = data.self_online ? "true" : "false";
+      rtProfile.textContent = String(data.setup_profile || "-");
+      rtShare.textContent = String(data.share_mode || "-");
+      rtDnsName.textContent = String(data.self_dns_name || "-");
+      rtDnsResolvers.textContent = Array.isArray(data.dns_resolvers) && data.dns_resolvers.length ? data.dns_resolvers.join(", ") : "-";
+      rtDnsWarning.textContent = data.dns_warning ? String(data.dns_warning) : (data.dns_degraded ? "Degradado" : "OK");
+      rtHostName.textContent = String(data.self_host_name || "-");
+      rtIpv4.textContent = Array.isArray(data.ipv4) && data.ipv4.length ? data.ipv4.join(", ") : "-";
+      rtIpv6.textContent = Array.isArray(data.ipv6) && data.ipv6.length ? data.ipv6.join(", ") : "-";
+      rtUptime.textContent = Number(data.uptime_sec || 0).toString();
+      rtUpdated.textContent = String(data.updated_at || "-");
+      renderSupportFromRuntime(data);
+      renderHealthFromRuntime(data);
+      opCanLogout = String(data?.backend_state || "") === "Running";
+      renderOpButtons();
+      if (typeof data.direct_webui_url === "string" && data.direct_webui_url.length > 0) {
+        openDirectBtn.href = data.direct_webui_url;
+        setUiDisabled(openDirectBtn, false);
+      } else {
+        setUiDisabled(openDirectBtn, true);
+      }
+      try {
+        localStorage.setItem(RUNTIME_CACHE_KEY, JSON.stringify(data));
+      } catch (_) {
+      }
+    }
+
+    function hydrateRuntimeFromCache() {
+      try {
+        const raw = localStorage.getItem(RUNTIME_CACHE_KEY);
+        if (!raw) {
+          return;
+        }
+        const data = JSON.parse(raw);
+        if (data && typeof data === "object") {
+          applyRuntimeData(data);
+        }
+      } catch (_) {
+      }
+    }
+
+    function parseApiPayload(payload) {
+      const text = String(payload || "");
+      try {
+        return JSON.parse(text);
+      } catch (_) {
+      }
+      const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        try {
+          return JSON.parse(lines[i]);
+        } catch (_) {
+        }
+      }
+      return {
+        ok: false,
+        error: text ? text.slice(0, 600) : "api_payload_parse_failed",
+        raw: text,
+      };
+    }
+
+    function extractApiError(data, fallback = "api_failed") {
+      return String(
+        data?.reason ||
+        data?.error ||
+        data?.output ||
+        data?.message ||
+        fallback
+      );
+    }
+
+    function buildApiError(data, fallback, requestError, response) {
+      const error = new Error(
+        extractApiError(data, requestError?.message || fallback)
+      );
+      error.data = data && typeof data === "object" ? data : null;
+      error.status = Number(response?.status || 0);
+      return error;
+    }
+
+    function formatSupportDebug(action, error) {
+      const payload = error?.data && typeof error.data === "object" ? error.data : {};
+      const runtime = lastRuntime || {};
+      return JSON.stringify({
+        generated_at: new Date().toISOString(),
+        action,
+        message: String(error?.message || "unknown_error"),
+        status: Number(error?.status || 0),
+        reason: String(payload?.reason || ""),
+        lookup_source: String(payload?.lookup_source || ""),
+        lookup_reason: String(payload?.lookup_reason || ""),
+        support_mode: String(payload?.support_mode || runtime?.support_mode || ""),
+        support_user: String(payload?.support_user || runtime?.support_user || ""),
+        support_user_id: String(payload?.support_user_id || ""),
+        support_user_login_name: String(payload?.support_user_login_name || ""),
+        runtime_backend_state: String(runtime?.backend_state || ""),
+        runtime_support_reason: String(runtime?.support_reason || ""),
+        runtime_support_eligible: Boolean(runtime?.support_eligible),
+        runtime_support_active: Boolean(runtime?.support_active),
+        payload,
+      }, null, 2);
+    }
+
+    function formatSupportActivationInfo(data) {
+      const mode = String(data?.support_mode || "");
+      if (mode === "virtual_keys_token") {
+        const tokenName = String(data?.support_virtual_keys_token_name || "");
+        const loginPath = String(data?.support_virtual_keys_login_path || "");
+        const explicitLoginUrl = String(data?.support_virtual_keys_login_url || "");
+        if (!tokenName || (!loginPath && !explicitLoginUrl)) {
+          return "";
+        }
+        const supportTargetUrl = String(data?.support_target_url || lastRuntime?.support_target_url || "");
+        let loginUrl = explicitLoginUrl || loginPath;
+        try {
+          if (!explicitLoginUrl && supportTargetUrl) {
+            loginUrl = new URL(loginPath, supportTargetUrl).toString();
+          } else if (!explicitLoginUrl) {
+            loginUrl = new URL(loginPath, window.location.origin).toString();
+          }
+        } catch (_) {
+        }
+        const ttlMinutes = Number(data?.ttl_minutes || lastRuntime?.support_ttl_minutes || 30);
+        const notifyStatus = String(data?.support_notify_status || "");
+        const notifyReason = String(data?.support_notify_reason || "");
+        const notifyLine = notifyStatus
+          ? ("Notificacion Telegram: " + notifyStatus + (notifyReason ? " (" + notifyReason + ")" : ""))
+          : "";
+        return [
+          "Token temporal de soporte (virtual-keys)",
+          "Token: " + tokenName,
+          "TTL(min): " + ttlMinutes,
+          "Login URL: " + loginUrl,
+          notifyLine
+        ].filter(Boolean).join("\n");
+      }
+      return "";
+    }
+
+    async function callSupportApi(action, method = "GET", allowGetFallback = false) {
+      const request = async (httpMethod) => {
+        try {
+          const response = await fetch(ingressUrl("support-api/" + encodeURIComponent(action)), {
+            method: httpMethod,
+            cache: "no-store",
+            headers: { "X-Nodalia-Action": action },
+          });
+          const payload = await response.text();
+          const data = parseApiPayload(payload);
+          return { response, data, error: null };
+        } catch (error) {
+          return { response: null, data: null, error };
+        }
+      };
+
+      const first = await request(method);
+      const firstStatus = Number(first.response?.status || 0);
+      const firstError = String(first.data?.error || "");
+      const shouldRetryAsGet = allowGetFallback && method === "POST" && (
+        !first.response ||
+        firstStatus === 405 ||
+        firstError === "method_not_allowed"
+      );
+      if (shouldRetryAsGet) {
+        const second = await request("GET");
+        if (second.response?.ok && second.data?.ok !== false) {
+          return second.data;
+        }
+        throw buildApiError(second.data, "support_api_failed", second.error, second.response);
+      }
+      if (first.response?.ok && first.data?.ok !== false) {
+        return first.data;
+      }
+      throw buildApiError(first.data, "support_api_failed", first.error, first.response);
+    }
+
+    async function callControlApi(action, method = "POST", allowGetFallback = false) {
+      const request = async (httpMethod) => {
+        try {
+          const response = await fetch(ingressUrl("control-api/" + encodeURIComponent(action)), {
+            method: httpMethod,
+            cache: "no-store",
+            headers: { "X-Nodalia-Action": action },
+          });
+          const payload = await response.text();
+          const data = parseApiPayload(payload);
+          return { response, data, error: null };
+        } catch (error) {
+          return { response: null, data: null, error };
+        }
+      };
+
+      const first = await request(method);
+      const firstStatus = Number(first.response?.status || 0);
+      const firstError = String(first.data?.error || "");
+      const shouldRetryAsGet = allowGetFallback && method === "POST" && (
+        !first.response ||
+        firstStatus === 405 ||
+        firstError === "method_not_allowed"
+      );
+      if (shouldRetryAsGet) {
+        const second = await request("GET");
+        if (second.response?.ok && second.data?.ok !== false) {
+          return second.data;
+        }
+        throw buildApiError(second.data, "control_api_failed", second.error, second.response);
+      }
+      if (first.response?.ok && first.data?.ok !== false) {
+        return first.data;
+      }
+      throw buildApiError(first.data, "control_api_failed", first.error, first.response);
+    }
+
+    async function waitForBackendTransition(targetStates, timeoutMs = 7000, stepMs = 700) {
+      const wanted = new Set(targetStates);
+      const deadline = Date.now() + timeoutMs;
+      let lastStatus = null;
+      while (Date.now() < deadline) {
+        try {
+          const status = await callControlApi("status", "GET");
+          lastStatus = status;
+          const state = String(status?.backend_state || "Unknown");
+          if (wanted.has(state)) {
+            return { matched: true, status };
+          }
+        } catch (_) {
+        }
+        await new Promise((resolve) => setTimeout(resolve, stepMs));
+      }
+      return { matched: false, status: lastStatus };
+    }
+
+    async function downloadDiagnostics() {
+      const report = {
+        generated_at: new Date().toISOString(),
+        onboarding: lastOnboarding,
+        runtime: lastRuntime,
+      };
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "nodalia-tailscale-diagnostics.json";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function handleManualRefresh(triggerButton, idleLabel) {
+      beginUiAction();
       if (pollHandle) {
         clearTimeout(pollHandle);
       }
-      pollHandle = setTimeout(loadState, 1000);
+      const previousText = triggerButton?.textContent || idleLabel;
+      if (triggerButton) {
+        triggerButton.disabled = true;
+        triggerButton.textContent = "Actualizando...";
+      }
+      updateStateView("Actualizando...", "warn");
+      try {
+        await refreshRuntime(1800);
+        await loadState();
+      } finally {
+        if (triggerButton) {
+          triggerButton.disabled = false;
+          triggerButton.textContent = previousText || idleLabel;
+        }
+        endUiAction();
+      }
+    }
+
+    function schedulePoll(delayMs = 1000) {
+      if (pollHandle) {
+        clearTimeout(pollHandle);
+      }
+      if (document.visibilityState === "hidden") {
+        delayMs = Math.max(delayMs, 3000);
+      }
+      pollHandle = setTimeout(loadState, delayMs);
+    }
+
+    function normalizeStateTone(value) {
+      const v = String(value || "");
+      if (v === "running") return "good";
+      if (v === "login") return "bad";
+      if (v === "good" || v === "warn" || v === "bad") return v;
+      return "";
+    }
+
+    function currentBackendState() {
+      return String(lastRuntime?.backend_state || lastOnboarding?.backend_state || "Unknown");
+    }
+
+    function isAlreadyLoggedOutState(state) {
+      return state === "NeedsLogin" ||
+        state === "NeedsMachineAuth" ||
+        state === "NoState" ||
+        state === "Stopped";
+    }
+
+    function updateStateView(message, cssClass) {
+      const tone = normalizeStateTone(cssClass);
+      if (lastStateMessage !== message) {
+        stateEl.textContent = message;
+        lastStateMessage = message;
+      }
+      if (lastStateClass !== tone) {
+        stateEl.className = "state" + (tone ? " " + tone : "");
+        lastStateClass = tone;
+      }
+    }
+
+    function setOpButtonsBusy(busy) {
+      opBusy = busy;
+      renderOpButtons();
+    }
+
+    function clearLogoutTrace() {
+      logoutTraceLog = "";
+      opOutput.textContent = "";
+      opOutput.hidden = true;
+    }
+
+    function resetStateCaches() {
+      lastOnboarding = null;
+      lastOnboardingFetchAtMs = 0;
+      lastRuntime = null;
+      lastRuntimeSignature = "";
+      try {
+        localStorage.removeItem(RUNTIME_CACHE_KEY);
+      } catch (_) {
+      }
+    }
+
+    function reloadPanelSoon(delayMs = 900) {
+      const ms = Math.max(0, Number(delayMs) || 0);
+      setTimeout(() => {
+        try {
+          localStorage.removeItem(RUNTIME_CACHE_KEY);
+        } catch (_) {
+        }
+        window.location.replace(ingressUrl("onboarding?_ts=" + Date.now()));
+      }, ms);
+    }
+
+    function appendLogoutTrace(text) {
+      if (!text) {
+        return;
+      }
+      logoutTraceLog += text;
+      opOutput.textContent = logoutTraceLog;
+      opOutput.hidden = !advancedModeEnabled;
+    }
+
+    function syncLogoutTraceVisibility() {
+      if (!logoutTraceLog) {
+        opOutput.hidden = true;
+        return;
+      }
+      opOutput.textContent = logoutTraceLog;
+      opOutput.hidden = !advancedModeEnabled;
+    }
+
+    function showLogoutHint(message, autoHideMs = 0) {
+      if (!logoutHint) {
+        return;
+      }
+      if (logoutHintHideHandle) {
+        clearTimeout(logoutHintHideHandle);
+        logoutHintHideHandle = null;
+      }
+      if (!message) {
+        logoutHint.hidden = true;
+        logoutHint.textContent = "";
+        return;
+      }
+      logoutHint.hidden = false;
+      logoutHint.textContent = message;
+      if (autoHideMs > 0) {
+        logoutHintHideHandle = setTimeout(() => {
+          logoutHint.hidden = true;
+          logoutHint.textContent = "";
+          logoutHintHideHandle = null;
+        }, autoHideMs);
+      }
+    }
+
+    function clearLogoutConfirm() {
+      logoutConfirmUntilMs = 0;
+      if (logoutConfirmHandle) {
+        clearTimeout(logoutConfirmHandle);
+        logoutConfirmHandle = null;
+      }
+      if (logoutConfirmTickHandle) {
+        clearTimeout(logoutConfirmTickHandle);
+        logoutConfirmTickHandle = null;
+      }
+      opLogoutBtn.classList.remove("armed");
+      opLogoutBtn.innerHTML = LOGAUTH_IDLE_LABEL;
+      opLogoutBtn.title = "Logauth (reset tailnet)";
+      opLogoutBtn.setAttribute("aria-label", "Logauth y reset de identidad local");
+      showLogoutHint("");
+    }
+
+    function armLogoutConfirm(windowMs = 8000) {
+      clearLogoutConfirm();
+      logoutConfirmUntilMs = Date.now() + windowMs;
+      opLogoutBtn.classList.add("armed");
+      opLogoutBtn.innerHTML = LOGAUTH_CONFIRM_LABEL;
+      opLogoutBtn.title = "Confirmar logauth (reset tailnet)";
+      opLogoutBtn.setAttribute("aria-label", "Confirmar logauth y reset de identidad local");
+      const tick = () => {
+        const remain = Math.max(0, Math.ceil((logoutConfirmUntilMs - Date.now()) / 1000));
+        showLogoutHint("Confirma reset: " + remain + "s");
+        if (remain > 0 && Date.now() <= logoutConfirmUntilMs) {
+          logoutConfirmTickHandle = setTimeout(tick, 300);
+        }
+      };
+      tick();
+      logoutConfirmHandle = setTimeout(() => {
+        clearLogoutConfirm();
+        if (!opBusy) {
+          opMessage.textContent = "Confirmacion expirada. Pulsa de nuevo para confirmar Logauth.";
+          showLogoutHint("Confirmacion expirada", 2200);
+        }
+      }, windowMs + 100);
+    }
+
+    function setActiveStep(step) {
+      stepAuth.classList.remove("active");
+      stepWarmup.classList.remove("active");
+      stepAccess.classList.remove("active");
+      if (step === "auth") stepAuth.classList.add("active");
+      if (step === "warmup") stepWarmup.classList.add("active");
+      if (step === "access") stepAccess.classList.add("active");
+    }
+
+    function renderSuggestions() {
+      const suggestions = [];
+      const backend = String(lastRuntime?.backend_state || lastOnboarding?.backend_state || "Unknown");
+      const needsLogin = Boolean(lastOnboarding?.needs_login);
+      const isReadonly = Boolean(lastRuntime?.webui_readonly);
+      const hasTailnetIp = Array.isArray(lastRuntime?.ipv4) && lastRuntime.ipv4.length > 0;
+      const streak = Number(lastRuntime?.webui_ready_streak || 0);
+      const webUiReason = String(lastRuntime?.webui_reason || "");
+
+      if (needsLogin) {
+        suggestions.push("Login pendiente: abre la URL de inicio y completa la autenticacion.");
+      }
+      if (backend === "NeedsMachineAuth") {
+        suggestions.push("Nodo pendiente de aprobacion en la consola de admin de Tailscale (MachineAuth).");
+      }
+      if (backend !== "Running") {
+        suggestions.push("Backend aun no esta Running: espera 20-60s tras actualizar/reinstalar.");
+      }
+      if (backend === "Running" && streak < 2) {
+        suggestions.push("Web UI calentando: manten esta pagina abierta y pulsa Actualizar ↻.");
+      }
+      if (backend === "Running" && webUiReason.startsWith("http-")) {
+        suggestions.push("La sonda local de Web UI devuelve " + webUiReason + ": revisa salud de tailscale web y vuelve a intentar.");
+      }
+      if (isReadonly) {
+        suggestions.push("Modo readonly activo: los cambios de Tailnet quedan bloqueados; usa este panel para controles locales (logout).");
+      }
+      if (!isReadonly && hasTailnetIp) {
+        suggestions.push("Si ves 'Viewing', revisa ACL/tagOwners y usa la Web UI via ingress.");
+      }
+      if (!hasTailnetIp) {
+        suggestions.push("Sin IP tailnet detectada: revisa conectividad y estado de inicio de sesion.");
+      }
+      if (lastRuntime?.dns_degraded) {
+        suggestions.push("DNS tailnet degradado: si persiste, prueba accept_dns=false o revisa DNS en admin de Tailscale.");
+      }
+      if (lastRuntime?.support_enabled && !lastRuntime?.support_tailnet_match) {
+        suggestions.push("Acceso de soporte bloqueado: el DNS de esta instancia no coincide con el DNS objetivo de soporte.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_no_encontrado")) {
+        suggestions.push("Crea un usuario local con el nombre configurado en support_user (por defecto: nodalia).");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_es_owner_no_permitido")) {
+        suggestions.push("El usuario de soporte no puede ser owner/admin principal. Usa un usuario local dedicado.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("ha_users_api_error")) {
+        suggestions.push("La API de usuarios de Home Assistant no responde al aplicación. Actualiza a la version mas reciente, acepta permisos nuevos y reinicia el aplicación.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("core_user_patch_failed")) {
+        suggestions.push("No se pudo cambiar is_active del usuario de soporte. Revisa permisos del aplicación y existencia del usuario local.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_user_id_vacio")) {
+        suggestions.push("La API devolvio usuario sin ID; en modo virtual-keys esta limitación no debería bloquear el soporte si la integración responde.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("ttl_expired_disable_failed")) {
+        suggestions.push("El TTL expiró pero no se pudo revocar el token de soporte. Pulsa revocar y revisa Debug soporte.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_virtual_keys_status_failed")) {
+        suggestions.push("Fallo al consultar virtual-keys por WebSocket. Revisa que la integración esté instalada y activa.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_virtual_keys_create_failed")) {
+        suggestions.push("No se pudo crear token temporal en virtual-keys. Revisa usuario, integración y permisos.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_virtual_keys_delete_failed")) {
+        suggestions.push("No se pudo revocar token en virtual-keys. Pulsa Debug soporte para ver reason/detail exacto.");
+      }
+      if (lastRuntime?.support_enabled && String(lastRuntime?.support_reason || "").includes("support_virtual_keys_token_not_found")) {
+        suggestions.push("La sesión/token temporal ya no existe en virtual-keys. Puedes habilitar soporte de nuevo.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_config_incomplete")) {
+        suggestions.push("Telegram incompleto: define bot token y chat id para enviar el enlace temporal.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_login_url_empty")) {
+        suggestions.push("No se pudo construir URL de acceso para soporte. Revisa support_target_url o support_target_domain_suffix.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_curl_missing")) {
+        suggestions.push("Falta curl en la imagen de la aplicación. Actualiza a la version mas reciente.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_request_failed")) {
+        suggestions.push("Fallo de red al enviar Telegram. Verifica salida a internet desde la aplicación.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_chat_not_found")) {
+        suggestions.push("Telegram indica chat no encontrado: revisa support_notify_telegram_chat_id y que el bot haya iniciado conversación en ese chat.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_bot_blocked")) {
+        suggestions.push("El bot está bloqueado por el usuario/chat de destino. Desbloquéalo y vuelve a habilitar soporte.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_not_enough_rights")) {
+        suggestions.push("El bot no tiene permisos suficientes en el chat/canal. Concede permisos de envío de mensajes.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_chat_id_empty")) {
+        suggestions.push("El chat_id de Telegram está vacío o inválido.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_parse_error")) {
+        suggestions.push("Telegram no pudo parsear el mensaje. Reintenta y revisa configuración de notificación.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_http_400")) {
+        suggestions.push("Telegram devolvió 400 (Bad Request). Revisa chat_id y permisos del bot en el destino.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_http_401")) {
+        suggestions.push("Telegram devolvio 401: bot token invalido o revocado.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_http_403")) {
+        suggestions.push("Telegram devolvio 403: el bot no tiene permiso en ese chat o no has iniciado chat con el bot.");
+      }
+      if (String(lastRuntime?.support_notify_reason || "").includes("support_notify_telegram_api_failed")) {
+        suggestions.push("Telegram devolvio payload invalido/no esperado. Pulsa Debug soporte para ver api_last.");
+      }
+      if (String(lastRuntime?.support_reason || "").includes("support_status")) {
+        suggestions.push("El backend de soporte devolvio fallo interno. Pulsa Recargar y revisa logs del aplicación para ver el error exacto.");
+      }
+      if (!lastRuntime?.support_enabled) {
+        suggestions.push("Acceso de soporte desactivado en configuracion: activa support_tunnel_enabled si lo necesitas.");
+      }
+      if (suggestions.length === 0) {
+        suggestions.push("Estado estable: sin acciones pendientes.");
+      }
+
+      const html = suggestions.map((item) => `<li>${item}</li>`).join("");
+      if (html !== lastSuggestionsHtml) {
+        suggestionsList.innerHTML = html;
+        lastSuggestionsHtml = html;
+      }
     }
 
     async function loadState() {
-      stateEl.className = "state";
-      stateEl.textContent = "Cargando estado...";
-      loginBox.hidden = true;
-      okBox.hidden = true;
+      let nextDelayMs = 1200;
+      if (actionInFlight > 0) {
+        schedulePoll(nextDelayMs);
+        return;
+      }
+      if (isFirstRender) {
+        updateStateView("Cargando estado...", "");
+      }
       try {
-        const response = await fetch("onboarding.json?_ts=" + Date.now(), { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error("onboarding state not available");
+        const runtimeData = await refreshRuntime(900);
+        let data = lastOnboarding;
+        const runtimeStateForFallback = String(runtimeData?.backend_state || "");
+        const runtimeNeedsFallbackOnboarding = (
+          runtimeStateForFallback === "NeedsLogin" ||
+          runtimeStateForFallback === "NeedsMachineAuth"
+        ) && !String(runtimeData?.auth_url || "").length;
+        if (!data || !runtimeData || runtimeNeedsFallbackOnboarding || isFirstRender) {
+          try {
+            data = await refreshOnboarding(1500, true);
+          } catch (_) {
+            data = lastOnboarding;
+          }
         }
-        const data = await response.json();
-        const backendState = String(data.backend_state || "Unknown");
-        const needsLogin = Boolean(data.needs_login);
-        const authUrl = String(data.auth_url || "");
+        if (!data) {
+          data = {};
+        }
+        const runtimeBackendState = String(lastRuntime?.backend_state || "");
+        const onboardingBackendState = String(data?.backend_state || "Unknown");
+        const backendState = runtimeBackendState || onboardingBackendState;
+        const runtimeNeedsLogin = runtimeBackendState === "NeedsLogin" || runtimeBackendState === "NeedsMachineAuth";
+        const needsLogin = runtimeBackendState ? runtimeNeedsLogin : Boolean(data?.needs_login);
+        const authUrl = String(lastRuntime?.auth_url || data?.auth_url || "");
 
         if (needsLogin) {
-          stateEl.classList.add("login");
-          stateEl.textContent = "Estado: login requerido (" + backendState + ")";
+          liveWebUiReadyStreak = 0;
+          setStepsVisible(true);
+          setActiveStep("auth");
+          setUiDisabled(openWebuiBtn, true);
+          setUiDisabled(openDirectBtn, true);
+          updateStateView("Desconectado. Login requerido.", "bad");
           if (authUrl) {
             loginUrlInput.value = authUrl;
             openBtn.href = authUrl;
             loginBox.hidden = false;
+            okBox.hidden = true;
           } else {
             okBox.hidden = false;
+            loginBox.hidden = true;
           }
+          renderSuggestions();
+          nextDelayMs = 1500;
+          isFirstRender = false;
           return;
         }
 
         if (backendState !== "Running") {
-          stateEl.classList.add("login");
-          stateEl.textContent = "Estado: iniciando (" + backendState + ")";
+          liveWebUiSeenAtMs = 0;
+          runningSinceMs = 0;
+          liveWebUiReadyStreak = 0;
+          setStepsVisible(true);
+          setActiveStep("warmup");
+          setUiDisabled(openWebuiBtn, true);
+          updateStateView("Conectando...", "warn");
           okBox.hidden = false;
+          loginBox.hidden = true;
+          renderSuggestions();
+          nextDelayMs = 900;
+          isFirstRender = false;
           return;
         }
 
-        stateEl.classList.add("running");
-        stateEl.textContent = "Estado: conectado (" + backendState + "). Verificando Web UI...";
-        okBox.hidden = false;
-        const webUiReady = await canReachWebUi();
-        if (webUiReady) {
-          stateEl.textContent = "Estado: conectado (" + backendState + "). Redirigiendo a la Web UI...";
-          setTimeout(() => window.location.replace("webui?_ts=" + Date.now()), 350);
-        } else {
-          stateEl.textContent = "Estado: conectado (" + backendState + "), la Web UI aun no responde. Reintentando...";
-          if (pollHandle) {
-            clearTimeout(pollHandle);
-          }
-          pollHandle = setTimeout(loadState, 500);
+        updateStateView("Conectado. Verificando Web UI...", "good");
+        setStepsVisible(false);
+        if (runningSinceMs === 0) {
+          runningSinceMs = Date.now();
         }
+        okBox.hidden = false;
+        loginBox.hidden = true;
+        const runtimeWebUiReady = Boolean(lastRuntime?.webui_ready);
+        const runtimeStreak = Number(lastRuntime?.webui_ready_streak || 0);
+        const liveWebUiReady = await probeIngressWebUiReady(2200);
+        if (liveWebUiReady) {
+          liveWebUiReadyStreak += 1;
+          liveWebUiSeenAtMs = Date.now();
+        } else {
+          liveWebUiReadyStreak = 0;
+        }
+        const runtimeStable = runtimeWebUiReady && runtimeStreak >= 2;
+        const liveStable = liveWebUiReadyStreak >= 2;
+        const webUiReady = liveStable;
+        const runningForMs = Date.now() - runningSinceMs;
+        const allowManualOpen = liveWebUiReady || runningForMs >= 15000;
+        if (webUiReady) {
+          setActiveStep("access");
+          updateStateView("Conectado. Web UI lista.", "good");
+          setUiDisabled(openWebuiBtn, false);
+          nextDelayMs = 2200;
+        } else {
+          setActiveStep("warmup");
+          setUiDisabled(openWebuiBtn, !allowManualOpen);
+          if (runtimeStable || liveWebUiReady) {
+            updateStateView("Conectado. Confirmando Web UI...", "good");
+          } else if (allowManualOpen) {
+            updateStateView("Conectado. Puedes abrir Web UI mientras termina la verificacion.", "good");
+          } else {
+            updateStateView("Conectado. Web UI aun no accesible por ingress. Reintentando...", "good");
+          }
+          nextDelayMs = 900;
+        }
+        renderSuggestions();
+        isFirstRender = false;
         return;
       } catch (error) {
-        stateEl.classList.add("login");
-        stateEl.textContent = "Estado no disponible. La aplicacion puede seguir arrancando.";
+        setStepsVisible(true);
+        updateStateView("Estado no disponible. Reintentando...", "warn");
         okBox.hidden = false;
+        loginBox.hidden = true;
+        renderSuggestions();
+        nextDelayMs = 1800;
       } finally {
-        schedulePoll();
+        schedulePoll(nextDelayMs);
       }
     }
 
-    async function canReachWebUi() {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1500);
+    async function refreshRuntime(timeoutMs = 1200) {
       try {
-        const response = await fetch("webui-ready?_ts=" + Date.now(), {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        return response.ok;
+        const data = await fetchJsonWithTimeout("runtime.json?_ts=" + Date.now(), timeoutMs);
+        applyRuntimeData(data);
+        return data;
       } catch (_) {
-        return false;
-      } finally {
-        clearTimeout(timeout);
+        lastRuntime = null;
+        lastRuntimeSignature = "";
+        try {
+          localStorage.removeItem(RUNTIME_CACHE_KEY);
+        } catch (_) {
+        }
+        rtBackend.textContent = "n/a";
+        rtWebUi.textContent = "n/a";
+        rtWebUiStreak.textContent = "n/a";
+        rtWebUiProbe.textContent = "n/a";
+        rtOnline.textContent = "n/a";
+        rtDnsResolvers.textContent = "n/a";
+        rtDnsWarning.textContent = "n/a";
+        rtHostName.textContent = "n/a";
+        rtIpv4.textContent = "n/a";
+        rtIpv6.textContent = "n/a";
+        rtUptime.textContent = "n/a";
+        rtUpdated.textContent = "n/a";
+        supportEnabled.textContent = "n/a";
+        supportMode.textContent = "n/a";
+        supportTailnet.textContent = "n/a";
+        supportMatch.textContent = "n/a";
+        supportEligible.textContent = "n/a";
+        supportActive.textContent = "n/a";
+        supportUser.textContent = "n/a";
+        supportTokenName.textContent = "n/a";
+        supportNotifyStatus.textContent = "n/a";
+        supportNotifyReason.textContent = "n/a";
+        supportExpires.textContent = "n/a";
+        supportReason.textContent = "runtime unavailable";
+        clearSupportCountdown();
+        supportRules = { enable: false, disable: false, notify_test: false, debug: true };
+        if (supportNavBtn) {
+          supportNavBtn.classList.remove("support-on", "support-active");
+        }
+        renderSupportButtons();
+        opCanLogout = false;
+        renderOpButtons();
+        healthScorePill.textContent = "\u2764 --";
+        healthScorePill.classList.remove("score-ok", "score-warn", "score-bad");
+        if (lastHealthHtml !== "") {
+          healthChecks.innerHTML = "";
+          lastHealthHtml = "";
+        }
+        return null;
+      }
+    }
+
+    async function runDiagnostics() {
+      const checks = [];
+      checks.push({ label: "onboarding.json disponible", ok: !!lastOnboarding });
+      checks.push({ label: "runtime.json disponible", ok: !!lastRuntime });
+      checks.push({ label: "backend Running", ok: (lastRuntime?.backend_state || lastOnboarding?.backend_state) === "Running" });
+      checks.push({ label: "Web UI lista (esperado: true)", ok: !!lastRuntime?.webui_ready });
+      checks.push({ label: "Web UI estable (streak >= 2)", ok: Number(lastRuntime?.webui_ready_streak || 0) >= 2 });
+      checks.push({ label: "self_online=true", ok: !!lastRuntime?.self_online });
+      checks.push({ label: "dns_degraded=false", ok: !lastRuntime?.dns_degraded });
+      checks.push({ label: "support elegible", ok: !!lastRuntime?.support_eligible });
+
+      diagList.innerHTML = checks.map((c) =>
+        `<li class="${c.ok ? "diag-ok" : "diag-ko"}">${c.label}</li>`
+      ).join("");
+    }
+
+    async function copyReport() {
+      const report = {
+        generated_at: new Date().toISOString(),
+        onboarding: lastOnboarding,
+        runtime: lastRuntime,
+      };
+      const text = JSON.stringify(report, null, 2);
+      try {
+        await navigator.clipboard.writeText(text);
+        copyReportBtn.textContent = "Reporte copiado";
+        setTimeout(() => { copyReportBtn.textContent = "Copiar reporte"; }, 1200);
+      } catch (_) {
+        alert("No se pudo copiar automáticamente. Abre la consola para copiar el reporte.");
+        console.log("Tailscale onboarding report:", text);
       }
     }
 
     copyBtn.addEventListener("click", async () => {
+      await copyText(loginUrlInput.value, copyBtn, "Copiado", "Copiar URL");
+    });
+    copyProfileHome.addEventListener("click", async () => {
+      await copyText("setup_profile: home_access", copyProfileHome, "Copiado", "Copiar");
+    });
+    copyProfileSubnet.addEventListener("click", async () => {
+      await copyText("setup_profile: subnet_router", copyProfileSubnet, "Copiado", "Copiar");
+    });
+    supportNavBtn.addEventListener("click", () => {
+      openSupportMode();
+    });
+    sessionDiagBtn.addEventListener("click", runDiagnostics);
+    sessionDownloadBtn.addEventListener("click", downloadDiagnostics);
+    copyAclWebuiBtn.addEventListener("click", async () => {
+      await copyText(aclWebUiSnippet, copyAclWebuiBtn, "ACL copiada", "Copiar ACL Web UI (self:5252)");
+    });
+    copyTagOwnersBtn.addEventListener("click", async () => {
+      await copyText(tagOwnersSnippet, copyTagOwnersBtn, "tagOwners copiado", "Copiar bloque tagOwners");
+    });
+    supportEnableBtn.addEventListener("click", async () => {
+      if (isUiDisabled(supportEnableBtn)) {
+        return;
+      }
+      beginUiAction();
+      setSupportButtonState(true);
+      supportMessage.textContent = "Habilitando acceso temporal para soporte...";
       try {
-        await navigator.clipboard.writeText(loginUrlInput.value);
-        copyBtn.textContent = "Copiado";
-        setTimeout(() => { copyBtn.textContent = "Copiar URL"; }, 1200);
+        const payload = await callSupportApi("enable", "POST", true);
+        const expiresAt = String(payload?.support_expires_at || payload?.expires_at || "");
+        if (expiresAt) {
+          renderSupportCountdown(expiresAt);
+        }
+        const activationInfo = formatSupportActivationInfo(payload);
+        if (activationInfo) {
+          supportMessage.textContent = "Acceso de soporte habilitado.";
+          supportAuditOutput.hidden = false;
+          supportAuditOutput.textContent = activationInfo;
+        } else {
+          supportMessage.textContent = "Acceso de soporte habilitado.";
+          supportAuditOutput.hidden = true;
+          supportAuditOutput.textContent = "";
+        }
+        await refreshRuntime(1500);
       } catch (error) {
-        loginUrlInput.select();
-        document.execCommand("copy");
+        supportMessage.textContent = "No se pudo habilitar el acceso: " + error.message;
+        supportAuditOutput.hidden = false;
+        supportAuditOutput.textContent = formatSupportDebug("enable", error);
+      } finally {
+        setSupportButtonState(false);
+        endUiAction();
       }
     });
+    supportDisableBtn.addEventListener("click", async () => {
+      if (isUiDisabled(supportDisableBtn)) {
+        return;
+      }
+      beginUiAction();
+      setSupportButtonState(true);
+      supportMessage.textContent = "Revocando acceso de soporte...";
+      try {
+        await callSupportApi("disable", "POST", true);
+        clearSupportCountdown();
+        supportMessage.textContent = "Acceso de soporte revocado.";
+        supportAuditOutput.hidden = true;
+        supportAuditOutput.textContent = "";
+        await refreshRuntime(1500);
+      } catch (error) {
+        supportMessage.textContent = "No se pudo revocar el acceso: " + error.message;
+        supportAuditOutput.hidden = false;
+        supportAuditOutput.textContent = formatSupportDebug("disable", error);
+      } finally {
+        setSupportButtonState(false);
+        endUiAction();
+      }
+    });
+    supportNotifyTestBtn.addEventListener("click", async () => {
+      if (isUiDisabled(supportNotifyTestBtn)) {
+        return;
+      }
+      beginUiAction();
+      setSupportButtonState(true);
+      supportMessage.textContent = "Enviando prueba de Telegram...";
+      try {
+        const payload = await callSupportApi("notify-test", "POST", true);
+        const status = String(payload?.status || payload?.support_notify_status || "");
+        const reason = String(payload?.reason || payload?.support_notify_reason || "");
+        if (payload?.ok) {
+          supportMessage.textContent = "Prueba Telegram enviada correctamente.";
+        } else {
+          supportMessage.textContent = "Prueba Telegram fallida: " + (reason || status || "error_desconocido");
+        }
+        supportAuditOutput.hidden = true;
+        supportAuditOutput.textContent = "";
+        await refreshRuntime(1500);
+      } catch (error) {
+        supportMessage.textContent = "No se pudo enviar prueba Telegram: " + error.message;
+      } finally {
+        setSupportButtonState(false);
+        endUiAction();
+      }
+    });
+    supportDebugBtn.addEventListener("click", async () => {
+      if (isUiDisabled(supportDebugBtn)) {
+        return;
+      }
+      beginUiAction();
+      setSupportButtonState(true);
+      supportAuditOutput.hidden = false;
+      supportAuditOutput.textContent = "Cargando debug de soporte...";
+      try {
+        const data = await callSupportApi("debug", "GET", false);
+        supportMessage.textContent = "Debug de soporte actualizado.";
+        supportAuditOutput.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        supportMessage.textContent = "No se pudo obtener debug de soporte: " + error.message;
+        supportAuditOutput.textContent = formatSupportDebug("debug", error);
+      } finally {
+        setSupportButtonState(false);
+        endUiAction();
+      }
+    });
+    opLogoutBtn.addEventListener("click", async () => {
+      if (opBusy) {
+        return;
+      }
+      const backendBeforeLogout = currentBackendState();
+      if (isAlreadyLoggedOutState(backendBeforeLogout)) {
+        clearLogoutConfirm();
+        opMessage.textContent = "Ya estas desconectado (" + backendBeforeLogout + "). No hace falta ejecutar Logauth.";
+        showLogoutHint("Ya desconectado", 2200);
+        clearLogoutTrace();
+        appendLogoutTrace(
+          "Estado actual: " + backendBeforeLogout + "\n" +
+          "No se ejecuta Logauth porque el nodo ya esta desconectado.\n"
+        );
+        if (!advancedModeEnabled) {
+          clearLogoutTrace();
+        }
+        return;
+      }
+      if (Date.now() > logoutConfirmUntilMs) {
+        armLogoutConfirm(8000);
+        opMessage.textContent = "Pulsa otra vez en menos de 8s para confirmar Logauth (reset tailnet).";
+        clearLogoutTrace();
+        appendLogoutTrace("Listo para ejecutar Logauth.\nEndpoint principal: " + ingressUrl("control-api") + "\n");
+        return;
+      }
+      clearLogoutConfirm();
+      if (!opCanLogout) {
+        opMessage.textContent = "Backend no esta en Running, pero se intentara reset de identidad igualmente.";
+      }
+      beginUiAction();
+      setOpButtonsBusy(true);
+      opMessage.textContent = "Reseteando identidad local de Tailscale...";
+      showLogoutHint("Ejecutando reset...", 0);
+      clearLogoutTrace();
+      let logoutRequestOk = false;
+      let logoutFailed = false;
+      try {
+        const endpointBase = ingressUrl("control-api");
+        const endpointPath = ingressUrl("control-api/logout");
+        const endpointQuery = ingressUrl("control-api?action=logout");
+        let response = null;
+        let payload = "";
+        let data = null;
+        const attempt = async (method, url, useBodyAction = false) => {
+          appendLogoutTrace(method + " " + url + (useBodyAction ? " (body action=logout)" : "") + "\n");
+          const headers = { "X-Nodalia-Action": "logout" };
+          const requestInit = { method, cache: "no-store", headers };
+          if (useBodyAction) {
+            headers["Content-Type"] = "application/x-www-form-urlencoded; charset=utf-8";
+            requestInit.body = "action=logout";
+          }
+          try {
+            response = await fetch(url, requestInit);
+          } catch (error) {
+            appendLogoutTrace("ERR " + String(error?.message || "fetch_failed") + "\n");
+            return { response: null, data: { ok: false, error: "fetch_failed", message: String(error?.message || "fetch_failed") } };
+          }
+          payload = await response.text();
+          appendLogoutTrace("HTTP " + response.status + "\n");
+          appendLogoutTrace((payload || "(empty)") + "\n");
+          try {
+            data = JSON.parse(payload);
+          } catch (_) {
+            data = { ok: false, raw: payload };
+          }
+          return { response, data };
+        };
 
-    refreshBtn.addEventListener("click", () => {
-      if (pollHandle) {
-        clearTimeout(pollHandle);
+        let result = null;
+        const attempts = [
+          { method: "POST", url: endpointBase, useBodyAction: true },
+          { method: "POST", url: endpointPath, useBodyAction: false },
+          { method: "GET", url: endpointQuery, useBodyAction: false },
+          { method: "GET", url: endpointPath, useBodyAction: false },
+        ];
+        for (const item of attempts) {
+          result = await attempt(item.method, item.url, item.useBodyAction);
+          const responseAction = String(result?.data?.action || "");
+          if (responseAction === "logout") {
+            break;
+          }
+        }
+        data = result.data || {};
+        const responseAction = String(data?.action || "").toLowerCase();
+        const responseLooksLogout = responseAction === "logout";
+        const responseLooksStatus = responseAction === "status";
+        logoutRequestOk = Boolean(data?.ok) && (responseLooksLogout || responseLooksStatus || responseAction === "");
+        if (logoutRequestOk) {
+          opMessage.textContent = responseLooksStatus
+            ? "Logout solicitado (action=status). Confirmando estado real..."
+            : "Logout solicitado. Confirmando estado real...";
+        } else if (responseAction && !responseLooksLogout) {
+          opMessage.textContent = "La llamada no ejecuto Logauth (action=" + responseAction + ").";
+          logoutFailed = true;
+        } else {
+          opMessage.textContent = "Logout no confirmado. Estado actual: " + String(data.backend_state || "Unknown");
+          logoutFailed = true;
+        }
+      } catch (error) {
+        opMessage.textContent = "Error al cerrar sesion: " + error.message;
+        appendLogoutTrace("FATAL " + String(error?.message || "logout_error") + "\n");
+        logoutFailed = true;
+      } finally {
+        endUiAction();
+        let finalMessage = "";
+        let transitionMatched = false;
+        let reloadAfterSuccess = logoutRequestOk;
+        if (logoutRequestOk) {
+          const transition = await waitForBackendTransition(["NeedsLogin", "NeedsMachineAuth", "NoState", "Stopped"], 20000, 800);
+          if (transition.matched) {
+            transitionMatched = true;
+            finalMessage = "Desconectado • listo para nueva tailnet.";
+            reloadAfterSuccess = true;
+          } else {
+            let onboardingState = "";
+            try {
+              const freshOnboarding = await refreshOnboarding(2200, true);
+              onboardingState = String(freshOnboarding?.backend_state || "");
+            } catch (_) {
+            }
+            if (isAlreadyLoggedOutState(onboardingState)) {
+              transitionMatched = true;
+              finalMessage = "Desconectado • listo para nueva tailnet.";
+              reloadAfterSuccess = true;
+            } else {
+              const state = String(transition.status?.backend_state || onboardingState || "Unknown");
+              finalMessage = "Reset solicitado (backend: " + state + "). Recargando panel para sincronizar estado...";
+            }
+          }
+        }
+        resetStateCaches();
+        await refreshRuntime(1800);
+        await loadState();
+        clearLogoutConfirm();
+        setOpButtonsBusy(false);
+        if (finalMessage) {
+          opMessage.textContent = finalMessage;
+          showLogoutHint(transitionMatched ? "Reset confirmado" : "Reset en progreso", 2600);
+        } else {
+          showLogoutHint("Operacion finalizada", 1800);
+        }
+        if (reloadAfterSuccess) {
+          opMessage.textContent = transitionMatched
+            ? "Desconectado • listo para nueva tailnet. Recargando panel..."
+            : "Logauth enviado. Recargando panel para actualizar estado...";
+          showLogoutHint("Recargando panel...", 2600);
+          reloadPanelSoon(850);
+        }
+        if (transitionMatched) {
+          clearLogoutTrace();
+        } else if (!logoutFailed && !advancedModeEnabled) {
+          clearLogoutTrace();
+        } else {
+          syncLogoutTraceVisibility();
+        }
       }
-      loadState();
     });
-    refreshOkBtn.addEventListener("click", () => {
-      if (pollHandle) {
-        clearTimeout(pollHandle);
+    runHealthBtn.addEventListener("click", async () => {
+      beginUiAction();
+      runHealthBtn.disabled = true;
+      opMessage.textContent = "Ejecutando test de conectividad...";
+      try {
+        const data = await callControlApi("diag", "POST");
+        const checks = data?.checks || {};
+        const rows = [
+          { ok: !!checks.tailscaled_socket, label: "Socket tailscaled" },
+          { ok: !!checks.webui_local, label: "Web UI local 127.0.0.1:25899" },
+          { ok: !!checks.control_plane_reachable, label: "Control plane accesible" },
+          { ok: !!checks.dns_any_resolver_ok, label: "Al menos 1 resolver DNS responde" },
+          { ok: !!checks.dns_all_resolvers_ok, label: "Todos los resolvers DNS responden" },
+        ];
+        const html = rows.map((c) =>
+          `<li class="${c.ok ? "diag-ok" : "diag-ko"}">${c.label}</li>`
+        ).join("");
+        healthChecks.innerHTML = html;
+        lastHealthHtml = html;
+        const score = Number(data?.health_score || 0);
+        healthScorePill.textContent = "\u2764 " + score;
+        healthScorePill.classList.remove("score-ok", "score-warn", "score-bad");
+        if (score >= 80) {
+          healthScorePill.classList.add("score-ok");
+        } else if (score >= 50) {
+          healthScorePill.classList.add("score-warn");
+        } else {
+          healthScorePill.classList.add("score-bad");
+        }
+        opMessage.textContent = "Diagnostico completado.";
+      } catch (error) {
+        opMessage.textContent = "No se pudo ejecutar el diagnostico: " + error.message;
+      } finally {
+        runHealthBtn.disabled = false;
+        endUiAction();
       }
-      loadState();
     });
-    openWebuiBtn.addEventListener("click", (event) => {
+    runDnsBtn.addEventListener("click", async () => {
+      beginUiAction();
+      runDnsBtn.disabled = true;
+      opMessage.textContent = "Ejecutando test DNS tailnet...";
+      try {
+        const data = await callControlApi("dnsdiag", "POST");
+        const dns = data?.dns || {};
+        const resolvers = Array.isArray(dns.resolvers) ? dns.resolvers : [];
+        const rows = resolvers.length
+          ? resolvers.map((item) => ({
+            ok: !!item.dns_query_ok,
+            label: "Resolver " + String(item.resolver || "-") + " (query=" + (item.dns_query_ok ? "ok" : "fail") + ", reach=" + (item.transport_ok ? "ok" : "fail") + ")"
+          }))
+          : [{ ok: false, label: "No se detectaron resolvers DNS para test" }];
+        const summary = {
+          ok: !!dns.all_resolvers_ok,
+          label: "Resumen DNS: " + (dns.any_resolver_ok ? "parcial/ok" : "fallo total") + " para " + String(dns.target || "target")
+        };
+        const html = [summary, ...rows].map((c) =>
+          `<li class="${c.ok ? "diag-ok" : "diag-ko"}">${c.label}</li>`
+        ).join("");
+        healthChecks.innerHTML = html;
+        lastHealthHtml = html;
+        opMessage.textContent = "Test DNS completado.";
+      } catch (error) {
+        opMessage.textContent = "No se pudo ejecutar test DNS: " + error.message;
+      } finally {
+        runDnsBtn.disabled = false;
+        endUiAction();
+      }
+    });
+    downloadReportBtn.addEventListener("click", downloadDiagnostics);
+
+    refreshBtn.addEventListener("click", async () => {
+      await handleManualRefresh(refreshBtn, "Actualizar ↻");
+    });
+    refreshOkBtn.addEventListener("click", async () => {
+      await handleManualRefresh(refreshOkBtn, "Actualizar ↻");
+    });
+    openWebuiBtn.addEventListener("click", async (event) => {
+      if (isUiDisabled(openWebuiBtn)) {
+        event.preventDefault();
+        return;
+      }
       event.preventDefault();
-      window.location.replace("webui");
+      beginUiAction();
+      try {
+        updateStateView("Comprobando disponibilidad de Web UI...", "warn");
+        const preflightOk = await probeIngressWebUiReady(2500, true);
+        if (preflightOk) {
+          window.location.replace(ingressRootUrl());
+          return;
+        }
+        const backendState = String(lastRuntime?.backend_state || lastOnboarding?.backend_state || "Unknown");
+        if (backendState === "Running") {
+          updateStateView("Conectado, pero la Web UI sigue devolviendo unavailable por ingress. Se mantiene este panel para evitar bucle.", "warn");
+          return;
+        }
+        updateStateView("Web UI no accesible todavia por ingress. Espera unos segundos y vuelve a intentar.", "warn");
+        return;
+      } finally {
+        endUiAction();
+      }
     });
+    if (toggleAdvancedBtn) {
+      toggleAdvancedBtn.addEventListener("click", () => {
+        advancedModeEnabled = !advancedModeEnabled;
+        renderAdvancedMode();
+        saveUiPrefs();
+      });
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        if (pollHandle) {
+          clearTimeout(pollHandle);
+        }
+        loadState();
+      }
+    });
+    openDirectBtn.addEventListener("click", (event) => {
+      if (isUiDisabled(openDirectBtn)) {
+        event.preventDefault();
+        updateStateView("El acceso directo por tailnet no aplica a esta app. Usa 'Iframe Tailscale'.", "warn");
+      }
+    });
+    diagBtn.addEventListener("click", runDiagnostics);
+    copyReportBtn.addEventListener("click", copyReport);
+    enforceDarkTheme();
+    applyReleaseUiMode();
+    loadUiPrefs();
+    renderAdvancedMode();
+    hydrateRuntimeFromCache();
     loadState();
   </script>
 </body>

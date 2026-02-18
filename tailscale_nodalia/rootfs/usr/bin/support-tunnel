@@ -1,0 +1,2875 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant App: Tailscale (Nodalia Beta)
+# Support access manager (temporary Nodalia support window)
+# ==============================================================================
+set -euo pipefail
+
+readonly STATE_FILE="/data/support-tunnel.json"
+readonly META_FILE="/data/support-tunnel-meta.json"
+readonly AUDIT_FILE="/data/support-tunnel-audit.log"
+readonly NOTIFY_FILE="/data/support-notify.json"
+readonly TELEGRAM_DEBUG_FILE="/data/support-telegram-debug.json"
+readonly TTL_DISABLE_RETRY_BACKOFF_SEC=30
+
+now_utc() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+json_bool() {
+  if [[ "${1:-false}" == "true" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+normalize_lc() {
+  printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
+}
+
+normalize_dns_value() {
+  local value
+  value="${1:-}"
+  value="$(normalize_lc "${value}")"
+  value="${value#.}"
+  value="${value%.}"
+  printf '%s' "${value}"
+}
+
+normalize_base_url() {
+  local value
+  value="$(trim_spaces "${1:-}")"
+  if [[ -z "${value}" ]]; then
+    printf ''
+    return 0
+  fi
+  if ! [[ "${value}" =~ ^https?:// ]]; then
+    printf ''
+    return 0
+  fi
+  while [[ "${value}" == */ ]]; do
+    value="${value%/}"
+  done
+  printf '%s' "${value}"
+}
+
+is_local_base_url() {
+  local value host
+  value="$(normalize_base_url "${1:-}")"
+  if [[ -z "${value}" ]]; then
+    return 0
+  fi
+  host="$(printf '%s' "${value}" | sed -E 's#^https?://\[?([^]/:]+)\]?.*$#\1#')"
+  host="$(normalize_lc "${host}")"
+  [[ "${host}" == "localhost" || "${host}" == "0.0.0.0" || "${host}" == "::1" || "${host}" == "127."* ]]
+}
+
+build_absolute_url() {
+  local base path
+  base="$(normalize_base_url "${1:-}")"
+  path="${2:-}"
+  if [[ -z "${path}" ]]; then
+    printf ''
+    return 0
+  fi
+  if [[ "${path}" =~ ^https?:// ]]; then
+    printf '%s' "${path}"
+    return 0
+  fi
+  if [[ -z "${base}" ]]; then
+    printf '%s' "${path}"
+    return 0
+  fi
+  if [[ "${path}" == /* ]]; then
+    printf '%s%s' "${base}" "${path}"
+  else
+    printf '%s/%s' "${base}" "${path#./}"
+  fi
+}
+
+sanitize_hostname_label() {
+  local value
+  value="$(normalize_lc "${1:-}")"
+  value="$(printf '%s' "${value}" | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//')"
+  printf '%s' "${value}"
+}
+
+sanitize_reason_token() {
+  local value
+  value="$(normalize_lc "$(trim_spaces "${1:-}")")"
+  value="$(printf '%s' "${value}" | sed -E 's/[^a-z0-9]+/_/g; s/_+/_/g; s/^_+//; s/_+$//')"
+  if [[ "${#value}" -gt 52 ]]; then
+    value="${value:0:52}"
+    value="${value%_}"
+  fi
+  printf '%s' "${value}"
+}
+
+telegram_http_reason() {
+  local http_status response_body description desc_token reason
+  http_status="${1:-000}"
+  response_body="${2:-}"
+  description="$(jq -r '.description // empty' <<< "${response_body}" 2>/dev/null || true)"
+  description="$(normalize_lc "$(trim_spaces "${description}")")"
+  case "${description}" in
+    bad\ request:*)
+      description="${description#bad request:}"
+      description="$(trim_spaces "${description}")"
+      ;;
+    unauthorized:*)
+      description="${description#unauthorized:}"
+      description="$(trim_spaces "${description}")"
+      ;;
+    forbidden:*)
+      description="${description#forbidden:}"
+      description="$(trim_spaces "${description}")"
+      ;;
+  esac
+
+  case "${description}" in
+    *chat\ not\ found*)
+      reason="support_notify_telegram_chat_not_found"
+      ;;
+    *bot\ was\ blocked\ by\ the\ user*)
+      reason="support_notify_telegram_bot_blocked"
+      ;;
+    *user\ is\ deactivated*)
+      reason="support_notify_telegram_user_deactivated"
+      ;;
+    *not\ enough\ rights*)
+      reason="support_notify_telegram_not_enough_rights"
+      ;;
+    *have\ no\ rights\ to\ send\ a\ message*)
+      reason="support_notify_telegram_not_enough_rights"
+      ;;
+    *chat_id\ is\ empty*)
+      reason="support_notify_telegram_chat_id_empty"
+      ;;
+    *parse\ entities*)
+      reason="support_notify_telegram_parse_error"
+      ;;
+    *)
+      desc_token="$(sanitize_reason_token "${description}")"
+      if [[ -n "${desc_token}" ]]; then
+        reason="support_notify_telegram_http_${http_status}_${desc_token}"
+      else
+        reason="support_notify_telegram_http_${http_status}"
+      fi
+      ;;
+  esac
+  printf '%s' "${reason}"
+}
+
+normalize_telegram_chat_target() {
+  local value
+  value="$(trim_spaces "${1:-}")"
+  if [[ -z "${value}" ]]; then
+    printf ''
+    return 0
+  fi
+  value="${value#https://t.me/}"
+  value="${value#http://t.me/}"
+  value="${value#t.me/}"
+  value="${value%%/*}"
+  value="$(trim_spaces "${value}")"
+  if [[ -z "${value}" ]]; then
+    printf ''
+    return 0
+  fi
+  if [[ "${value}" =~ ^-?[0-9]+$ ]]; then
+    printf '%s' "${value}"
+    return 0
+  fi
+  value="${value#@}"
+  value="$(printf '%s' "${value}" | tr -cd 'A-Za-z0-9_')"
+  if [[ -z "${value}" ]]; then
+    printf ''
+    return 0
+  fi
+  printf '@%s' "${value}"
+}
+
+reset_telegram_debug_context() {
+  TELEGRAM_CONFIG_CHAT_ID_RAW=""
+  TELEGRAM_CONFIG_CHAT_ID_NORMALIZED=""
+  TELEGRAM_ATTEMPTED_CHAT_IDS=""
+  TELEGRAM_FINAL_CHAT_ID=""
+  TELEGRAM_LAST_DESCRIPTION=""
+  TELEGRAM_DISCOVERY_HINT=""
+  TELEGRAM_DISCOVERY_HTTP_STATUS=""
+  TELEGRAM_DISCOVERY_RESULT_COUNT="0"
+  TELEGRAM_DISCOVERY_CANDIDATE_IDS=""
+  TELEGRAM_DISCOVERY_MATCHED_CHAT_ID=""
+  TELEGRAM_DISCOVERY_REASON=""
+}
+
+append_telegram_attempted_chat_id() {
+  local chat_id
+  chat_id="${1:-}"
+  if [[ -z "${chat_id}" ]]; then
+    return 0
+  fi
+  case ",${TELEGRAM_ATTEMPTED_CHAT_IDS:-}," in
+    *",${chat_id},"*) ;;
+    *)
+      if [[ -n "${TELEGRAM_ATTEMPTED_CHAT_IDS:-}" ]]; then
+        TELEGRAM_ATTEMPTED_CHAT_IDS="${TELEGRAM_ATTEMPTED_CHAT_IDS},${chat_id}"
+      else
+        TELEGRAM_ATTEMPTED_CHAT_IDS="${chat_id}"
+      fi
+      ;;
+  esac
+}
+
+write_telegram_debug_state() {
+  local status reason
+  status="${1:-unknown}"
+  reason="${2:-}"
+  jq -nc \
+    --arg updated_at "$(now_utc)" \
+    --arg status "${status}" \
+    --arg reason "${reason}" \
+    --arg config_chat_id_raw "${TELEGRAM_CONFIG_CHAT_ID_RAW:-}" \
+    --arg config_chat_id_normalized "${TELEGRAM_CONFIG_CHAT_ID_NORMALIZED:-}" \
+    --arg attempted_chat_ids_csv "${TELEGRAM_ATTEMPTED_CHAT_IDS:-}" \
+    --arg final_chat_id "${TELEGRAM_FINAL_CHAT_ID:-}" \
+    --arg send_chat_id "${TELEGRAM_LAST_CHAT_ID:-}" \
+    --arg send_reason "${TELEGRAM_LAST_REASON:-}" \
+    --arg send_http_status "${TELEGRAM_LAST_HTTP_STATUS:-}" \
+    --arg send_description "${TELEGRAM_LAST_DESCRIPTION:-}" \
+    --arg send_response_body_preview "$(printf '%s' "${TELEGRAM_LAST_RESPONSE_BODY:-}" | head -c 500)" \
+    --arg discovery_hint "${TELEGRAM_DISCOVERY_HINT:-}" \
+    --arg discovery_http_status "${TELEGRAM_DISCOVERY_HTTP_STATUS:-}" \
+    --arg discovery_result_count "${TELEGRAM_DISCOVERY_RESULT_COUNT:-0}" \
+    --arg discovery_candidate_ids_csv "${TELEGRAM_DISCOVERY_CANDIDATE_IDS:-}" \
+    --arg discovery_matched_chat_id "${TELEGRAM_DISCOVERY_MATCHED_CHAT_ID:-}" \
+    --arg discovery_reason "${TELEGRAM_DISCOVERY_REASON:-}" \
+    '{
+      updated_at:$updated_at,
+      status:$status,
+      reason:$reason,
+      send:{
+        config_chat_id_raw:$config_chat_id_raw,
+        config_chat_id_normalized:$config_chat_id_normalized,
+        attempted_chat_ids:($attempted_chat_ids_csv|split(",")|map(select(length>0))),
+        final_chat_id:$final_chat_id,
+        last_chat_id:$send_chat_id,
+        last_reason:$send_reason,
+        last_http_status:$send_http_status,
+        last_description:$send_description,
+        last_response_body_preview:$send_response_body_preview
+      },
+      discovery:{
+        hint:$discovery_hint,
+        http_status:$discovery_http_status,
+        result_count:($discovery_result_count|tonumber? // 0),
+        candidate_chat_ids:($discovery_candidate_ids_csv|split(",")|map(select(length>0))),
+        matched_chat_id:$discovery_matched_chat_id,
+        reason:$discovery_reason
+      }
+    }' > "${TELEGRAM_DEBUG_FILE}"
+}
+
+telegram_send_message_once() {
+  local bot_token chat_id message response_with_status response_body http_status rc
+  bot_token="${1:-}"
+  chat_id="${2:-}"
+  message="${3:-}"
+
+  TELEGRAM_LAST_REASON=""
+  TELEGRAM_LAST_HTTP_STATUS=""
+  TELEGRAM_LAST_RESPONSE_BODY=""
+  TELEGRAM_LAST_CHAT_ID="${chat_id}"
+
+  set +e
+  response_with_status="$(curl -4 -sS --connect-timeout 5 --max-time 15 \
+    --data-urlencode "chat_id=${chat_id}" \
+    --data-urlencode "text=${message}" \
+    --data-urlencode "disable_web_page_preview=true" \
+    -w '\n%{http_code}' \
+    "https://api.telegram.org/bot${bot_token}/sendMessage" 2>&1)"
+  rc=$?
+  set -e
+
+  if (( rc != 0 )); then
+    TELEGRAM_LAST_REASON="support_notify_telegram_request_failed"
+    # Keep the curl error output for debug. It may include the bot token in the URL,
+    # so redact it to avoid leaking secrets when users share logs.
+    TELEGRAM_LAST_RESPONSE_BODY="$(printf '%s' "${response_with_status}" | head -c 800)"
+    TELEGRAM_LAST_RESPONSE_BODY="${TELEGRAM_LAST_RESPONSE_BODY//${bot_token}/[redacted]}"
+    return 1
+  fi
+
+  http_status="${response_with_status##*$'\n'}"
+  response_body="${response_with_status%$'\n'*}"
+  TELEGRAM_LAST_HTTP_STATUS="${http_status}"
+  TELEGRAM_LAST_RESPONSE_BODY="${response_body}"
+  TELEGRAM_LAST_DESCRIPTION="$(jq -r '.description // empty' <<< "${response_body}" 2>/dev/null || true)"
+  if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
+    TELEGRAM_LAST_REASON="$(telegram_http_reason "${http_status}" "${response_body}")"
+    return 1
+  fi
+  if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response_body}"; then
+    TELEGRAM_LAST_REASON="support_notify_telegram_api_failed"
+    return 1
+  fi
+
+  return 0
+}
+
+telegram_discover_chat_id_from_updates() {
+  local bot_token hint hint_lc response_with_status response_body http_status rc candidate
+  bot_token="${1:-}"
+  hint="$(trim_spaces "${2:-}")"
+  hint="${hint#https://t.me/}"
+  hint="${hint#http://t.me/}"
+  hint="${hint#t.me/}"
+  hint="${hint#@}"
+  hint="${hint%%/*}"
+  hint_lc="$(normalize_lc "${hint}")"
+  TELEGRAM_DISCOVERY_HINT="${hint}"
+  TELEGRAM_DISCOVERY_HTTP_STATUS=""
+  TELEGRAM_DISCOVERY_RESULT_COUNT="0"
+  TELEGRAM_DISCOVERY_CANDIDATE_IDS=""
+  TELEGRAM_DISCOVERY_MATCHED_CHAT_ID=""
+  TELEGRAM_DISCOVERY_REASON=""
+
+  set +e
+  response_with_status="$(curl -4 -sS --connect-timeout 5 --max-time 15 \
+    -w '\n%{http_code}' \
+    "https://api.telegram.org/bot${bot_token}/getUpdates?limit=100" 2>&1)"
+  rc=$?
+  set -e
+
+  if (( rc != 0 )); then
+    TELEGRAM_DISCOVERY_REASON="getupdates_request_failed"
+    return 1
+  fi
+
+  http_status="${response_with_status##*$'\n'}"
+  response_body="${response_with_status%$'\n'*}"
+  TELEGRAM_DISCOVERY_HTTP_STATUS="${http_status}"
+  if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
+    TELEGRAM_DISCOVERY_REASON="getupdates_http_${http_status}"
+    return 1
+  fi
+  if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response_body}"; then
+    TELEGRAM_DISCOVERY_REASON="getupdates_api_not_ok"
+    return 1
+  fi
+  TELEGRAM_DISCOVERY_RESULT_COUNT="$(jq -r '.result|length // 0' <<< "${response_body}" 2>/dev/null || echo "0")"
+  TELEGRAM_DISCOVERY_CANDIDATE_IDS="$(jq -r '
+    [
+      .result[]? |
+      (
+        .message.chat?,
+        .edited_message.chat?,
+        .channel_post.chat?,
+        .edited_channel_post.chat?,
+        .my_chat_member.chat?,
+        .chat_member.chat?,
+        .chat_join_request.chat?,
+        .callback_query.message.chat?
+      ) |
+      select(type=="object") |
+      .id | tostring
+    ] | unique | .[0:20] | join(",")
+  ' <<< "${response_body}" 2>/dev/null || true)"
+
+  if [[ -n "${hint_lc}" && ! "${hint_lc}" =~ ^-?[0-9]+$ ]]; then
+    candidate="$(jq -r --arg hint "${hint_lc}" '
+      [
+        .result[]? |
+        (
+          .message.chat?,
+          .edited_message.chat?,
+          .channel_post.chat?,
+          .edited_channel_post.chat?,
+          .my_chat_member.chat?,
+          .chat_member.chat?,
+          .chat_join_request.chat?,
+          .callback_query.message.chat?
+        ) |
+        select(type=="object" and ((.username // "") | ascii_downcase) == $hint)
+      ] | last | .id // empty
+    ' <<< "${response_body}" 2>/dev/null || true)"
+    if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+      TELEGRAM_DISCOVERY_MATCHED_CHAT_ID="${candidate}"
+      TELEGRAM_DISCOVERY_REASON="matched_chat_username"
+      printf '%s' "${candidate}"
+      return 0
+    fi
+
+    # Fallback para chats de usuario donde se haya configurado @username.
+    # En privados, chat.id suele coincidir con from.id.
+    candidate="$(jq -r --arg hint "${hint_lc}" '
+      [
+        .result[]? as $u |
+        (
+          (
+            ($u.message? // {}) as $m |
+            select((($m.from.username // "") | ascii_downcase) == $hint) |
+            ($m.chat.id // $m.from.id // empty)
+          ),
+          (
+            ($u.callback_query? // {}) as $c |
+            select((($c.from.username // "") | ascii_downcase) == $hint) |
+            ($c.message.chat.id // $c.from.id // empty)
+          ),
+          (
+            ($u.my_chat_member? // {}) as $mc |
+            select((($mc.from.username // "") | ascii_downcase) == $hint) |
+            ($mc.chat.id // $mc.from.id // empty)
+          ),
+          (
+            ($u.chat_member? // {}) as $cm |
+            select((($cm.from.username // "") | ascii_downcase) == $hint) |
+            ($cm.chat.id // $cm.from.id // empty)
+          )
+        )
+      ] | map(select(. != null and . != "")) | last // empty
+    ' <<< "${response_body}" 2>/dev/null || true)"
+    if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+      TELEGRAM_DISCOVERY_MATCHED_CHAT_ID="${candidate}"
+      TELEGRAM_DISCOVERY_REASON="matched_from_username"
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  fi
+
+  if [[ "${hint_lc}" =~ ^-?[0-9]+$ ]]; then
+    candidate="$(jq -r --arg hint "${hint_lc}" '
+      [
+        .result[]? |
+        (.message.chat?, .edited_message.chat?, .channel_post.chat?, .edited_channel_post.chat?) |
+        select(type=="object" and ((.id|tostring) == $hint))
+      ] | last | .id // empty
+    ' <<< "${response_body}" 2>/dev/null || true)"
+    if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+      TELEGRAM_DISCOVERY_MATCHED_CHAT_ID="${candidate}"
+      TELEGRAM_DISCOVERY_REASON="matched_chat_id_exact"
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  fi
+
+  candidate="$(jq -r '
+    [
+      .result[]? |
+      (
+        .message.chat?,
+        .edited_message.chat?,
+        .channel_post.chat?,
+        .edited_channel_post.chat?,
+        .my_chat_member.chat?,
+        .chat_member.chat?,
+        .chat_join_request.chat?,
+        .callback_query.message.chat?
+      ) |
+      select(type=="object") |
+      .id
+    ] | last // empty
+  ' <<< "${response_body}" 2>/dev/null || true)"
+  if [[ -n "${candidate}" && "${candidate}" != "null" ]]; then
+    TELEGRAM_DISCOVERY_MATCHED_CHAT_ID="${candidate}"
+    TELEGRAM_DISCOVERY_REASON="fallback_last_chat"
+    printf '%s' "${candidate}"
+    return 0
+  fi
+  TELEGRAM_DISCOVERY_REASON="no_chat_candidates"
+  return 1
+}
+
+telegram_notify_enabled() {
+  if bashio::config.has_value "support_notify_telegram_enabled" && bashio::config.true "support_notify_telegram_enabled"; then
+    return 0
+  fi
+  return 1
+}
+
+telegram_probe_bot_identity() {
+  local bot_token response_with_status response_body http_status rc
+  bot_token="${1:-}"
+  TELEGRAM_BOT_PROBE_STATUS="not_configured"
+  TELEGRAM_BOT_PROBE_REASON=""
+  TELEGRAM_BOT_PROBE_LAST_HTTP_STATUS=""
+  TELEGRAM_BOT_PROBE_LAST_DESCRIPTION=""
+  TELEGRAM_BOT_PROBE_LAST_ERROR=""
+  TELEGRAM_BOT_ID=""
+  TELEGRAM_BOT_USERNAME=""
+  TELEGRAM_BOT_NAME=""
+
+  if [[ -z "${bot_token}" ]]; then
+    TELEGRAM_BOT_PROBE_REASON="support_notify_telegram_bot_token_empty"
+    return 1
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    TELEGRAM_BOT_PROBE_STATUS="error"
+    TELEGRAM_BOT_PROBE_REASON="support_notify_curl_missing"
+    return 1
+  fi
+
+  set +e
+  response_with_status="$(curl -4 -sS --connect-timeout 5 --max-time 12 \
+    -w '\n%{http_code}' \
+    "https://api.telegram.org/bot${bot_token}/getMe" 2>&1)"
+  rc=$?
+  set -e
+
+  if (( rc != 0 )); then
+    TELEGRAM_BOT_PROBE_STATUS="error"
+    TELEGRAM_BOT_PROBE_REASON="support_notify_telegram_getme_request_failed"
+    TELEGRAM_BOT_PROBE_LAST_ERROR="$(printf '%s' "${response_with_status}" | head -c 600)"
+    TELEGRAM_BOT_PROBE_LAST_ERROR="${TELEGRAM_BOT_PROBE_LAST_ERROR//${bot_token}/[redacted]}"
+    return 1
+  fi
+
+  http_status="${response_with_status##*$'\n'}"
+  response_body="${response_with_status%$'\n'*}"
+  TELEGRAM_BOT_PROBE_LAST_HTTP_STATUS="${http_status}"
+  TELEGRAM_BOT_PROBE_LAST_DESCRIPTION="$(jq -r '.description // empty' <<< "${response_body}" 2>/dev/null || true)"
+  if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
+    TELEGRAM_BOT_PROBE_STATUS="error"
+    TELEGRAM_BOT_PROBE_REASON="support_notify_telegram_getme_http_${http_status}"
+    return 1
+  fi
+  if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response_body}"; then
+    TELEGRAM_BOT_PROBE_STATUS="error"
+    TELEGRAM_BOT_PROBE_REASON="support_notify_telegram_getme_api_failed"
+    return 1
+  fi
+
+  TELEGRAM_BOT_ID="$(jq -r '.result.id // empty' <<< "${response_body}" 2>/dev/null || true)"
+  TELEGRAM_BOT_USERNAME="$(jq -r '.result.username // empty' <<< "${response_body}" 2>/dev/null || true)"
+  TELEGRAM_BOT_NAME="$(jq -r '.result.first_name // empty' <<< "${response_body}" 2>/dev/null || true)"
+  TELEGRAM_BOT_PROBE_STATUS="ok"
+  TELEGRAM_BOT_PROBE_REASON=""
+  return 0
+}
+
+telegram_probe_chat_access() {
+  local bot_token chat_id_raw chat_id response_with_status response_body http_status rc alt_chat_id reason
+  bot_token="${1:-}"
+  chat_id_raw="${2:-}"
+
+  TELEGRAM_CHAT_PROBE_STATUS="not_configured"
+  TELEGRAM_CHAT_PROBE_REASON=""
+  TELEGRAM_CHAT_PROBE_INPUT="${chat_id_raw}"
+  TELEGRAM_CHAT_PROBE_NORMALIZED="$(normalize_telegram_chat_target "${chat_id_raw}")"
+  TELEGRAM_CHAT_PROBE_ATTEMPTED_IDS=""
+  TELEGRAM_CHAT_PROBE_MATCHED_CHAT_ID=""
+  TELEGRAM_CHAT_PROBE_CHAT_TYPE=""
+  TELEGRAM_CHAT_PROBE_CHAT_TITLE=""
+  TELEGRAM_CHAT_PROBE_CHAT_USERNAME=""
+  TELEGRAM_CHAT_PROBE_LAST_HTTP_STATUS=""
+  TELEGRAM_CHAT_PROBE_LAST_DESCRIPTION=""
+  TELEGRAM_CHAT_PROBE_LAST_ERROR=""
+
+  chat_id="${TELEGRAM_CHAT_PROBE_NORMALIZED}"
+  if [[ -z "${bot_token}" || -z "${chat_id}" ]]; then
+    TELEGRAM_CHAT_PROBE_REASON="support_notify_telegram_chat_probe_config_incomplete"
+    return 1
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    TELEGRAM_CHAT_PROBE_STATUS="error"
+    TELEGRAM_CHAT_PROBE_REASON="support_notify_curl_missing"
+    return 1
+  fi
+
+  TELEGRAM_ATTEMPTED_CHAT_IDS=""
+  append_telegram_attempted_chat_id "${chat_id}"
+  TELEGRAM_CHAT_PROBE_ATTEMPTED_IDS="${TELEGRAM_ATTEMPTED_CHAT_IDS:-}"
+
+  set +e
+  response_with_status="$(curl -4 -sS --connect-timeout 5 --max-time 12 --get \
+    --data-urlencode "chat_id=${chat_id}" \
+    -w '\n%{http_code}' \
+    "https://api.telegram.org/bot${bot_token}/getChat" 2>&1)"
+  rc=$?
+  set -e
+  if (( rc != 0 )); then
+    TELEGRAM_CHAT_PROBE_STATUS="error"
+    TELEGRAM_CHAT_PROBE_REASON="support_notify_telegram_getchat_request_failed"
+    TELEGRAM_CHAT_PROBE_LAST_ERROR="$(printf '%s' "${response_with_status}" | head -c 600)"
+    TELEGRAM_CHAT_PROBE_LAST_ERROR="${TELEGRAM_CHAT_PROBE_LAST_ERROR//${bot_token}/[redacted]}"
+    return 1
+  fi
+
+  http_status="${response_with_status##*$'\n'}"
+  response_body="${response_with_status%$'\n'*}"
+  TELEGRAM_CHAT_PROBE_LAST_HTTP_STATUS="${http_status}"
+  TELEGRAM_CHAT_PROBE_LAST_DESCRIPTION="$(jq -r '.description // empty' <<< "${response_body}" 2>/dev/null || true)"
+
+  if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
+    reason="$(telegram_http_reason "${http_status}" "${response_body}")"
+    if [[ "${reason}" == "support_notify_telegram_chat_not_found" && "${chat_id}" =~ ^[0-9]+$ ]]; then
+      alt_chat_id="-100${chat_id}"
+      append_telegram_attempted_chat_id "${alt_chat_id}"
+      TELEGRAM_CHAT_PROBE_ATTEMPTED_IDS="${TELEGRAM_ATTEMPTED_CHAT_IDS:-}"
+
+      set +e
+      response_with_status="$(curl -4 -sS --connect-timeout 5 --max-time 12 --get \
+        --data-urlencode "chat_id=${alt_chat_id}" \
+        -w '\n%{http_code}' \
+        "https://api.telegram.org/bot${bot_token}/getChat" 2>&1)"
+      rc=$?
+      set -e
+      if (( rc != 0 )); then
+        TELEGRAM_CHAT_PROBE_STATUS="error"
+        TELEGRAM_CHAT_PROBE_REASON="support_notify_telegram_getchat_request_failed"
+        TELEGRAM_CHAT_PROBE_LAST_ERROR="$(printf '%s' "${response_with_status}" | head -c 600)"
+        TELEGRAM_CHAT_PROBE_LAST_ERROR="${TELEGRAM_CHAT_PROBE_LAST_ERROR//${bot_token}/[redacted]}"
+        return 1
+      fi
+      http_status="${response_with_status##*$'\n'}"
+      response_body="${response_with_status%$'\n'*}"
+      TELEGRAM_CHAT_PROBE_LAST_HTTP_STATUS="${http_status}"
+      TELEGRAM_CHAT_PROBE_LAST_DESCRIPTION="$(jq -r '.description // empty' <<< "${response_body}" 2>/dev/null || true)"
+      if [[ "${http_status}" =~ ^[0-9]{3}$ ]] && [[ "${http_status}" != 2* ]]; then
+        TELEGRAM_CHAT_PROBE_STATUS="error"
+        TELEGRAM_CHAT_PROBE_REASON="$(telegram_http_reason "${http_status}" "${response_body}")"
+        return 1
+      fi
+      if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response_body}"; then
+        TELEGRAM_CHAT_PROBE_STATUS="error"
+        TELEGRAM_CHAT_PROBE_REASON="support_notify_telegram_getchat_api_failed"
+        return 1
+      fi
+      TELEGRAM_CHAT_PROBE_MATCHED_CHAT_ID="$(jq -r '.result.id // empty' <<< "${response_body}" 2>/dev/null || true)"
+      TELEGRAM_CHAT_PROBE_CHAT_TYPE="$(jq -r '.result.type // empty' <<< "${response_body}" 2>/dev/null || true)"
+      TELEGRAM_CHAT_PROBE_CHAT_TITLE="$(jq -r '.result.title // empty' <<< "${response_body}" 2>/dev/null || true)"
+      TELEGRAM_CHAT_PROBE_CHAT_USERNAME="$(jq -r '.result.username // empty' <<< "${response_body}" 2>/dev/null || true)"
+      TELEGRAM_CHAT_PROBE_STATUS="ok"
+      TELEGRAM_CHAT_PROBE_REASON=""
+      return 0
+    fi
+    TELEGRAM_CHAT_PROBE_STATUS="error"
+    TELEGRAM_CHAT_PROBE_REASON="${reason}"
+    return 1
+  fi
+  if ! jq -e '.ok == true' >/dev/null 2>&1 <<< "${response_body}"; then
+    TELEGRAM_CHAT_PROBE_STATUS="error"
+    TELEGRAM_CHAT_PROBE_REASON="support_notify_telegram_getchat_api_failed"
+    return 1
+  fi
+
+  TELEGRAM_CHAT_PROBE_MATCHED_CHAT_ID="$(jq -r '.result.id // empty' <<< "${response_body}" 2>/dev/null || true)"
+  TELEGRAM_CHAT_PROBE_CHAT_TYPE="$(jq -r '.result.type // empty' <<< "${response_body}" 2>/dev/null || true)"
+  TELEGRAM_CHAT_PROBE_CHAT_TITLE="$(jq -r '.result.title // empty' <<< "${response_body}" 2>/dev/null || true)"
+  TELEGRAM_CHAT_PROBE_CHAT_USERNAME="$(jq -r '.result.username // empty' <<< "${response_body}" 2>/dev/null || true)"
+  TELEGRAM_CHAT_PROBE_STATUS="ok"
+  TELEGRAM_CHAT_PROBE_REASON=""
+  return 0
+}
+
+send_support_notification_telegram() {
+  local bot_token chat_id_cfg chat_id login_url host_label ttl_minutes token_name message resolved_chat_id alt_chat_id discovered_chat_id
+  SUPPORT_NOTIFY_STATUS="disabled"
+  SUPPORT_NOTIFY_REASON=""
+  reset_telegram_debug_context
+
+  if ! telegram_notify_enabled; then
+    write_notify_state "disabled" "" "${SUPPORT_VK_TOKEN_NAME:-}" "${SUPPORT_VK_LOGIN_URL:-}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "disabled" "support_notify_disabled"
+    return 0
+  fi
+
+  SUPPORT_NOTIFY_STATUS="pending"
+
+  bot_token="$(trim_spaces "$(bashio::config "support_notify_telegram_bot_token" "" 2>/dev/null || true)")"
+  chat_id_cfg="$(trim_spaces "$(bashio::config "support_notify_telegram_chat_id" "" 2>/dev/null || true)")"
+  chat_id="$(normalize_telegram_chat_target "${chat_id_cfg}")"
+  TELEGRAM_CONFIG_CHAT_ID_RAW="${chat_id_cfg}"
+  TELEGRAM_CONFIG_CHAT_ID_NORMALIZED="${chat_id}"
+  if [[ -z "${bot_token}" || -z "${chat_id}" ]]; then
+    SUPPORT_NOTIFY_STATUS="error"
+    SUPPORT_NOTIFY_REASON="support_notify_telegram_config_incomplete"
+    write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${SUPPORT_VK_LOGIN_URL:-}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
+    return 1
+  fi
+
+  # Preflight: siempre intentamos leer getUpdates para poblar debug y detectar
+  # posibles chat_id válidos observados por el bot.
+  discovered_chat_id=""
+  set +e
+  discovered_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
+  set -e
+
+  # Si se configuró @username, intentamos resolverlo a chat_id numérico
+  # para soportar chats privados (Telegram solo acepta @channelusername).
+  if [[ "${chat_id}" == @* ]]; then
+    if [[ -n "${discovered_chat_id}" ]]; then
+      chat_id="${discovered_chat_id}"
+    fi
+  fi
+
+  login_url="${SUPPORT_VK_LOGIN_URL:-}"
+  if [[ -z "${login_url}" ]]; then
+    login_url="$(build_absolute_url "${SUPPORT_TARGET_URL:-}" "${SUPPORT_VK_LOGIN_PATH:-}")"
+  fi
+  if [[ -z "${login_url}" ]]; then
+    SUPPORT_NOTIFY_STATUS="error"
+    SUPPORT_NOTIFY_REASON="support_notify_login_url_empty"
+    write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${SUPPORT_VK_LOGIN_URL:-}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
+    return 1
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    SUPPORT_NOTIFY_STATUS="error"
+    SUPPORT_NOTIFY_REASON="support_notify_curl_missing"
+    write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${SUPPORT_VK_LOGIN_URL:-}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
+    return 1
+  fi
+
+  host_label="${SUPPORT_SELF_HOST_NAME:-unknown}"
+  ttl_minutes="$(sanitize_uint_range "$(bashio::config "support_tunnel_ttl_minutes" "30")" 5 180)"
+  token_name="${SUPPORT_VK_TOKEN_NAME:-nodalia_support_key}"
+
+  message=$(
+    cat <<EOF
+Nodalia Connect: token temporal creado
+HostName: ${host_label}
+Token: ${token_name}
+TTL(min): ${ttl_minutes}
+Login URL: ${login_url}
+EOF
+  )
+
+  append_telegram_attempted_chat_id "${chat_id}"
+  if ! telegram_send_message_once "${bot_token}" "${chat_id}" "${message}"; then
+    if [[ "${TELEGRAM_LAST_REASON:-}" == "support_notify_telegram_chat_not_found" ]]; then
+      # Heurística frecuente: ID de supergrupo/canal sin prefijo -100.
+      if [[ "${chat_id}" =~ ^[0-9]+$ ]]; then
+        alt_chat_id="-100${chat_id}"
+        append_telegram_attempted_chat_id "${alt_chat_id}"
+        if telegram_send_message_once "${bot_token}" "${alt_chat_id}" "${message}"; then
+          SUPPORT_NOTIFY_STATUS="sent"
+          SUPPORT_NOTIFY_REASON=""
+          TELEGRAM_FINAL_CHAT_ID="${alt_chat_id}"
+          write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+          write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
+          return 0
+        fi
+      fi
+      resolved_chat_id="${discovered_chat_id}"
+      if [[ -z "${resolved_chat_id}" ]]; then
+        set +e
+        resolved_chat_id="$(telegram_discover_chat_id_from_updates "${bot_token}" "${chat_id_cfg}")"
+        set -e
+      fi
+      if [[ -n "${resolved_chat_id}" && "${resolved_chat_id}" != "${chat_id}" ]]; then
+        append_telegram_attempted_chat_id "${resolved_chat_id}"
+        if telegram_send_message_once "${bot_token}" "${resolved_chat_id}" "${message}"; then
+          SUPPORT_NOTIFY_STATUS="sent"
+          SUPPORT_NOTIFY_REASON=""
+          TELEGRAM_FINAL_CHAT_ID="${resolved_chat_id}"
+          write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+          write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
+          return 0
+        fi
+      fi
+    fi
+    SUPPORT_NOTIFY_STATUS="error"
+    SUPPORT_NOTIFY_REASON="${TELEGRAM_LAST_REASON:-support_notify_telegram_api_failed}"
+    write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+    write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
+    return 1
+  fi
+
+  SUPPORT_NOTIFY_STATUS="sent"
+  SUPPORT_NOTIFY_REASON=""
+  TELEGRAM_FINAL_CHAT_ID="${chat_id}"
+  write_notify_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}" "${SUPPORT_VK_TOKEN_NAME:-}" "${login_url}" "${SUPPORT_SELF_HOST_NAME:-}"
+  write_telegram_debug_state "${SUPPORT_NOTIFY_STATUS}" "${SUPPORT_NOTIFY_REASON}"
+  return 0
+}
+
+write_notify_state() {
+  local status reason token_name login_url host
+  status="${1:-disabled}"
+  reason="${2:-}"
+  token_name="${3:-}"
+  login_url="${4:-}"
+  host="${5:-}"
+  jq -nc \
+    --arg updated_at "$(now_utc)" \
+    --arg status "${status}" \
+    --arg reason "${reason}" \
+    --arg token_name "${token_name}" \
+    --arg login_url "${login_url}" \
+    --arg host "${host}" \
+    '{updated_at:$updated_at,status:$status,reason:$reason,token_name:$token_name,login_url:$login_url,host:$host}' > "${NOTIFY_FILE}"
+}
+
+read_notify_state() {
+  SUPPORT_NOTIFY_LAST_STATUS="disabled"
+  SUPPORT_NOTIFY_LAST_REASON=""
+  SUPPORT_NOTIFY_LAST_UPDATED_AT=""
+  SUPPORT_NOTIFY_LAST_TOKEN_NAME=""
+  SUPPORT_NOTIFY_LAST_LOGIN_URL=""
+  SUPPORT_NOTIFY_LAST_HOST=""
+  if [[ -f "${NOTIFY_FILE}" ]]; then
+    SUPPORT_NOTIFY_LAST_STATUS="$(jq -r '.status // "disabled"' "${NOTIFY_FILE}" 2>/dev/null || echo "disabled")"
+    SUPPORT_NOTIFY_LAST_REASON="$(jq -r '.reason // empty' "${NOTIFY_FILE}" 2>/dev/null || true)"
+    SUPPORT_NOTIFY_LAST_UPDATED_AT="$(jq -r '.updated_at // empty' "${NOTIFY_FILE}" 2>/dev/null || true)"
+    SUPPORT_NOTIFY_LAST_TOKEN_NAME="$(jq -r '.token_name // empty' "${NOTIFY_FILE}" 2>/dev/null || true)"
+    SUPPORT_NOTIFY_LAST_LOGIN_URL="$(jq -r '.login_url // empty' "${NOTIFY_FILE}" 2>/dev/null || true)"
+    SUPPORT_NOTIFY_LAST_HOST="$(jq -r '.host // empty' "${NOTIFY_FILE}" 2>/dev/null || true)"
+  fi
+}
+
+dns_matches_suffix() {
+  local value suffix
+  value="$(normalize_dns_value "${1:-}")"
+  suffix="$(normalize_dns_value "${2:-}")"
+  if [[ -z "${value}" || -z "${suffix}" ]]; then
+    return 1
+  fi
+  [[ "${value}" == "${suffix}" || "${value}" == *."${suffix}" ]]
+}
+
+sanitize_uint() {
+  local value
+  value="${1:-0}"
+  if [[ "${value}" =~ ^[0-9]+$ ]]; then
+    printf '%s' "${value}"
+  else
+    printf '0'
+  fi
+}
+
+trim_spaces() {
+  local value
+  value="${1:-}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "${value}"
+}
+
+sanitize_username() {
+  local value
+  value="$(normalize_lc "${1:-}")"
+  value="$(printf '%s' "${value}" | tr -cd 'a-z0-9_-')"
+  value="${value##_}"
+  value="${value%%_}"
+  if [[ -z "${value}" ]]; then
+    value="nodalia_support"
+  fi
+  printf '%s' "${value}"
+}
+
+sanitize_uint_range() {
+  local value min max
+  value="$(sanitize_uint "${1:-0}")"
+  min="$(sanitize_uint "${2:-0}")"
+  max="$(sanitize_uint "${3:-0}")"
+  if (( value < min )); then
+    value="${min}"
+  fi
+  if (( max > 0 && value > max )); then
+    value="${max}"
+  fi
+  printf '%s' "${value}"
+}
+
+random_alnum() {
+  local length token
+  length="$(sanitize_uint_range "${1:-16}" 8 64)"
+  token="$(head -c 64 /dev/urandom 2>/dev/null | base64 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c "${length}")"
+  if [[ "${#token}" -lt "${length}" ]]; then
+    token="${token}$(date +%s%N | tr -dc '0-9' | head -c "$((length - ${#token}))")"
+  fi
+  printf '%s' "${token:0:${length}}"
+}
+
+read_json_file_or_empty() {
+  local path
+  path="${1:-}"
+  if [[ -n "${path}" && -f "${path}" ]]; then
+    jq -c '.' "${path}" 2>/dev/null || echo '{}'
+  else
+    echo '{}'
+  fi
+}
+
+resolve_support_enable_password() {
+  local configured_password
+  if [[ -n "${SUPPORT_USER_PASSWORD:-}" ]]; then
+    printf '%s' "${SUPPORT_USER_PASSWORD}"
+    return 0
+  fi
+  configured_password="$(bashio::config "support_user_password" "" 2>/dev/null || true)"
+  if [[ -n "${configured_password}" ]]; then
+    printf '%s' "${configured_password}"
+    return 0
+  fi
+  if [[ -n "${SUPPORT_USER_LOGIN_NAME:-}" ]]; then
+    printf '%s' "${SUPPORT_USER_LOGIN_NAME}"
+    return 0
+  fi
+  printf '%s' "${SUPPORT_USER:-}"
+}
+
+api_call() {
+  local method path payload response rc err_file stderr_output
+  method="${1:-GET}"
+  path="${2:-}"
+  payload="${3:-__NO_PAYLOAD__}"
+  stderr_output=""
+
+  err_file="$(mktemp /tmp/support-api-stderr.XXXXXX 2>/dev/null || true)"
+  if [[ -n "${err_file}" ]]; then
+    set +e
+    if [[ "${payload}" == "__NO_PAYLOAD__" ]]; then
+      response="$(bashio::api.supervisor "${method}" "${path}" false 2>"${err_file}")"
+    else
+      response="$(bashio::api.supervisor "${method}" "${path}" "${payload}" 2>"${err_file}")"
+    fi
+    rc=$?
+    set -e
+    stderr_output="$(cat "${err_file}" 2>/dev/null || true)"
+    rm -f "${err_file}" || true
+  else
+    set +e
+    if [[ "${payload}" == "__NO_PAYLOAD__" ]]; then
+      response="$(bashio::api.supervisor "${method}" "${path}" false 2>&1)"
+    else
+      response="$(bashio::api.supervisor "${method}" "${path}" "${payload}" 2>&1)"
+    fi
+    rc=$?
+    set -e
+  fi
+
+  API_LAST_RC="${rc}"
+  API_LAST_JSON="${response}"
+  API_LAST_STDERR="${stderr_output}"
+  API_LAST_OUTPUT="$(printf '%s\n%s\n' "${stderr_output}" "${response}" | tail -n 80)"
+  (( rc == 0 ))
+}
+
+unwrap_supervisor_data() {
+  local input
+  input="${1:-null}"
+  jq -c 'if type=="object" and (.result?=="ok") and has("data") then .data else . end' <<< "${input}" 2>/dev/null || echo 'null'
+}
+
+extract_support_candidate() {
+  local users_data needle
+  users_data="${1:-null}"
+  needle="$(normalize_lc "${2:-}")"
+  jq -c --arg needle "${needle}" '
+    def norm: (tostring | ascii_downcase);
+    def matches:
+      (
+        (.username // .user.username // "" | norm) == $needle
+      ) or (
+        (.name // .user.name // "" | norm) == $needle
+      ) or (
+        (.id // .user_id // .user.id // .user.user_id // .uuid // .user.uuid // .uid // .user.uid // "" | norm) == $needle
+      );
+    if type=="object" and (.users? | type=="array") then
+      .users
+      | map(select(matches))
+      | .[0] // empty
+    elif type=="array" then
+      map(select(matches))
+      | .[0] // empty
+    else
+      empty
+    end
+  ' <<< "${users_data}" 2>/dev/null || true
+}
+
+populate_support_user_from_candidate() {
+  local candidate owner active_field active_value login_name
+  candidate="${1:-}"
+  if [[ -z "${candidate}" ]]; then
+    USER_LOOKUP_REASON="support_user_no_encontrado"
+    return 1
+  fi
+
+  SUPPORT_USER_ID="$(jq -r '.id // .user_id // .user.id // .user.user_id // .uuid // .user.uuid // .uid // .user.uid // empty' <<< "${candidate}" 2>/dev/null || true)"
+
+  login_name="$(jq -r '.username // .user.username // ([.credentials[]? | .data.username?] | map(select(type=="string" and length>0)) | .[0]) // .name // .user.name // empty' <<< "${candidate}" 2>/dev/null || true)"
+  if [[ -z "${login_name}" ]]; then
+    login_name="${SUPPORT_USER}"
+  fi
+  SUPPORT_USER_LOGIN_NAME="${login_name}"
+
+  owner="$(jq -r '.is_owner // .user.is_owner // false' <<< "${candidate}" 2>/dev/null || echo "false")"
+  active_field="$(jq -r 'if has("is_active") or ((.user? | type=="object") and (.user | has("is_active"))) then "true" else "false" end' <<< "${candidate}" 2>/dev/null || echo "false")"
+  active_value="$(jq -r 'if (.is_active // .user.is_active // false) then "true" else "false" end' <<< "${candidate}" 2>/dev/null || echo "false")"
+
+  SUPPORT_USER_EXISTS="true"
+  if [[ "${owner}" == "true" ]]; then
+    SUPPORT_USER_IS_OWNER="true"
+  fi
+  if [[ "${active_field}" == "true" ]]; then
+    SUPPORT_USER_ACTIVE_KNOWN="true"
+    SUPPORT_USER_ACTIVE="${active_value}"
+  fi
+  if [[ -z "${SUPPORT_USER_ID}" ]]; then
+    USER_LOOKUP_REASON="support_user_id_vacio"
+    return 2
+  fi
+  USER_LOOKUP_REASON=""
+  return 0
+}
+
+lookup_support_user_core() {
+  local users_raw users_data candidate needle populate_rc path any_ok last_reason
+
+  any_ok=false
+  last_reason=""
+  for path in "/core/api/config/users" "/core/api/users"; do
+    if ! api_call GET "${path}"; then
+      continue
+    fi
+    any_ok=true
+    users_raw="${API_LAST_JSON}"
+    users_data="$(unwrap_supervisor_data "${users_raw}")"
+    needle="$(normalize_lc "${SUPPORT_USER}")"
+    candidate="$(extract_support_candidate "${users_data}" "${needle}")"
+    set +e
+    populate_support_user_from_candidate "${candidate}"
+    populate_rc=$?
+    set -e
+    if (( populate_rc == 0 )); then
+      USER_LOOKUP_SOURCE="core_api"
+      CORE_USERS_ENDPOINT_USED="${path}"
+      return 0
+    fi
+    if (( populate_rc == 2 )); then
+      USER_LOOKUP_SOURCE="core_api_no_id"
+      CORE_USERS_ENDPOINT_USED="${path}"
+      return 2
+    fi
+    last_reason="${USER_LOOKUP_REASON:-support_user_no_encontrado}"
+  done
+
+  if [[ "${any_ok}" == "true" ]]; then
+    USER_LOOKUP_REASON="${last_reason:-support_user_no_encontrado}"
+  else
+    USER_LOOKUP_REASON="ha_users_api_error_core"
+  fi
+  return 1
+}
+
+lookup_support_user_auth() {
+  local users_raw users_data candidate needle populate_rc path any_ok last_reason
+
+  any_ok=false
+  last_reason=""
+  for path in "/auth/list" "/auth/list?raw=true" "/auth/users" "/auth/users/list"; do
+    if ! api_call GET "${path}"; then
+      continue
+    fi
+    any_ok=true
+    users_raw="${API_LAST_JSON}"
+    users_data="$(unwrap_supervisor_data "${users_raw}")"
+    needle="$(normalize_lc "${SUPPORT_USER}")"
+    candidate="$(extract_support_candidate "${users_data}" "${needle}")"
+    set +e
+    populate_support_user_from_candidate "${candidate}"
+    populate_rc=$?
+    set -e
+    if (( populate_rc == 0 )); then
+      USER_LOOKUP_SOURCE="auth_api"
+      AUTH_USERS_ENDPOINT_USED="${path}"
+      return 0
+    fi
+    if (( populate_rc == 2 )); then
+      USER_LOOKUP_SOURCE="auth_api_no_id"
+      AUTH_USERS_ENDPOINT_USED="${path}"
+      return 2
+    fi
+    last_reason="${USER_LOOKUP_REASON:-support_user_no_encontrado}"
+  done
+
+  if [[ "${any_ok}" == "true" ]]; then
+    USER_LOOKUP_REASON="${last_reason:-support_user_no_encontrado}"
+  else
+    USER_LOOKUP_REASON="ha_users_api_error_auth"
+  fi
+  return 1
+}
+
+lookup_support_user() {
+  local core_reason auth_reason core_rc auth_rc
+
+  SUPPORT_USER_EXISTS="false"
+  SUPPORT_USER_ACTIVE="false"
+  SUPPORT_USER_ACTIVE_KNOWN="false"
+  SUPPORT_USER_IS_OWNER="false"
+  SUPPORT_USER_ID=""
+  SUPPORT_USER_LOGIN_NAME=""
+  CORE_USERS_ENDPOINT_USED=""
+  AUTH_USERS_ENDPOINT_USED=""
+  USER_LOOKUP_REASON=""
+  USER_LOOKUP_SOURCE=""
+
+  if [[ -z "${SUPPORT_USER:-}" ]]; then
+    USER_LOOKUP_REASON="support_user_vacio"
+    return 1
+  fi
+
+  set +e
+  lookup_support_user_core
+  core_rc=$?
+  set -e
+  if (( core_rc == 0 )); then
+    return 0
+  fi
+  core_reason="${USER_LOOKUP_REASON:-ha_users_api_error_core}"
+
+  set +e
+  lookup_support_user_auth
+  auth_rc=$?
+  set -e
+  if (( auth_rc == 0 )); then
+    return 0
+  fi
+  auth_reason="${USER_LOOKUP_REASON:-ha_users_api_error_auth}"
+
+  # Some Supervisor/Auth responses expose username/name but hide the user ID.
+  # We continue with degraded mode and let the activation path try login-name based patch.
+  if (( core_rc == 2 || auth_rc == 2 )); then
+    USER_LOOKUP_REASON="support_user_id_vacio"
+    return 0
+  fi
+
+  if [[ "${core_reason}" == "support_user_no_encontrado" && "${auth_reason}" == "support_user_no_encontrado" ]]; then
+    USER_LOOKUP_REASON="support_user_no_encontrado"
+  elif [[ "${core_reason}" == ha_users_api_error_* && "${auth_reason}" == ha_users_api_error_* ]]; then
+    USER_LOOKUP_REASON="ha_users_api_error"
+  else
+    USER_LOOKUP_REASON="${auth_reason:-${core_reason}}"
+  fi
+  return 1
+}
+
+auth_user_with_password() {
+  local username password payload
+  username="${1:-}"
+  password="${2:-}"
+  if [[ -z "${username}" || -z "${password}" ]]; then
+    return 1
+  fi
+  payload="$(jq -nc --arg username "${username}" --arg password "${password}" '{username:$username,password:$password}')"
+  if ! api_call POST "/auth" "${payload}"; then
+    return 1
+  fi
+  return 0
+}
+
+reset_user_password() {
+  local username password payload
+  username="${1:-}"
+  password="${2:-}"
+  if [[ -z "${username}" || -z "${password}" ]]; then
+    return 1
+  fi
+  payload="$(jq -nc --arg username "${username}" --arg password "${password}" '{username:$username,password:$password}')"
+  if ! api_call POST "/auth/reset" "${payload}"; then
+    return 1
+  fi
+  return 0
+}
+
+set_support_user_active_via_core() {
+  local desired payload target path method
+  desired="${1:-false}"
+  payload="$(jq -nc --argjson is_active "$(json_bool "${desired}")" '{is_active:$is_active}')"
+
+  target=""
+  if [[ -n "${SUPPORT_USER_ID:-}" ]]; then
+    target="$(jq -rn --arg v "${SUPPORT_USER_ID}" '$v|@uri' 2>/dev/null || true)"
+  elif [[ -n "${SUPPORT_USER_LOGIN_NAME:-}" ]]; then
+    target="$(jq -rn --arg v "${SUPPORT_USER_LOGIN_NAME}" '$v|@uri' 2>/dev/null || true)"
+  fi
+  if [[ -z "${target}" ]]; then
+    USER_OP_REASON="support_user_id_vacio"
+    return 1
+  fi
+
+  for path in \
+    "${CORE_USERS_ENDPOINT_USED:-/core/api/config/users}/${target}" \
+    "/core/api/config/users/${target}" \
+    "/core/api/users/${target}" \
+    "/core/api/auth/users/${target}"
+  do
+    for method in PATCH POST; do
+      if api_call "${method}" "${path}" "${payload}"; then
+        SUPPORT_USER_ACTIVE_KNOWN="true"
+        SUPPORT_USER_ACTIVE="${desired}"
+        if [[ -z "${SUPPORT_USER_ID:-}" ]]; then
+          USER_OP_REASON="core_user_patch_by_login_ok"
+        else
+          USER_OP_REASON="core_user_patch_ok"
+        fi
+        USER_OP_PATH="${method}:${path}"
+        return 0
+      fi
+    done
+  done
+
+  if [[ -z "${SUPPORT_USER_ID:-}" ]]; then
+    USER_OP_REASON="core_user_patch_failed_no_id"
+  else
+    USER_OP_REASON="core_user_patch_failed"
+  fi
+  USER_OP_PATH=""
+  return 1
+}
+
+verify_support_user_state() {
+  local expected lookup_rc
+  expected="${1:-false}"
+  set +e
+  lookup_support_user
+  lookup_rc=$?
+  set -e
+  if (( lookup_rc != 0 )); then
+    USER_OP_REASON="support_user_verify_failed"
+    return 1
+  fi
+  if [[ "${SUPPORT_USER_ACTIVE_KNOWN}" != "true" ]]; then
+    USER_OP_REASON="support_user_active_unknown_after_verify"
+    return 1
+  fi
+  if [[ "${SUPPORT_USER_ACTIVE}" != "${expected}" ]]; then
+    if [[ "${expected}" == "false" ]]; then
+      USER_OP_REASON="password_rotated_but_user_still_active"
+    else
+      USER_OP_REASON="support_user_still_inactive_after_enable"
+    fi
+    return 1
+  fi
+  return 0
+}
+
+set_support_user_active_via_service() {
+  local desired action service_cfg service_domain service_name path payload
+  local support_dns
+  desired="${1:-false}"
+
+  if [[ "${desired}" == "true" ]]; then
+    action="enable"
+    service_cfg="$(trim_spaces "$(bashio::config "support_enable_service" "" 2>/dev/null || true)")"
+  else
+    action="disable"
+    service_cfg="$(trim_spaces "$(bashio::config "support_disable_service" "" 2>/dev/null || true)")"
+  fi
+
+  if [[ -z "${service_cfg}" ]]; then
+    USER_OP_REASON="support_${action}_service_not_configured"
+    return 2
+  fi
+  if ! [[ "${service_cfg}" =~ ^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$ ]]; then
+    USER_OP_REASON="support_${action}_service_invalid"
+    return 1
+  fi
+
+  service_domain="${service_cfg%%.*}"
+  service_name="${service_cfg#*.}"
+  path="/core/api/services/${service_domain}/${service_name}"
+  support_dns="${SUPPORT_TARGET_DNS_SUFFIX:-}"
+  payload="$(jq -nc \
+    --arg action "${action}" \
+    --arg support_user "${SUPPORT_USER:-}" \
+    --arg support_user_login_name "${SUPPORT_USER_LOGIN_NAME:-}" \
+    --arg support_user_id "${SUPPORT_USER_ID:-}" \
+    --arg support_target_dns_suffix "${support_dns}" \
+    --argjson enabled "$(json_bool "${desired}")" \
+    '{
+      action:$action,
+      enabled:$enabled,
+      support_user:$support_user,
+      support_user_login_name:$support_user_login_name,
+      support_user_id:$support_user_id,
+      support_target_dns_suffix:$support_target_dns_suffix
+    }')"
+
+  USER_OP_PATH="POST:${path}"
+  if ! api_call POST "${path}" "${payload}"; then
+    USER_OP_REASON="support_${action}_service_api_failed"
+    return 1
+  fi
+  if ! verify_support_user_state "${desired}"; then
+    USER_OP_REASON="support_${action}_service_no_effect:${USER_OP_REASON}"
+    return 1
+  fi
+  USER_OP_REASON="support_${action}_service_ok"
+  return 0
+}
+
+temp_mode_enabled() {
+  return 1
+}
+
+virtual_keys_mode_enabled() {
+  return 0
+}
+
+virtual_keys_token_prefix() {
+  local prefix
+  prefix="$(sanitize_username "$(bashio::config "support_virtual_keys_token_prefix" "nodalia_support_key")")"
+  if [[ -z "${prefix}" ]]; then
+    prefix="nodalia_support_key"
+  fi
+  printf '%s' "${prefix}"
+}
+
+extract_last_json_line() {
+  local raw payload line
+  raw="${1:-}"
+  payload=""
+  while IFS= read -r line
+  do
+    if [[ -n "${line}" ]] && jq -e . >/dev/null 2>&1 <<< "${line}"; then
+      payload="${line}"
+    fi
+  done <<< "${raw}"
+  printf '%s' "${payload}"
+}
+
+virtual_keys_call() {
+  local action username token_name token_prefix token_id minutes
+  local output rc payload ok reason
+  local -a cmd
+  action="${1:-status}"
+  username="${2:-}"
+  token_name="${3:-}"
+  token_prefix="${4:-}"
+  token_id="${5:-}"
+  minutes="$(sanitize_uint_range "${6:-30}" 1 1440)"
+
+  VK_LAST_JSON=""
+  VK_LAST_RAW=""
+  VK_LAST_REASON=""
+
+  if [[ ! -x /usr/bin/ha-virtual-keys ]]; then
+    VK_LAST_REASON="virtual_keys_helper_missing"
+    return 1
+  fi
+  if [[ -z "${username}" ]]; then
+    VK_LAST_REASON="virtual_keys_username_empty"
+    return 1
+  fi
+
+  cmd=(/usr/bin/ha-virtual-keys "${action}" --username "${username}" --timeout "8")
+  if [[ -n "${token_name}" ]]; then
+    cmd+=(--token-name "${token_name}")
+  fi
+  if [[ -n "${token_prefix}" ]]; then
+    cmd+=(--token-prefix "${token_prefix}")
+  fi
+  if [[ -n "${token_id}" ]]; then
+    cmd+=(--token-id "${token_id}")
+  fi
+  if [[ "${action}" == "create" ]]; then
+    cmd+=(--minutes "${minutes}")
+  fi
+
+  set +e
+  output="$("${cmd[@]}" 2>&1)"
+  rc=$?
+  set -e
+
+  VK_LAST_RAW="${output}"
+  API_LAST_RC="${rc}"
+  API_LAST_STDERR=""
+  API_LAST_OUTPUT="$(printf '%s\n' "${output}" | tail -n 80)"
+  API_LAST_JSON=""
+  payload="$(extract_last_json_line "${output}")"
+  if [[ -z "${payload}" ]]; then
+    VK_LAST_REASON="virtual_keys_output_not_json"
+    return 1
+  fi
+  VK_LAST_JSON="${payload}"
+  API_LAST_JSON="${payload}"
+
+  if ! jq -e . >/dev/null 2>&1 <<< "${payload}"; then
+    VK_LAST_REASON="virtual_keys_payload_invalid"
+    return 1
+  fi
+
+  ok="$(jq -r '.ok // false' <<< "${payload}" 2>/dev/null || echo "false")"
+  if [[ "${ok}" != "true" || "${rc}" -ne 0 ]]; then
+    reason="$(jq -r '.reason // empty' <<< "${payload}" 2>/dev/null || true)"
+    if [[ -z "${reason}" ]]; then
+      reason="virtual_keys_call_failed"
+    fi
+    VK_LAST_REASON="${reason}"
+    return 1
+  fi
+  return 0
+}
+
+virtual_keys_status_lookup() {
+  local token_prefix token_name token_id user_exists
+  token_prefix="$(virtual_keys_token_prefix)"
+  token_name="${META_SUPPORT_TOKEN_NAME:-${SUPPORT_VK_TOKEN_NAME:-}}"
+  token_id="${META_SUPPORT_TOKEN_ID:-${SUPPORT_VK_TOKEN_ID:-}}"
+
+  if ! virtual_keys_call "status" "${SUPPORT_USER}" "${token_name}" "${token_prefix}" "${token_id}" "0"; then
+    return 1
+  fi
+
+  user_exists="$(jq -r '.user_exists // false' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "false")"
+  SUPPORT_USER_EXISTS="${user_exists}"
+  SUPPORT_USER_ID="$(jq -r '.user_id // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_USER_LOGIN_NAME="$(jq -r '.username // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  if [[ -z "${SUPPORT_USER_LOGIN_NAME}" ]]; then
+    SUPPORT_USER_LOGIN_NAME="${SUPPORT_USER}"
+  fi
+  SUPPORT_USER_IS_OWNER="$(jq -r 'if .is_owner then "true" else "false" end' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "false")"
+  SUPPORT_USER_ACTIVE_KNOWN="$(jq -r 'if has("is_active") then "true" else "false" end' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "false")"
+  SUPPORT_USER_ACTIVE="$(jq -r 'if .is_active then "true" else "false" end' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "false")"
+  SUPPORT_VK_TOKEN_COUNT="$(jq -r '.token_count // 0' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "0")"
+  SUPPORT_VK_TOKEN_NAME="${token_name}"
+  SUPPORT_VK_TOKEN_ID="${token_id}"
+  if [[ "${user_exists}" == "true" ]]; then
+    USER_LOOKUP_SOURCE="virtual_keys_ws"
+    USER_LOOKUP_REASON=""
+  else
+    USER_LOOKUP_SOURCE="virtual_keys_ws"
+    USER_LOOKUP_REASON="support_user_no_encontrado"
+  fi
+  if [[ "$(sanitize_uint "${SUPPORT_VK_TOKEN_COUNT}")" -gt 0 ]]; then
+    SUPPORT_VK_TOKEN_PRESENT="true"
+  else
+    SUPPORT_VK_TOKEN_PRESENT="false"
+  fi
+  return 0
+}
+
+create_virtual_keys_token() {
+  local ttl_minutes token_prefix token_name
+  ttl_minutes="$(sanitize_uint_range "${1:-30}" 5 180)"
+  token_prefix="$(virtual_keys_token_prefix)"
+  token_name="${token_prefix}_$(date +%s)"
+  if ! virtual_keys_call "create" "${SUPPORT_USER}" "${token_name}" "${token_prefix}" "" "${ttl_minutes}"; then
+    USER_OP_REASON="support_virtual_keys_create_failed:${VK_LAST_REASON:-virtual_keys_call_failed}"
+    return 1
+  fi
+
+  SUPPORT_VK_TOKEN_ID="$(jq -r '.token_id // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_VK_TOKEN_NAME="$(jq -r '.token_name // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_VK_LOGIN_PATH="$(jq -r '.login_path // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_VK_LOGIN_URL="$(build_absolute_url "${SUPPORT_TARGET_URL:-}" "${SUPPORT_VK_LOGIN_PATH:-}")"
+  SUPPORT_VK_TOKEN_VALUE="$(jq -r '.token // empty' <<< "${VK_LAST_JSON}" 2>/dev/null || true)"
+  SUPPORT_VK_TOKEN_COUNT="1"
+  SUPPORT_VK_TOKEN_PRESENT="true"
+
+  SUPPORT_USER_EXISTS="true"
+  SUPPORT_USER_ACTIVE_KNOWN="true"
+  SUPPORT_USER_ACTIVE="true"
+  USER_LOOKUP_SOURCE="virtual_keys_ws"
+  USER_LOOKUP_REASON=""
+  USER_OP_REASON="support_virtual_keys_create_ok"
+  USER_OP_PATH="WS:virtual_keys/create_token"
+  return 0
+}
+
+delete_virtual_keys_token() {
+  local token_prefix token_name token_id deleted_count matched_count
+  token_prefix="$(virtual_keys_token_prefix)"
+  token_name="${META_SUPPORT_TOKEN_NAME:-${SUPPORT_VK_TOKEN_NAME:-}}"
+  token_id="${META_SUPPORT_TOKEN_ID:-${SUPPORT_VK_TOKEN_ID:-}}"
+
+  if ! virtual_keys_call "delete" "${SUPPORT_USER}" "${token_name}" "${token_prefix}" "${token_id}" "0"; then
+    USER_OP_REASON="support_virtual_keys_delete_failed:${VK_LAST_REASON:-virtual_keys_call_failed}"
+    return 1
+  fi
+  deleted_count="$(jq -r '.deleted_count // 0' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "0")"
+  matched_count="$(jq -r '.matched_count // 0' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "0")"
+  deleted_count="$(sanitize_uint "${deleted_count}")"
+  matched_count="$(sanitize_uint "${matched_count}")"
+
+  if (( deleted_count > 0 || matched_count == 0 )); then
+    SUPPORT_VK_TOKEN_PRESENT="false"
+    SUPPORT_VK_TOKEN_COUNT="0"
+    SUPPORT_VK_TOKEN_VALUE=""
+    USER_OP_REASON="support_virtual_keys_delete_ok"
+    USER_OP_PATH="WS:virtual_keys/delete_token"
+    return 0
+  fi
+  USER_OP_REASON="support_virtual_keys_delete_no_effect"
+  return 1
+}
+
+resolve_service_endpoint() {
+  local service_cfg service_domain service_name
+  service_cfg="$(trim_spaces "${1:-}")"
+  if [[ -z "${service_cfg}" ]]; then
+    return 1
+  fi
+  if ! [[ "${service_cfg}" =~ ^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$ ]]; then
+    return 2
+  fi
+  service_domain="${service_cfg%%.*}"
+  service_name="${service_cfg#*.}"
+  printf '/core/api/services/%s/%s' "${service_domain}" "${service_name}"
+  return 0
+}
+
+resolve_temp_delete_service_cfg() {
+  local disable_cfg enable_cfg
+  disable_cfg="$(trim_spaces "$(bashio::config "support_disable_service" "" 2>/dev/null || true)")"
+  if [[ -n "${disable_cfg}" ]]; then
+    printf '%s' "${disable_cfg}"
+    return 0
+  fi
+  enable_cfg="$(trim_spaces "$(bashio::config "support_enable_service" "" 2>/dev/null || true)")"
+  if [[ -n "${enable_cfg}" ]]; then
+    printf '%s' "${enable_cfg}"
+    return 0
+  fi
+  return 1
+}
+
+generate_temp_support_username() {
+  local prefix suffix
+  prefix="$(sanitize_username "$(bashio::config "support_temp_user_prefix" "nodalia_support")")"
+  suffix="$(random_alnum 8 | tr '[:upper:]' '[:lower:]')"
+  printf '%s_%s' "${prefix}" "${suffix}"
+}
+
+generate_temp_support_password() {
+  local length
+  length="$(sanitize_uint_range "$(bashio::config "support_temp_password_length" "20")" 12 64)"
+  random_alnum "${length}"
+}
+
+create_temp_support_account() {
+  local service_cfg path path_rc ttl_minutes payload created_username created_password verify_rc
+  ttl_minutes="$(sanitize_uint_range "${1:-30}" 5 180)"
+  service_cfg="$(trim_spaces "$(bashio::config "support_enable_service" "" 2>/dev/null || true)")"
+  path_rc=0
+  path="$(resolve_service_endpoint "${service_cfg}")" || path_rc=$?
+  if (( path_rc == 1 )); then
+    USER_OP_REASON="support_temp_create_service_not_configured"
+    return 2
+  fi
+  if (( path_rc == 2 )); then
+    USER_OP_REASON="support_temp_create_service_invalid"
+    return 1
+  fi
+
+  created_username="$(generate_temp_support_username)"
+  created_password="$(generate_temp_support_password)"
+  payload="$(jq -nc \
+    --arg action "create" \
+    --arg support_mode "temp_account" \
+    --arg support_user "${created_username}" \
+    --arg support_password "${created_password}" \
+    --arg support_target_dns_suffix "${SUPPORT_TARGET_DNS_SUFFIX:-}" \
+    --argjson ttl_minutes "${ttl_minutes}" \
+    '{action:$action,support_mode:$support_mode,support_user:$support_user,support_password:$support_password,support_target_dns_suffix:$support_target_dns_suffix,ttl_minutes:$ttl_minutes}')"
+
+  USER_OP_PATH="POST:${path}"
+  if ! api_call POST "${path}" "${payload}"; then
+    USER_OP_REASON="support_temp_create_service_api_failed"
+    return 1
+  fi
+
+  SUPPORT_USER="${created_username}"
+  SUPPORT_USER_LOGIN_NAME="${created_username}"
+  set +e
+  lookup_support_user
+  verify_rc=$?
+  set -e
+  if (( verify_rc != 0 )); then
+    USER_OP_REASON="support_temp_create_service_no_effect:${USER_LOOKUP_REASON:-lookup_failed}"
+    return 1
+  fi
+  if [[ "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
+    USER_OP_REASON="support_temp_user_owner_invalid"
+    return 1
+  fi
+  if [[ "${SUPPORT_USER_ACTIVE_KNOWN}" == "true" && "${SUPPORT_USER_ACTIVE}" != "true" ]]; then
+    USER_OP_REASON="support_temp_user_created_but_inactive"
+    return 1
+  fi
+  SUPPORT_USER_ACTIVE_KNOWN="true"
+  SUPPORT_USER_ACTIVE="true"
+  SUPPORT_TEMP_USERNAME="${created_username}"
+  SUPPORT_TEMP_PASSWORD="${created_password}"
+  USER_OP_REASON="support_temp_create_service_ok"
+  return 0
+}
+
+delete_temp_support_account() {
+  local service_cfg path path_rc payload target_username verify_rc
+  target_username="${META_SUPPORT_USER:-${SUPPORT_USER:-}}"
+  if [[ -z "${target_username}" ]]; then
+    USER_OP_REASON="support_temp_user_missing_in_meta"
+    return 1
+  fi
+
+  service_cfg="$(resolve_temp_delete_service_cfg 2>/dev/null || true)"
+  path_rc=0
+  path="$(resolve_service_endpoint "${service_cfg}")" || path_rc=$?
+  if (( path_rc == 1 )); then
+    USER_OP_REASON="support_temp_delete_service_not_configured"
+    return 2
+  fi
+  if (( path_rc == 2 )); then
+    USER_OP_REASON="support_temp_delete_service_invalid"
+    return 1
+  fi
+
+  payload="$(jq -nc \
+    --arg action "delete" \
+    --arg support_mode "temp_account" \
+    --arg support_user "${target_username}" \
+    --arg support_target_dns_suffix "${SUPPORT_TARGET_DNS_SUFFIX:-}" \
+    '{action:$action,support_mode:$support_mode,support_user:$support_user,support_target_dns_suffix:$support_target_dns_suffix}')"
+
+  USER_OP_PATH="POST:${path}"
+  if ! api_call POST "${path}" "${payload}"; then
+    USER_OP_REASON="support_temp_delete_service_api_failed"
+    return 1
+  fi
+
+  SUPPORT_USER="${target_username}"
+  SUPPORT_USER_LOGIN_NAME="${target_username}"
+  set +e
+  lookup_support_user
+  verify_rc=$?
+  set -e
+  if (( verify_rc != 0 )); then
+    if [[ "${USER_LOOKUP_REASON:-}" == "support_user_no_encontrado" ]]; then
+      USER_OP_REASON="support_temp_delete_service_ok"
+      SUPPORT_USER_EXISTS="false"
+      SUPPORT_USER_ACTIVE="false"
+      SUPPORT_USER_ACTIVE_KNOWN="true"
+      return 0
+    fi
+    USER_OP_REASON="support_temp_delete_verify_failed:${USER_LOOKUP_REASON:-lookup_failed}"
+    return 1
+  fi
+
+  if [[ "${SUPPORT_USER_ACTIVE_KNOWN}" == "true" && "${SUPPORT_USER_ACTIVE}" == "false" ]]; then
+    USER_OP_REASON="support_temp_delete_service_ok"
+    return 0
+  fi
+  USER_OP_REASON="support_temp_delete_service_no_effect"
+  return 1
+}
+
+set_support_user_active_via_auth() {
+  local desired target method path payload
+  local payload_base payload_username payload_name
+  desired="${1:-false}"
+
+  target=""
+  if [[ -n "${SUPPORT_USER_LOGIN_NAME:-}" ]]; then
+    target="$(jq -rn --arg v "${SUPPORT_USER_LOGIN_NAME}" '$v|@uri' 2>/dev/null || true)"
+  fi
+  if [[ -z "${target}" ]]; then
+    USER_OP_REASON="support_user_login_name_vacio"
+    return 1
+  fi
+
+  payload_base="$(jq -nc --argjson is_active "$(json_bool "${desired}")" '{is_active:$is_active}')"
+  payload_username="$(jq -nc --arg username "${SUPPORT_USER_LOGIN_NAME}" --argjson is_active "$(json_bool "${desired}")" '{username:$username,is_active:$is_active}')"
+  payload_name="$(jq -nc --arg name "${SUPPORT_USER_LOGIN_NAME}" --argjson is_active "$(json_bool "${desired}")" '{name:$name,is_active:$is_active}')"
+
+  for path in \
+    "/auth/users/${target}" \
+    "/auth/user/${target}" \
+    "/auth/${target}" \
+    "/auth/update"
+  do
+    for method in PATCH POST PUT; do
+      for payload in "${payload_base}" "${payload_username}" "${payload_name}"; do
+        if api_call "${method}" "${path}" "${payload}"; then
+          USER_OP_PATH="${method}:${path}"
+          if verify_support_user_state "${desired}"; then
+            USER_OP_REASON="auth_user_patch_ok"
+            return 0
+          fi
+        fi
+      done
+    done
+  done
+
+  USER_OP_REASON="auth_user_patch_failed"
+  return 1
+}
+
+set_support_user_active() {
+  local desired core_reason enable_password password_source service_rc
+  desired="${1:-false}"
+  USER_OP_REASON=""
+  USER_OP_PATH=""
+  SUPPORT_TEMP_USERNAME=""
+  SUPPORT_TEMP_PASSWORD=""
+  SUPPORT_VK_TOKEN_NAME=""
+  SUPPORT_VK_TOKEN_ID=""
+  SUPPORT_VK_TOKEN_VALUE=""
+  SUPPORT_VK_LOGIN_PATH=""
+  SUPPORT_VK_LOGIN_URL=""
+  SUPPORT_VK_TOKEN_COUNT="0"
+  SUPPORT_VK_TOKEN_PRESENT="false"
+  SUPPORT_NOTIFY_STATUS="disabled"
+  SUPPORT_NOTIFY_REASON=""
+
+  if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "virtual_keys_token" ]]; then
+    if [[ "${desired}" == "true" ]]; then
+      if create_virtual_keys_token "$(bashio::config "support_tunnel_ttl_minutes" "30")"; then
+        return 0
+      fi
+      return 1
+    fi
+    if delete_virtual_keys_token; then
+      return 0
+    fi
+    return 1
+  fi
+
+  if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "temp_account" ]]; then
+    if [[ "${desired}" == "true" ]]; then
+      set +e
+      create_temp_support_account "$(bashio::config "support_tunnel_ttl_minutes" "30")"
+      service_rc=$?
+      set -e
+      if (( service_rc == 0 )); then
+        return 0
+      fi
+      return 1
+    fi
+    set +e
+    delete_temp_support_account
+    service_rc=$?
+    set -e
+    if (( service_rc == 0 )); then
+      return 0
+    fi
+    return 1
+  fi
+
+  if [[ "${SUPPORT_USER_EXISTS:-false}" != "true" ]]; then
+    if ! lookup_support_user; then
+      USER_OP_REASON="${USER_LOOKUP_REASON:-support_user_lookup_failed}"
+      return 1
+    fi
+  fi
+
+  if [[ "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
+    USER_OP_REASON="support_user_es_owner_no_permitido"
+    return 1
+  fi
+
+  if set_support_user_active_via_core "${desired}"; then
+    return 0
+  fi
+  core_reason="${USER_OP_REASON:-core_user_patch_failed}"
+
+  if set_support_user_active_via_auth "${desired}"; then
+    return 0
+  fi
+  core_reason="${USER_OP_REASON:-${core_reason}}"
+
+  set +e
+  set_support_user_active_via_service "${desired}"
+  service_rc=$?
+  set -e
+  if (( service_rc == 0 )); then
+    return 0
+  fi
+  if (( service_rc == 1 )); then
+    core_reason="${USER_OP_REASON:-${core_reason}}"
+  fi
+
+  if [[ "${desired}" == "true" ]]; then
+    # If lookup already confirms the user is active, treat enable as idempotent success
+    # even when the API doesn't expose a stable user id for patching.
+    if [[ "${SUPPORT_USER_ACTIVE_KNOWN}" == "true" && "${SUPPORT_USER_ACTIVE}" == "true" ]]; then
+      USER_OP_REASON="already_true_known"
+      return 0
+    fi
+    enable_password="$(resolve_support_enable_password)"
+    if [[ -n "${SUPPORT_USER_PASSWORD:-}" ]]; then
+      password_source="env"
+    elif bashio::config.has_value "support_user_password"; then
+      password_source="config"
+    else
+      password_source="derived_username"
+    fi
+    if [[ -z "${enable_password}" ]]; then
+      USER_OP_REASON="${core_reason}"
+      return 1
+    fi
+    if auth_user_with_password "${SUPPORT_USER_LOGIN_NAME}" "${enable_password}"; then
+      SUPPORT_USER_ACTIVE="true"
+      USER_OP_REASON="already_true"
+      return 0
+    fi
+    if ! reset_user_password "${SUPPORT_USER_LOGIN_NAME}" "${enable_password}"; then
+      USER_OP_REASON="reset_password_failed_enable_${password_source}"
+      return 1
+    fi
+    if auth_user_with_password "${SUPPORT_USER_LOGIN_NAME}" "${enable_password}"; then
+      SUPPORT_USER_ACTIVE="true"
+      USER_OP_REASON="password_set_enable_${password_source}"
+      return 0
+    fi
+    USER_OP_REASON="enable_verify_failed_${password_source}"
+    return 1
+  fi
+
+  # For disable flow, rotating password is not enough when user remains active.
+  # We require a real deactivation path (core/auth API or configured HA service).
+  if (( service_rc == 2 )); then
+    if [[ -z "${SUPPORT_USER_ID:-}" ]]; then
+      USER_OP_REASON="support_disable_service_not_configured"
+    else
+      USER_OP_REASON="${core_reason}"
+    fi
+    return 1
+  fi
+  if (( service_rc == 1 )); then
+    USER_OP_REASON="${core_reason}"
+    return 1
+  fi
+  USER_OP_REASON="${core_reason}"
+  return 1
+
+}
+
+audit_event() {
+  local action reason details now
+  action="${1:-unknown}"
+  reason="${2:-}"
+  details="${3:-}"
+  now="$(now_utc)"
+  jq -nc \
+    --arg ts "${now}" \
+    --arg action "${action}" \
+    --arg reason "${reason}" \
+    --arg details "${details}" \
+    --arg actor "${SUPPORT_ACTOR:-ui}" \
+    --arg target_id "${SUPPORT_TARGET_ID:-}" \
+    --arg target_dns_suffix "${SUPPORT_TARGET_DNS_SUFFIX:-}" \
+    --arg support_user "${SUPPORT_USER:-}" \
+    --arg support_user_id "${SUPPORT_USER_ID:-}" \
+    '{ts:$ts,action:$action,reason:$reason,details:$details,actor:$actor,target_id:$target_id,target_dns_suffix:$target_dns_suffix,support_user:$support_user,support_user_id:$support_user_id}' \
+    >> "${AUDIT_FILE}"
+}
+
+read_meta() {
+  local raw_epoch raw_ttl
+  META_EXPIRES_EPOCH=0
+  META_EXPIRES_AT=""
+  META_TTL_MIN=0
+  META_SUPPORT_USER=""
+  META_SUPPORT_MODE=""
+  META_SUPPORT_TOKEN_ID=""
+  META_SUPPORT_TOKEN_NAME=""
+  META_DISABLE_RETRY_AFTER_EPOCH=0
+  META_DISABLE_RETRY_REASON=""
+  if [[ -f "${META_FILE}" ]]; then
+    raw_epoch="$(jq -r '.expires_epoch // 0' "${META_FILE}" 2>/dev/null || echo "0")"
+    META_EXPIRES_EPOCH="$(sanitize_uint "${raw_epoch}")"
+    META_EXPIRES_AT="$(jq -r '.expires_at // empty' "${META_FILE}" 2>/dev/null || true)"
+    raw_ttl="$(jq -r '.ttl_minutes // 0' "${META_FILE}" 2>/dev/null || echo "0")"
+    META_TTL_MIN="$(sanitize_uint "${raw_ttl}")"
+    META_SUPPORT_USER="$(jq -r '.support_user // empty' "${META_FILE}" 2>/dev/null || true)"
+    META_SUPPORT_MODE="$(jq -r '.support_mode // empty' "${META_FILE}" 2>/dev/null || true)"
+    META_SUPPORT_TOKEN_ID="$(jq -r '.support_token_id // empty' "${META_FILE}" 2>/dev/null || true)"
+    META_SUPPORT_TOKEN_NAME="$(jq -r '.support_token_name // empty' "${META_FILE}" 2>/dev/null || true)"
+    META_DISABLE_RETRY_AFTER_EPOCH="$(sanitize_uint "$(jq -r '.disable_retry_after_epoch // 0' "${META_FILE}" 2>/dev/null || echo "0")")"
+    META_DISABLE_RETRY_REASON="$(jq -r '.disable_retry_reason // empty' "${META_FILE}" 2>/dev/null || true)"
+  fi
+}
+
+prepare_meta() {
+  local ttl now_epoch expires_epoch expires_at
+  ttl="${1:-30}"
+  if ! [[ "${ttl}" =~ ^[0-9]+$ ]]; then
+    ttl="30"
+  fi
+  now_epoch="$(date +%s)"
+  expires_epoch=$((now_epoch + ttl * 60))
+  expires_at="$(date -u -r "${expires_epoch}" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)"
+  if [[ -z "${expires_at}" ]]; then
+    expires_at="$(date -u -d "@${expires_epoch}" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)"
+  fi
+  META_NEW_CREATED_AT="$(now_utc)"
+  META_NEW_EXPIRES_EPOCH="${expires_epoch}"
+  META_NEW_EXPIRES_AT="${expires_at}"
+  META_NEW_TTL_MIN="${ttl}"
+  META_NEW_DISABLE_RETRY_AFTER_EPOCH=0
+  META_NEW_DISABLE_RETRY_REASON=""
+}
+
+write_meta() {
+  jq -nc \
+    --arg created_at "${META_NEW_CREATED_AT}" \
+    --arg expires_at "${META_NEW_EXPIRES_AT}" \
+    --arg support_user "${SUPPORT_USER}" \
+    --arg support_mode "${SUPPORT_MODE:-virtual_keys_token}" \
+    --arg support_token_id "${SUPPORT_VK_TOKEN_ID:-}" \
+    --arg support_token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
+    --argjson expires_epoch "${META_NEW_EXPIRES_EPOCH}" \
+    --argjson ttl_minutes "${META_NEW_TTL_MIN}" \
+    --argjson disable_retry_after_epoch "${META_NEW_DISABLE_RETRY_AFTER_EPOCH:-0}" \
+    --arg disable_retry_reason "${META_NEW_DISABLE_RETRY_REASON:-}" \
+    '{created_at:$created_at,expires_at:$expires_at,expires_epoch:$expires_epoch,ttl_minutes:$ttl_minutes,support_user:$support_user,support_mode:$support_mode,support_token_id:$support_token_id,support_token_name:$support_token_name,disable_retry_after_epoch:$disable_retry_after_epoch,disable_retry_reason:$disable_retry_reason}' > "${META_FILE}"
+}
+
+set_meta_disable_retry_backoff() {
+  local reason retry_after_epoch tmp_file
+  reason="${1:-disable_failed}"
+  if [[ ! -f "${META_FILE}" ]]; then
+    return 0
+  fi
+  retry_after_epoch=$(( $(date +%s) + TTL_DISABLE_RETRY_BACKOFF_SEC ))
+  tmp_file="$(mktemp)"
+  if jq \
+    --argjson retry_after_epoch "${retry_after_epoch}" \
+    --arg reason "${reason}" \
+    '.disable_retry_after_epoch = $retry_after_epoch | .disable_retry_reason = $reason' \
+    "${META_FILE}" > "${tmp_file}" 2>/dev/null; then
+    mv -f "${tmp_file}" "${META_FILE}"
+  else
+    rm -f "${tmp_file}"
+  fi
+}
+
+clear_meta() {
+  rm -f "${META_FILE}"
+}
+
+build_eligibility() {
+  local status_json support_enabled target_dns_suffix backend candidate_strings
+  local self_dns_name self_host_name magic_dns_suffix token_lc
+  local target_url_cfg target_domain_suffix support_host_label
+  local temp_create_service_cfg temp_delete_service_cfg
+  local create_path_rc delete_path_rc
+  support_enabled=false
+  if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
+    support_enabled=true
+  fi
+
+  read_meta
+  target_dns_suffix="$(normalize_dns_value "$(bashio::config "support_tailnet_dns_suffix" "")")"
+  status_json="${SUPPORT_STATUS_JSON:-}"
+  if [[ -z "${status_json}" ]]; then
+    status_json=$(/opt/tailscale status --json --self=true --peers=false 2>/dev/null || echo '{}')
+  fi
+  backend="$(jq -r '.BackendState // "Unknown"' <<< "${status_json}" 2>/dev/null || echo "Unknown")"
+  self_dns_name="$(normalize_dns_value "$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)")"
+  self_host_name="$(jq -r '.Self.HostName // empty' <<< "${status_json}" 2>/dev/null || true)"
+  support_host_label="$(sanitize_hostname_label "${self_host_name}")"
+  magic_dns_suffix="$(normalize_dns_value "$(jq -r '.CurrentTailnet.MagicDNSSuffix // empty' <<< "${status_json}" 2>/dev/null || true)")"
+  candidate_strings="$(jq -r '[.CurrentTailnet.Name,.CurrentTailnet.MagicDNSSuffix,.CurrentTailnet.Tailnet,.Self.DNSName,.Self.HostName,.Self.Tailnet] | map(select(type=="string" and length>0)) | .[]' <<< "${status_json}" 2>/dev/null || true)"
+
+  target_url_cfg="$(normalize_base_url "$(bashio::config "support_target_url" "" 2>/dev/null || true)")"
+  if is_local_base_url "${target_url_cfg}"; then
+    target_url_cfg=""
+  fi
+  target_domain_suffix="$(normalize_dns_value "$(bashio::config "support_target_domain_suffix" "getnodalia.com" 2>/dev/null || true)")"
+  if [[ -z "${target_url_cfg}" && -n "${support_host_label}" && -n "${target_domain_suffix}" ]]; then
+    target_url_cfg="https://${support_host_label}.${target_domain_suffix}"
+  fi
+
+  SUPPORT_ENABLED="${support_enabled}"
+  SUPPORT_TARGET_ID=""
+  SUPPORT_TARGET_DNS_SUFFIX="${target_dns_suffix}"
+  SUPPORT_TARGET_URL="${target_url_cfg}"
+  SUPPORT_TARGET_DOMAIN_SUFFIX="${target_domain_suffix}"
+  SUPPORT_SELF_HOST_NAME="${support_host_label}"
+  SUPPORT_BACKEND="${backend}"
+  SUPPORT_REASON=""
+  SUPPORT_TAILNET_MATCH="false"
+  SUPPORT_USER="$(sanitize_username "$(bashio::config "support_user" "nodalia")")"
+  SUPPORT_VK_TOKEN_COUNT="0"
+  SUPPORT_VK_TOKEN_PRESENT="false"
+  SUPPORT_VK_TOKEN_NAME=""
+  SUPPORT_VK_TOKEN_ID=""
+  SUPPORT_VK_LOGIN_PATH=""
+  SUPPORT_VK_LOGIN_URL=""
+  SUPPORT_VK_TOKEN_VALUE=""
+
+  SUPPORT_MODE="virtual_keys_token"
+  if [[ -n "${META_SUPPORT_MODE:-}" && "${META_SUPPORT_MODE}" != "virtual_keys_token" ]]; then
+    clear_meta
+    read_meta
+  fi
+
+  SUPPORT_USER_EXISTS="false"
+  SUPPORT_USER_ACTIVE="false"
+  SUPPORT_USER_ACTIVE_KNOWN="false"
+  SUPPORT_USER_IS_OWNER="false"
+  SUPPORT_USER_ID=""
+  SUPPORT_USER_LOGIN_NAME=""
+
+  if [[ -z "${target_dns_suffix}" ]]; then
+    SUPPORT_REASON="support_tailnet_dns_suffix_vacio"
+    return
+  fi
+
+  if dns_matches_suffix "${self_dns_name}" "${target_dns_suffix}"; then
+    SUPPORT_TAILNET_MATCH="true"
+  elif dns_matches_suffix "${magic_dns_suffix}" "${target_dns_suffix}"; then
+    SUPPORT_TAILNET_MATCH="true"
+  else
+    while IFS= read -r token; do
+      token_lc="$(normalize_dns_value "${token}")"
+      if dns_matches_suffix "${token_lc}" "${target_dns_suffix}"; then
+        SUPPORT_TAILNET_MATCH="true"
+        break
+      fi
+    done <<< "${candidate_strings}"
+  fi
+
+  if [[ "${support_enabled}" != "true" ]]; then
+    SUPPORT_REASON="support_tunnel_enabled=false"
+    return
+  fi
+  if [[ "${backend}" != "Running" ]]; then
+    SUPPORT_REASON="backend_state=${backend}"
+    return
+  fi
+  if [[ "${SUPPORT_TAILNET_MATCH}" != "true" ]]; then
+    SUPPORT_REASON="tailnet_no_coincide_dns_soporte"
+    return
+  fi
+
+  if [[ "${SUPPORT_MODE}" == "temp_account" && -z "${META_SUPPORT_USER:-}" ]]; then
+    temp_create_service_cfg="$(trim_spaces "$(bashio::config "support_enable_service" "" 2>/dev/null || true)")"
+    if [[ -z "${temp_create_service_cfg}" ]]; then
+      SUPPORT_REASON="support_temp_create_service_not_configured"
+      return
+    fi
+    create_path_rc=0
+    resolve_service_endpoint "${temp_create_service_cfg}" >/dev/null || create_path_rc=$?
+    if (( create_path_rc == 2 )); then
+      SUPPORT_REASON="support_temp_create_service_invalid"
+      return
+    fi
+    temp_delete_service_cfg="$(resolve_temp_delete_service_cfg 2>/dev/null || true)"
+    if [[ -z "${temp_delete_service_cfg}" ]]; then
+      SUPPORT_REASON="support_temp_delete_service_not_configured"
+      return
+    fi
+    delete_path_rc=0
+    resolve_service_endpoint "${temp_delete_service_cfg}" >/dev/null || delete_path_rc=$?
+    if (( delete_path_rc == 2 )); then
+      SUPPORT_REASON="support_temp_delete_service_invalid"
+      return
+    fi
+    # No temp user exists yet; this state is still eligible for "enable/create".
+    SUPPORT_REASON=""
+    return
+  fi
+
+  if [[ "${SUPPORT_MODE}" == "virtual_keys_token" ]]; then
+    if ! virtual_keys_status_lookup; then
+      SUPPORT_REASON="support_virtual_keys_status_failed:${VK_LAST_REASON:-virtual_keys_failed}"
+      USER_LOOKUP_SOURCE="virtual_keys_ws"
+      USER_LOOKUP_REASON="${VK_LAST_REASON:-virtual_keys_failed}"
+      return
+    fi
+    if [[ "${SUPPORT_USER_EXISTS}" != "true" ]]; then
+      SUPPORT_REASON="support_user_no_encontrado"
+      return
+    fi
+    if [[ "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
+      SUPPORT_REASON="support_user_es_owner_no_permitido"
+      return
+    fi
+    if [[ -n "${META_SUPPORT_TOKEN_NAME:-}" ]]; then
+      SUPPORT_VK_TOKEN_NAME="${META_SUPPORT_TOKEN_NAME}"
+    fi
+    if [[ -n "${META_SUPPORT_TOKEN_ID:-}" ]]; then
+      SUPPORT_VK_TOKEN_ID="${META_SUPPORT_TOKEN_ID}"
+    fi
+    SUPPORT_REASON=""
+    return
+  fi
+
+  if ! lookup_support_user; then
+    if [[ "${SUPPORT_MODE}" == "temp_account" && "${USER_LOOKUP_REASON:-}" == "support_user_no_encontrado" ]]; then
+      clear_meta
+      SUPPORT_REASON=""
+      return
+    fi
+    SUPPORT_REASON="${USER_LOOKUP_REASON:-support_user_lookup_failed}"
+    return
+  fi
+
+  if [[ "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
+    SUPPORT_REASON="support_user_es_owner_no_permitido"
+    return
+  fi
+}
+
+write_state() {
+  local active eligible now
+  active="${1:-false}"
+  eligible="${2:-false}"
+  now="$(now_utc)"
+  read_meta
+  read_notify_state
+
+  jq -nc \
+    --arg updated_at "${now}" \
+    --arg support_target_id "${SUPPORT_TARGET_ID}" \
+    --arg support_target_url "${SUPPORT_TARGET_URL:-}" \
+    --arg support_target_dns_suffix "${SUPPORT_TARGET_DNS_SUFFIX}" \
+    --arg backend_state "${SUPPORT_BACKEND}" \
+    --arg reason "${SUPPORT_REASON}" \
+    --arg expires_at "${META_EXPIRES_AT}" \
+    --arg support_user "${SUPPORT_USER}" \
+    --arg support_user_id "${SUPPORT_USER_ID}" \
+    --arg support_mode "${SUPPORT_MODE:-virtual_keys_token}" \
+    --arg support_token_name "${SUPPORT_VK_TOKEN_NAME:-${META_SUPPORT_TOKEN_NAME:-}}" \
+    --arg support_notify_status "${SUPPORT_NOTIFY_LAST_STATUS:-disabled}" \
+    --arg support_notify_reason "${SUPPORT_NOTIFY_LAST_REASON:-}" \
+    --arg support_notify_updated_at "${SUPPORT_NOTIFY_LAST_UPDATED_AT:-}" \
+    --argjson support_token_count "$(sanitize_uint "${SUPPORT_VK_TOKEN_COUNT:-0}")" \
+    --argjson expires_epoch "${META_EXPIRES_EPOCH}" \
+    --argjson ttl_minutes "${META_TTL_MIN}" \
+    --argjson support_enabled "$(json_bool "${SUPPORT_ENABLED}")" \
+    --argjson tailnet_match "$(json_bool "${SUPPORT_TAILNET_MATCH}")" \
+    --argjson eligible "$(json_bool "${eligible}")" \
+    --argjson active "$(json_bool "${active}")" \
+    --argjson support_user_exists "$(json_bool "${SUPPORT_USER_EXISTS}")" \
+    --argjson support_user_active "$(json_bool "${SUPPORT_USER_ACTIVE}")" \
+    --argjson support_user_active_known "$(json_bool "${SUPPORT_USER_ACTIVE_KNOWN}")" \
+    --argjson support_user_is_owner "$(json_bool "${SUPPORT_USER_IS_OWNER}")" \
+    '{
+      updated_at:$updated_at,
+      support_enabled:$support_enabled,
+      support_target_id:$support_target_id,
+      support_target_url:$support_target_url,
+      support_target_dns_suffix:$support_target_dns_suffix,
+      backend_state:$backend_state,
+      tailnet_match:$tailnet_match,
+      eligible:$eligible,
+      active:$active,
+      support_user:$support_user,
+      support_user_id:$support_user_id,
+      support_mode:$support_mode,
+      support_token_name:$support_token_name,
+      support_token_count:$support_token_count,
+      support_notify_status:$support_notify_status,
+      support_notify_reason:$support_notify_reason,
+      support_notify_updated_at:$support_notify_updated_at,
+      support_user_exists:$support_user_exists,
+      support_user_active:$support_user_active,
+      support_user_active_known:$support_user_active_known,
+      support_user_is_owner:$support_user_is_owner,
+      pid:"",
+      url:"",
+      reason:$reason,
+      expires_at:$expires_at,
+      expires_epoch:$expires_epoch,
+      ttl_minutes:$ttl_minutes
+    }' > "${STATE_FILE}"
+}
+
+disable_running_access() {
+  local reason details rc
+  reason="${1:-manual_disable}"
+  details=""
+  rc=0
+
+  if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "temp_account" ]]; then
+    if ! delete_temp_support_account; then
+      details="temp_user_delete_error:${USER_OP_REASON}"
+      rc=1
+    else
+      details="temp_user_delete_ok:${USER_OP_REASON}"
+    fi
+  elif [[ "${SUPPORT_MODE:-virtual_keys_token}" == "virtual_keys_token" ]]; then
+    if ! set_support_user_active false; then
+      details="virtual_keys_delete_error:${USER_OP_REASON}"
+      rc=1
+    else
+      details="virtual_keys_delete_ok:${USER_OP_REASON}"
+    fi
+  else
+    if ! set_support_user_active false; then
+      details="user_disable_error:${USER_OP_REASON}"
+      rc=1
+    else
+      details="user_disable_ok:${USER_OP_REASON}"
+    fi
+  fi
+
+  if (( rc == 0 )); then
+    clear_meta
+    audit_event "disabled" "${reason}" "${details}"
+  else
+    audit_event "disable_failed" "${reason}" "${details}"
+  fi
+  return "${rc}"
+}
+
+status_cmd() {
+  local active eligible now_epoch
+  build_eligibility
+  read_meta
+
+  active=false
+  now_epoch="$(date +%s)"
+  if [[ "${META_EXPIRES_EPOCH:-0}" -gt 0 ]]; then
+    if (( now_epoch >= META_EXPIRES_EPOCH )); then
+      if (( "${META_DISABLE_RETRY_AFTER_EPOCH:-0}" > now_epoch )); then
+        SUPPORT_REASON="ttl_expired_disable_retry_wait:${META_DISABLE_RETRY_REASON:-disable_failed}"
+        active=true
+      elif disable_running_access "ttl_expired" >/dev/null 2>&1; then
+        SUPPORT_REASON="ttl_expired"
+        active=false
+      else
+        SUPPORT_REASON="ttl_expired_disable_failed:${USER_OP_REASON:-disable_failed}"
+        set_meta_disable_retry_backoff "${USER_OP_REASON:-disable_failed}"
+        active=true
+      fi
+    elif [[ "${SUPPORT_MODE:-virtual_keys_token}" == "virtual_keys_token" ]]; then
+      if [[ "${SUPPORT_USER_EXISTS}" == "true" ]]; then
+        if [[ "${SUPPORT_VK_TOKEN_PRESENT:-false}" == "true" ]]; then
+          active=true
+        else
+          clear_meta
+          SUPPORT_REASON="support_virtual_keys_token_not_found"
+          active=false
+        fi
+      else
+        clear_meta
+        SUPPORT_REASON="support_user_no_encontrado"
+        active=false
+      fi
+    elif [[ "${SUPPORT_USER_EXISTS}" == "true" ]]; then
+      if [[ "${SUPPORT_USER_ACTIVE_KNOWN}" != "true" ]]; then
+        active=true
+      elif [[ "${SUPPORT_USER_ACTIVE}" == "true" ]]; then
+        active=true
+      else
+        clear_meta
+        SUPPORT_REASON="support_user_inactivo_sin_sesion"
+        active=false
+      fi
+    else
+      if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "temp_account" ]]; then
+        clear_meta
+        SUPPORT_REASON="support_temp_user_not_found"
+        active=false
+      else
+        # If support user lookup couldn't run in this cycle (e.g. backend state gate),
+        # preserve the active window until we can verify user state again.
+        active=true
+      fi
+    fi
+  fi
+
+  eligible=false
+  if [[ "${SUPPORT_ENABLED}" == "true" && "${SUPPORT_TAILNET_MATCH}" == "true" && "${SUPPORT_BACKEND}" == "Running" ]]; then
+    if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "temp_account" ]]; then
+      if [[ -z "${SUPPORT_REASON:-}" ]]; then
+        eligible=true
+      fi
+    elif [[ "${SUPPORT_MODE:-virtual_keys_token}" == "virtual_keys_token" ]]; then
+      if [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
+        case "${SUPPORT_REASON:-}" in
+          ""|support_virtual_keys_token_not_found)
+            eligible=true
+            ;;
+        esac
+      fi
+    elif [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
+      eligible=true
+    fi
+  fi
+
+  write_state "${active}" "${eligible}"
+  cat "${STATE_FILE}"
+}
+
+enable_cmd() {
+  local ttl_minutes details
+  build_eligibility
+
+  if [[ "${SUPPORT_ENABLED}" != "true" || "${SUPPORT_TAILNET_MATCH}" != "true" || "${SUPPORT_BACKEND}" != "Running" ]]; then
+    write_state false false
+    jq -nc \
+      --arg error "support access no permitido en este estado" \
+      --arg reason "${SUPPORT_REASON:-support_not_eligible}" \
+      '{ok:false,error:$error,reason:$reason}'
+    exit 1
+  fi
+  if [[ "${SUPPORT_MODE:-virtual_keys_token}" != "temp_account" ]]; then
+    if [[ "${SUPPORT_USER_EXISTS}" != "true" || "${SUPPORT_USER_IS_OWNER}" == "true" ]]; then
+      write_state false false
+      jq -nc \
+        --arg error "support access no permitido en este estado" \
+        --arg reason "${SUPPORT_REASON:-support_not_eligible}" \
+        '{ok:false,error:$error,reason:$reason}'
+      exit 1
+    fi
+  else
+    if [[ "${SUPPORT_REASON:-}" == "support_temp_create_service_not_configured" || \
+      "${SUPPORT_REASON:-}" == "support_temp_create_service_invalid" || \
+      "${SUPPORT_REASON:-}" == "support_temp_delete_service_not_configured" || \
+      "${SUPPORT_REASON:-}" == "support_temp_delete_service_invalid" ]]; then
+      write_state false false
+      jq -nc \
+        --arg error "servicios de soporte temporal no configurados" \
+        --arg reason "${SUPPORT_REASON}" \
+        '{ok:false,error:$error,reason:$reason}'
+      exit 1
+    fi
+  fi
+
+  read_meta
+  if [[ "${META_EXPIRES_EPOCH:-0}" -gt 0 ]]; then
+    if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "virtual_keys_token" ]]; then
+      if [[ "${SUPPORT_VK_TOKEN_PRESENT:-false}" == "true" ]] && (( $(date +%s) < META_EXPIRES_EPOCH )); then
+        write_state true true
+        cat "${STATE_FILE}"
+        exit 0
+      fi
+    elif [[ "${SUPPORT_USER_ACTIVE}" == "true" ]] && (( $(date +%s) < META_EXPIRES_EPOCH )); then
+      write_state true true
+      cat "${STATE_FILE}"
+      exit 0
+    fi
+  fi
+
+  if ! set_support_user_active true; then
+    SUPPORT_REASON="${USER_OP_REASON}"
+    write_state false true
+    jq -nc \
+      --arg error "no se pudo habilitar support_user" \
+      --arg reason "${USER_OP_REASON:-enable_failed}" \
+      --arg lookup_source "${USER_LOOKUP_SOURCE:-}" \
+      --arg lookup_reason "${USER_LOOKUP_REASON:-}" \
+      --arg support_user "${SUPPORT_USER:-}" \
+      --arg support_user_id "${SUPPORT_USER_ID:-}" \
+      --arg support_user_login_name "${SUPPORT_USER_LOGIN_NAME:-}" \
+      --arg op_path "${USER_OP_PATH:-}" \
+      --arg support_mode "${SUPPORT_MODE:-virtual_keys_token}" \
+      '{ok:false,error:$error,reason:$reason,lookup_source:$lookup_source,lookup_reason:$lookup_reason,support_user:$support_user,support_user_id:$support_user_id,support_user_login_name:$support_user_login_name,op_path:$op_path,support_mode:$support_mode}'
+    exit 1
+  fi
+
+  ttl_minutes="$(bashio::config "support_tunnel_ttl_minutes" "30")"
+  prepare_meta "${ttl_minutes}"
+  write_meta
+
+  if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "virtual_keys_token" ]]; then
+    if ! send_support_notification_telegram; then
+      audit_event "notify_failed" "${SUPPORT_NOTIFY_REASON:-support_notify_failed}" "token=${SUPPORT_VK_TOKEN_NAME:-}"
+    else
+      if [[ "${SUPPORT_NOTIFY_STATUS:-disabled}" == "sent" ]]; then
+        audit_event "notify_sent" "support_notify_telegram_sent" "token=${SUPPORT_VK_TOKEN_NAME:-}"
+      else
+        audit_event "notify_skipped" "support_notify_disabled" "token=${SUPPORT_VK_TOKEN_NAME:-}"
+      fi
+    fi
+  fi
+
+  if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "temp_account" ]]; then
+    details="temp_user_enable_ok:${USER_OP_REASON}:${SUPPORT_USER}"
+  elif [[ "${SUPPORT_MODE:-virtual_keys_token}" == "virtual_keys_token" ]]; then
+    details="virtual_keys_enable_ok:${USER_OP_REASON}:${SUPPORT_USER}:${SUPPORT_VK_TOKEN_NAME:-}:notify=${SUPPORT_NOTIFY_STATUS:-disabled}"
+  else
+    details="user_enable_ok:${USER_OP_REASON}"
+  fi
+  audit_event "enabled" "ok" "${details}"
+  write_state true true
+  if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "temp_account" && -n "${SUPPORT_TEMP_USERNAME:-}" ]]; then
+    jq -c \
+      --arg support_temp_username "${SUPPORT_TEMP_USERNAME:-}" \
+      --arg support_temp_password "${SUPPORT_TEMP_PASSWORD:-}" \
+      --arg support_mode "${SUPPORT_MODE:-temp_account}" \
+      '. + {support_mode:$support_mode,support_temp_username:$support_temp_username,support_temp_password:$support_temp_password}' \
+      "${STATE_FILE}"
+  elif [[ "${SUPPORT_MODE:-virtual_keys_token}" == "virtual_keys_token" ]]; then
+    jq -c \
+      --arg support_mode "${SUPPORT_MODE:-virtual_keys_token}" \
+      --arg support_virtual_keys_token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
+      --arg support_virtual_keys_login_path "${SUPPORT_VK_LOGIN_PATH:-}" \
+      --arg support_virtual_keys_login_url "${SUPPORT_VK_LOGIN_URL:-}" \
+      --arg support_notify_status "${SUPPORT_NOTIFY_STATUS:-disabled}" \
+      --arg support_notify_reason "${SUPPORT_NOTIFY_REASON:-}" \
+      '. + {support_mode:$support_mode,support_virtual_keys_token_name:$support_virtual_keys_token_name,support_virtual_keys_login_path:$support_virtual_keys_login_path,support_virtual_keys_login_url:$support_virtual_keys_login_url,support_notify_status:$support_notify_status,support_notify_reason:$support_notify_reason}' \
+      "${STATE_FILE}"
+  else
+    cat "${STATE_FILE}"
+  fi
+}
+
+disable_cmd() {
+  build_eligibility
+
+  if ! disable_running_access "manual_disable"; then
+    SUPPORT_REASON="${USER_OP_REASON:-disable_failed}"
+    status_cmd >/dev/null 2>&1 || true
+    jq -nc \
+      --arg error "no se pudo revocar support_user" \
+      --arg reason "${USER_OP_REASON:-disable_failed}" \
+      --arg support_user "${SUPPORT_USER:-}" \
+      --arg support_user_id "${SUPPORT_USER_ID:-}" \
+      --arg support_user_login_name "${SUPPORT_USER_LOGIN_NAME:-}" \
+      --arg op_path "${USER_OP_PATH:-}" \
+      --arg lookup_source "${USER_LOOKUP_SOURCE:-}" \
+      --arg lookup_reason "${USER_LOOKUP_REASON:-}" \
+      --arg support_mode "${SUPPORT_MODE:-virtual_keys_token}" \
+      '{ok:false,error:$error,reason:$reason,support_user:$support_user,support_user_id:$support_user_id,support_user_login_name:$support_user_login_name,op_path:$op_path,lookup_source:$lookup_source,lookup_reason:$lookup_reason,support_mode:$support_mode}'
+    exit 1
+  fi
+
+  SUPPORT_REASON="manual_disable"
+  write_state false false
+  cat "${STATE_FILE}"
+}
+
+notify_test_cmd() {
+  local test_token_name login_base telegram_debug_snapshot
+  build_eligibility
+
+  test_token_name="nodalia_support_notify_test_$(date +%s)"
+  SUPPORT_VK_TOKEN_NAME="${test_token_name}"
+  login_base="$(normalize_base_url "${SUPPORT_TARGET_URL:-}")"
+  if [[ -n "${login_base}" ]]; then
+    SUPPORT_VK_LOGIN_URL="${login_base}"
+  else
+    SUPPORT_VK_LOGIN_URL=""
+  fi
+
+  if send_support_notification_telegram; then
+    audit_event "notify_test" "ok" "status=${SUPPORT_NOTIFY_STATUS:-sent}"
+    telegram_debug_snapshot="$(read_json_file_or_empty "${TELEGRAM_DEBUG_FILE}")"
+    jq -nc \
+      --arg action "notifytest" \
+      --arg status "${SUPPORT_NOTIFY_STATUS:-sent}" \
+      --arg reason "${SUPPORT_NOTIFY_REASON:-}" \
+      --arg token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
+      --arg login_url "${SUPPORT_VK_LOGIN_URL:-}" \
+      --argjson telegram_debug "${telegram_debug_snapshot}" \
+      '{ok:true,action:$action,status:$status,reason:$reason,token_name:$token_name,login_url:$login_url,telegram_debug:$telegram_debug}'
+    return 0
+  fi
+
+  audit_event "notify_test" "${SUPPORT_NOTIFY_REASON:-support_notify_failed}" "status=${SUPPORT_NOTIFY_STATUS:-error}"
+  telegram_debug_snapshot="$(read_json_file_or_empty "${TELEGRAM_DEBUG_FILE}")"
+  jq -nc \
+    --arg action "notifytest" \
+    --arg status "${SUPPORT_NOTIFY_STATUS:-error}" \
+    --arg reason "${SUPPORT_NOTIFY_REASON:-support_notify_failed}" \
+    --arg error "telegram_notify_failed" \
+    --arg token_name "${SUPPORT_VK_TOKEN_NAME:-}" \
+    --arg login_url "${SUPPORT_VK_LOGIN_URL:-}" \
+    --argjson telegram_debug "${telegram_debug_snapshot}" \
+    '{ok:false,action:$action,status:$status,reason:$reason,error:$error,token_name:$token_name,login_url:$login_url,telegram_debug:$telegram_debug}'
+  return 1
+}
+
+audit_cmd() {
+  if [[ -f "${AUDIT_FILE}" ]]; then
+    tail -n 100 "${AUDIT_FILE}"
+  else
+    echo ""
+  fi
+}
+
+debug_cmd() {
+  local cfg_enabled cfg_dns cfg_user
+  local cfg_virtual_keys_token_prefix cfg_target_url cfg_target_domain_suffix
+  local cfg_notify_telegram_enabled cfg_notify_telegram_bot_token cfg_notify_telegram_chat_id cfg_notify_telegram_chat_id_normalized
+  local cfg_notify_telegram_bot_probe_status cfg_notify_telegram_bot_probe_reason
+  local cfg_notify_telegram_bot_probe_last_http_status cfg_notify_telegram_bot_probe_last_description cfg_notify_telegram_bot_probe_last_error
+  local cfg_notify_telegram_bot_id cfg_notify_telegram_bot_username cfg_notify_telegram_bot_name
+  local cfg_notify_telegram_chat_probe_status cfg_notify_telegram_chat_probe_reason
+  local cfg_notify_telegram_chat_probe_input cfg_notify_telegram_chat_probe_normalized
+  local cfg_notify_telegram_chat_probe_matched_id cfg_notify_telegram_chat_probe_type cfg_notify_telegram_chat_probe_title
+  local cfg_notify_telegram_chat_probe_username cfg_notify_telegram_chat_probe_last_http_status cfg_notify_telegram_chat_probe_last_description
+  local cfg_notify_telegram_chat_probe_last_error
+  local cfg_notify_telegram_chat_probe_attempted_ids
+  local cfg_notify_telegram_bot_token_set cfg_notify_telegram_chat_id_set
+  local status_json self_dns_name self_host_name magic_dns_suffix current_tailnet_name
+  local lookup_forced lookup_rc lookup_hint
+  local debug_eligible now_epoch debug_active
+  local state_snapshot meta_snapshot notify_snapshot telegram_debug_snapshot
+
+  cfg_enabled=false
+  if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
+    cfg_enabled=true
+  fi
+  cfg_dns="$(normalize_dns_value "$(bashio::config "support_tailnet_dns_suffix" "")")"
+  cfg_user="$(bashio::config "support_user" "nodalia")"
+  cfg_virtual_keys_token_prefix="$(virtual_keys_token_prefix)"
+  cfg_target_url="$(normalize_base_url "$(bashio::config "support_target_url" "" 2>/dev/null || true)")"
+  cfg_target_domain_suffix="$(normalize_dns_value "$(bashio::config "support_target_domain_suffix" "getnodalia.com" 2>/dev/null || true)")"
+  cfg_notify_telegram_enabled=false
+  if telegram_notify_enabled; then
+    cfg_notify_telegram_enabled=true
+  fi
+  cfg_notify_telegram_bot_token="$(trim_spaces "$(bashio::config "support_notify_telegram_bot_token" "" 2>/dev/null || true)")"
+  cfg_notify_telegram_chat_id="$(trim_spaces "$(bashio::config "support_notify_telegram_chat_id" "" 2>/dev/null || true)")"
+  cfg_notify_telegram_chat_id_normalized="$(normalize_telegram_chat_target "${cfg_notify_telegram_chat_id}")"
+  cfg_notify_telegram_bot_token_set=false
+  if [[ -n "${cfg_notify_telegram_bot_token}" ]]; then
+    cfg_notify_telegram_bot_token_set=true
+  fi
+  cfg_notify_telegram_chat_id_set=false
+  if [[ -n "${cfg_notify_telegram_chat_id}" ]]; then
+    cfg_notify_telegram_chat_id_set=true
+  fi
+  cfg_notify_telegram_bot_probe_status="not_configured"
+  cfg_notify_telegram_bot_probe_reason=""
+  cfg_notify_telegram_bot_probe_last_http_status=""
+  cfg_notify_telegram_bot_probe_last_description=""
+  cfg_notify_telegram_bot_probe_last_error=""
+  cfg_notify_telegram_bot_id=""
+  cfg_notify_telegram_bot_username=""
+  cfg_notify_telegram_bot_name=""
+  cfg_notify_telegram_chat_probe_status="not_configured"
+  cfg_notify_telegram_chat_probe_reason=""
+  cfg_notify_telegram_chat_probe_input="${cfg_notify_telegram_chat_id}"
+  cfg_notify_telegram_chat_probe_normalized="${cfg_notify_telegram_chat_id_normalized}"
+  cfg_notify_telegram_chat_probe_matched_id=""
+  cfg_notify_telegram_chat_probe_type=""
+  cfg_notify_telegram_chat_probe_title=""
+  cfg_notify_telegram_chat_probe_username=""
+  cfg_notify_telegram_chat_probe_last_http_status=""
+  cfg_notify_telegram_chat_probe_last_description=""
+  cfg_notify_telegram_chat_probe_last_error=""
+  cfg_notify_telegram_chat_probe_attempted_ids=""
+  if [[ -n "${cfg_notify_telegram_bot_token}" ]]; then
+    telegram_probe_bot_identity "${cfg_notify_telegram_bot_token}" || true
+    cfg_notify_telegram_bot_probe_status="${TELEGRAM_BOT_PROBE_STATUS:-error}"
+    cfg_notify_telegram_bot_probe_reason="${TELEGRAM_BOT_PROBE_REASON:-}"
+    cfg_notify_telegram_bot_probe_last_http_status="${TELEGRAM_BOT_PROBE_LAST_HTTP_STATUS:-}"
+    cfg_notify_telegram_bot_probe_last_description="${TELEGRAM_BOT_PROBE_LAST_DESCRIPTION:-}"
+    cfg_notify_telegram_bot_probe_last_error="${TELEGRAM_BOT_PROBE_LAST_ERROR:-}"
+    cfg_notify_telegram_bot_id="${TELEGRAM_BOT_ID:-}"
+    cfg_notify_telegram_bot_username="${TELEGRAM_BOT_USERNAME:-}"
+    cfg_notify_telegram_bot_name="${TELEGRAM_BOT_NAME:-}"
+    telegram_probe_chat_access "${cfg_notify_telegram_bot_token}" "${cfg_notify_telegram_chat_id}" || true
+    cfg_notify_telegram_chat_probe_status="${TELEGRAM_CHAT_PROBE_STATUS:-error}"
+    cfg_notify_telegram_chat_probe_reason="${TELEGRAM_CHAT_PROBE_REASON:-}"
+    cfg_notify_telegram_chat_probe_input="${TELEGRAM_CHAT_PROBE_INPUT:-${cfg_notify_telegram_chat_id}}"
+    cfg_notify_telegram_chat_probe_normalized="${TELEGRAM_CHAT_PROBE_NORMALIZED:-${cfg_notify_telegram_chat_id_normalized}}"
+    cfg_notify_telegram_chat_probe_matched_id="${TELEGRAM_CHAT_PROBE_MATCHED_CHAT_ID:-}"
+    cfg_notify_telegram_chat_probe_type="${TELEGRAM_CHAT_PROBE_CHAT_TYPE:-}"
+    cfg_notify_telegram_chat_probe_title="${TELEGRAM_CHAT_PROBE_CHAT_TITLE:-}"
+    cfg_notify_telegram_chat_probe_username="${TELEGRAM_CHAT_PROBE_CHAT_USERNAME:-}"
+    cfg_notify_telegram_chat_probe_last_http_status="${TELEGRAM_CHAT_PROBE_LAST_HTTP_STATUS:-}"
+    cfg_notify_telegram_chat_probe_last_description="${TELEGRAM_CHAT_PROBE_LAST_DESCRIPTION:-}"
+    cfg_notify_telegram_chat_probe_last_error="${TELEGRAM_CHAT_PROBE_LAST_ERROR:-}"
+    cfg_notify_telegram_chat_probe_attempted_ids="${TELEGRAM_CHAT_PROBE_ATTEMPTED_IDS:-}"
+  fi
+  status_json=$(/opt/tailscale status --json --self=true --peers=false 2>/dev/null || echo '{}')
+  SUPPORT_STATUS_JSON="${status_json}"
+  build_eligibility
+  read_meta
+
+  lookup_forced=false
+  lookup_rc="skipped"
+  lookup_hint="lookup_skip_backend_not_running"
+  if [[ "${SUPPORT_BACKEND:-Unknown}" == "Running" ]]; then
+    lookup_forced=true
+    lookup_hint="lookup_ran"
+    if [[ "${SUPPORT_MODE:-virtual_keys_token}" == "virtual_keys_token" ]]; then
+      set +e
+      virtual_keys_status_lookup
+      lookup_rc=$?
+      set -e
+      USER_LOOKUP_SOURCE="virtual_keys_ws"
+      if (( lookup_rc != 0 )); then
+        USER_LOOKUP_REASON="${VK_LAST_REASON:-virtual_keys_failed}"
+      fi
+    else
+      set +e
+      lookup_support_user
+      lookup_rc=$?
+      set -e
+    fi
+  fi
+
+  debug_eligible=false
+  if [[ "${SUPPORT_ENABLED}" == "true" && "${SUPPORT_TAILNET_MATCH}" == "true" && "${SUPPORT_BACKEND}" == "Running" ]]; then
+    if [[ "${SUPPORT_USER_EXISTS}" == "true" && "${SUPPORT_USER_IS_OWNER}" != "true" ]]; then
+      debug_eligible=true
+    fi
+  fi
+
+  now_epoch="$(date +%s)"
+  debug_active=false
+  if [[ "${META_EXPIRES_EPOCH:-0}" -gt 0 && "${now_epoch}" -lt "${META_EXPIRES_EPOCH}" ]]; then
+    debug_active=true
+  fi
+
+  self_dns_name="$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)"
+  self_host_name="$(jq -r '.Self.HostName // empty' <<< "${status_json}" 2>/dev/null || true)"
+  magic_dns_suffix="$(jq -r '.CurrentTailnet.MagicDNSSuffix // empty' <<< "${status_json}" 2>/dev/null || true)"
+  current_tailnet_name="$(jq -r '.CurrentTailnet.Name // empty' <<< "${status_json}" 2>/dev/null || true)"
+
+  state_snapshot="$(read_json_file_or_empty "${STATE_FILE}")"
+  meta_snapshot="$(read_json_file_or_empty "${META_FILE}")"
+  notify_snapshot="$(read_json_file_or_empty "${NOTIFY_FILE}")"
+  telegram_debug_snapshot="$(read_json_file_or_empty "${TELEGRAM_DEBUG_FILE}")"
+
+  jq -nc \
+    --arg generated_at "$(now_utc)" \
+    --arg cfg_dns "${cfg_dns}" \
+    --arg cfg_user "${cfg_user}" \
+    --arg cfg_virtual_keys_token_prefix "${cfg_virtual_keys_token_prefix}" \
+    --arg cfg_target_url "${cfg_target_url}" \
+    --arg cfg_target_domain_suffix "${cfg_target_domain_suffix}" \
+    --arg cfg_notify_telegram_bot_token "${cfg_notify_telegram_bot_token}" \
+    --arg cfg_notify_telegram_chat_id "${cfg_notify_telegram_chat_id}" \
+    --arg cfg_notify_telegram_chat_id_normalized "${cfg_notify_telegram_chat_id_normalized}" \
+    --arg cfg_notify_telegram_bot_probe_status "${cfg_notify_telegram_bot_probe_status}" \
+    --arg cfg_notify_telegram_bot_probe_reason "${cfg_notify_telegram_bot_probe_reason}" \
+    --arg cfg_notify_telegram_bot_probe_last_http_status "${cfg_notify_telegram_bot_probe_last_http_status}" \
+    --arg cfg_notify_telegram_bot_probe_last_description "${cfg_notify_telegram_bot_probe_last_description}" \
+    --arg cfg_notify_telegram_bot_probe_last_error "${cfg_notify_telegram_bot_probe_last_error}" \
+    --arg cfg_notify_telegram_bot_id "${cfg_notify_telegram_bot_id}" \
+    --arg cfg_notify_telegram_bot_username "${cfg_notify_telegram_bot_username}" \
+    --arg cfg_notify_telegram_bot_name "${cfg_notify_telegram_bot_name}" \
+    --arg cfg_notify_telegram_chat_probe_status "${cfg_notify_telegram_chat_probe_status}" \
+    --arg cfg_notify_telegram_chat_probe_reason "${cfg_notify_telegram_chat_probe_reason}" \
+    --arg cfg_notify_telegram_chat_probe_input "${cfg_notify_telegram_chat_probe_input}" \
+    --arg cfg_notify_telegram_chat_probe_normalized "${cfg_notify_telegram_chat_probe_normalized}" \
+    --arg cfg_notify_telegram_chat_probe_matched_id "${cfg_notify_telegram_chat_probe_matched_id}" \
+    --arg cfg_notify_telegram_chat_probe_type "${cfg_notify_telegram_chat_probe_type}" \
+    --arg cfg_notify_telegram_chat_probe_title "${cfg_notify_telegram_chat_probe_title}" \
+    --arg cfg_notify_telegram_chat_probe_username "${cfg_notify_telegram_chat_probe_username}" \
+    --arg cfg_notify_telegram_chat_probe_last_http_status "${cfg_notify_telegram_chat_probe_last_http_status}" \
+    --arg cfg_notify_telegram_chat_probe_last_description "${cfg_notify_telegram_chat_probe_last_description}" \
+    --arg cfg_notify_telegram_chat_probe_last_error "${cfg_notify_telegram_chat_probe_last_error}" \
+    --arg cfg_notify_telegram_chat_probe_attempted_ids "${cfg_notify_telegram_chat_probe_attempted_ids}" \
+    --arg backend_state "${SUPPORT_BACKEND:-Unknown}" \
+    --arg support_reason "${SUPPORT_REASON:-}" \
+    --arg support_user "${SUPPORT_USER:-}" \
+    --arg support_user_id "${SUPPORT_USER_ID:-}" \
+    --arg support_user_login_name "${SUPPORT_USER_LOGIN_NAME:-}" \
+    --arg support_mode "${SUPPORT_MODE:-virtual_keys_token}" \
+    --arg support_token_name "${SUPPORT_VK_TOKEN_NAME:-${META_SUPPORT_TOKEN_NAME:-}}" \
+    --arg support_token_id "${SUPPORT_VK_TOKEN_ID:-${META_SUPPORT_TOKEN_ID:-}}" \
+    --arg support_token_count "${SUPPORT_VK_TOKEN_COUNT:-0}" \
+    --arg meta_support_mode "${META_SUPPORT_MODE:-}" \
+    --arg lookup_rc "${lookup_rc}" \
+    --arg lookup_source "${USER_LOOKUP_SOURCE:-}" \
+    --arg lookup_reason "${USER_LOOKUP_REASON:-}" \
+    --arg lookup_hint "${lookup_hint}" \
+    --arg core_users_endpoint "${CORE_USERS_ENDPOINT_USED:-}" \
+    --arg auth_users_endpoint "${AUTH_USERS_ENDPOINT_USED:-}" \
+    --arg user_op_reason "${USER_OP_REASON:-}" \
+    --arg user_op_path "${USER_OP_PATH:-}" \
+    --arg self_dns_name "${self_dns_name}" \
+    --arg self_host_name "${self_host_name}" \
+    --arg magic_dns_suffix "${magic_dns_suffix}" \
+    --arg current_tailnet_name "${current_tailnet_name}" \
+    --arg api_last_rc "${API_LAST_RC:-}" \
+    --arg api_last_output "${API_LAST_OUTPUT:-}" \
+    --arg api_last_stderr "${API_LAST_STDERR:-}" \
+    --argjson cfg_enabled "$(json_bool "${cfg_enabled}")" \
+    --argjson cfg_notify_telegram_enabled "$(json_bool "${cfg_notify_telegram_enabled}")" \
+    --argjson cfg_notify_telegram_bot_token_set "$(json_bool "${cfg_notify_telegram_bot_token_set}")" \
+    --argjson cfg_notify_telegram_chat_id_set "$(json_bool "${cfg_notify_telegram_chat_id_set}")" \
+    --argjson support_token_present "$(json_bool "${SUPPORT_VK_TOKEN_PRESENT:-false}")" \
+    --argjson tailnet_match "$(json_bool "${SUPPORT_TAILNET_MATCH:-false}")" \
+    --argjson eligible "$(json_bool "${debug_eligible}")" \
+    --argjson active "$(json_bool "${debug_active}")" \
+    --argjson support_user_exists "$(json_bool "${SUPPORT_USER_EXISTS:-false}")" \
+    --argjson support_user_active "$(json_bool "${SUPPORT_USER_ACTIVE:-false}")" \
+    --argjson support_user_active_known "$(json_bool "${SUPPORT_USER_ACTIVE_KNOWN:-false}")" \
+    --argjson support_user_is_owner "$(json_bool "${SUPPORT_USER_IS_OWNER:-false}")" \
+    --argjson lookup_forced "$(json_bool "${lookup_forced}")" \
+    --argjson state_snapshot "${state_snapshot}" \
+    --argjson meta_snapshot "${meta_snapshot}" \
+    --argjson notify_snapshot "${notify_snapshot}" \
+    --argjson telegram_debug_snapshot "${telegram_debug_snapshot}" \
+    '{
+      ok:true,
+      action:"debug",
+      generated_at:$generated_at,
+      config:{
+        support_tunnel_enabled:$cfg_enabled,
+        support_tailnet_dns_suffix:$cfg_dns,
+        support_user:$cfg_user,
+        support_mode:"virtual_keys_token",
+        support_virtual_keys_token_prefix:$cfg_virtual_keys_token_prefix,
+        support_target_url:$cfg_target_url,
+        support_target_domain_suffix:$cfg_target_domain_suffix,
+        support_notify_telegram_enabled:$cfg_notify_telegram_enabled,
+        support_notify_telegram_bot_token:$cfg_notify_telegram_bot_token,
+        support_notify_telegram_bot_token_set:$cfg_notify_telegram_bot_token_set,
+        support_notify_telegram_chat_id_set:$cfg_notify_telegram_chat_id_set,
+        support_notify_telegram_chat_id:$cfg_notify_telegram_chat_id,
+        support_notify_telegram_chat_id_normalized:$cfg_notify_telegram_chat_id_normalized,
+        support_notify_telegram_bot_probe_status:$cfg_notify_telegram_bot_probe_status,
+        support_notify_telegram_bot_probe_reason:$cfg_notify_telegram_bot_probe_reason,
+        support_notify_telegram_bot_probe_last_http_status:$cfg_notify_telegram_bot_probe_last_http_status,
+        support_notify_telegram_bot_probe_last_description:$cfg_notify_telegram_bot_probe_last_description,
+        support_notify_telegram_bot_probe_last_error:$cfg_notify_telegram_bot_probe_last_error,
+        support_notify_telegram_bot_id:$cfg_notify_telegram_bot_id,
+        support_notify_telegram_bot_username:$cfg_notify_telegram_bot_username,
+        support_notify_telegram_bot_name:$cfg_notify_telegram_bot_name,
+        support_notify_telegram_chat_probe_status:$cfg_notify_telegram_chat_probe_status,
+        support_notify_telegram_chat_probe_reason:$cfg_notify_telegram_chat_probe_reason,
+        support_notify_telegram_chat_probe_input:$cfg_notify_telegram_chat_probe_input,
+        support_notify_telegram_chat_probe_normalized:$cfg_notify_telegram_chat_probe_normalized,
+        support_notify_telegram_chat_probe_matched_id:$cfg_notify_telegram_chat_probe_matched_id,
+        support_notify_telegram_chat_probe_type:$cfg_notify_telegram_chat_probe_type,
+        support_notify_telegram_chat_probe_title:$cfg_notify_telegram_chat_probe_title,
+        support_notify_telegram_chat_probe_username:$cfg_notify_telegram_chat_probe_username,
+        support_notify_telegram_chat_probe_last_http_status:$cfg_notify_telegram_chat_probe_last_http_status,
+        support_notify_telegram_chat_probe_last_description:$cfg_notify_telegram_chat_probe_last_description,
+        support_notify_telegram_chat_probe_last_error:$cfg_notify_telegram_chat_probe_last_error,
+        support_notify_telegram_chat_probe_attempted_ids:($cfg_notify_telegram_chat_probe_attempted_ids|split(",")|map(select(length>0)))
+      },
+      tailscale:{
+        backend_state:$backend_state,
+        self_dns_name:$self_dns_name,
+        self_host_name:$self_host_name,
+        current_tailnet_name:$current_tailnet_name,
+        magic_dns_suffix:$magic_dns_suffix
+      },
+      support:{
+        reason:$support_reason,
+        tailnet_match:$tailnet_match,
+        eligible:$eligible,
+        active:$active,
+        support_user:$support_user,
+        support_user_id:$support_user_id,
+        support_user_login_name:$support_user_login_name,
+        support_mode:$support_mode,
+        support_token_name:$support_token_name,
+        support_token_id:$support_token_id,
+        support_token_count:($support_token_count|tonumber? // 0),
+        support_token_present:$support_token_present,
+        meta_support_mode:$meta_support_mode,
+        support_user_exists:$support_user_exists,
+        support_user_active:$support_user_active,
+        support_user_active_known:$support_user_active_known,
+        support_user_is_owner:$support_user_is_owner
+      },
+      lookup:{
+        forced:$lookup_forced,
+        rc:$lookup_rc,
+        source:$lookup_source,
+        reason:$lookup_reason,
+        hint:$lookup_hint,
+        core_users_endpoint:$core_users_endpoint,
+        auth_users_endpoint:$auth_users_endpoint
+      },
+      op:{
+        reason:$user_op_reason,
+        path:$user_op_path
+      },
+      api_last:{
+        rc:$api_last_rc,
+        stderr:$api_last_stderr,
+        output:$api_last_output
+      },
+      state_snapshot:$state_snapshot,
+      meta_snapshot:$meta_snapshot,
+      notify_snapshot:$notify_snapshot,
+      telegram_debug:$telegram_debug_snapshot
+    }'
+}
+
+fallback_status_json() {
+  local reason cfg_dns cfg_user cfg_enabled cfg_mode cfg_target_url
+  reason="${1:-support_status_failed}"
+  cfg_dns="$(bashio::config "support_tailnet_dns_suffix" 2>/dev/null || true)"
+  # Keep empty by default to avoid hardcoding a tailnet suffix in releases.
+  cfg_user="$(bashio::config "support_user" 2>/dev/null || true)"
+  if [[ -z "${cfg_user}" ]]; then
+    cfg_user="nodalia"
+  fi
+  cfg_user="$(sanitize_username "${cfg_user}")"
+  cfg_target_url="$(normalize_base_url "$(bashio::config "support_target_url" "" 2>/dev/null || true)")"
+  cfg_mode="virtual_keys_token"
+  cfg_enabled=false
+  if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
+    cfg_enabled=true
+  fi
+  jq -nc \
+    --arg updated_at "$(now_utc)" \
+    --arg support_target_dns_suffix "${cfg_dns}" \
+    --arg support_target_url "${cfg_target_url}" \
+    --arg support_user "${cfg_user}" \
+    --arg support_mode "${cfg_mode}" \
+    --arg reason "${reason}" \
+    --argjson support_enabled "$(json_bool "${cfg_enabled}")" \
+    '{
+      updated_at:$updated_at,
+      support_enabled:$support_enabled,
+      support_target_id:"",
+      support_target_url:$support_target_url,
+      support_target_dns_suffix:$support_target_dns_suffix,
+      backend_state:"Unknown",
+      tailnet_match:false,
+      eligible:false,
+      active:false,
+      support_user:$support_user,
+      support_mode:$support_mode,
+      support_token_name:"",
+      support_token_count:0,
+      support_notify_status:"disabled",
+      support_notify_reason:"",
+      support_notify_updated_at:"",
+      support_user_id:"",
+      support_user_exists:false,
+      support_user_active:false,
+      support_user_active_known:false,
+      support_user_is_owner:false,
+      pid:"",
+      url:"",
+      reason:$reason,
+      expires_at:"",
+      expires_epoch:0,
+      ttl_minutes:0
+    }'
+}
+
+case "${1:-status}" in
+  status)
+    if ! status_cmd; then
+      fallback_status_json "support_status_failed"
+      exit 0
+    fi
+    ;;
+  enable)
+    enable_cmd
+    ;;
+  disable)
+    disable_cmd
+    ;;
+  notifytest|notify-test)
+    notify_test_cmd
+    ;;
+  audit)
+    audit_cmd
+    ;;
+  debug)
+    if ! debug_cmd; then
+      jq -nc \
+        --arg error "support_debug_failed" \
+        --arg output "${API_LAST_OUTPUT:-}" \
+        '{ok:false,action:"debug",error:$error,output:$output}'
+      exit 0
+    fi
+    ;;
+  *)
+    echo "Usage: support-tunnel [status|enable|disable|notifytest|audit|debug]" >&2
+    exit 2
+    ;;
+esac

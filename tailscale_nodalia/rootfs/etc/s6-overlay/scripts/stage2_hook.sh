@@ -1,12 +1,13 @@
 #!/command/with-contenv bashio
 # shellcheck shell=bash
 # ==============================================================================
-# Home Assistant Community Add-on: Tailscale
+# Home Assistant Community Aplicación: Tailscale
 # S6 Overlay stage2 hook to customize services
 # ==============================================================================
 
 declare options
 declare proxy funnel proxy_and_funnel_port
+declare external_apps_compat_options
 declare setup_profile
 declare userspace_networking_enabled
 declare accept_routes_enabled
@@ -21,18 +22,18 @@ function try {
     set -e
 }
 
-# Load add-on options, even deprecated one to upgrade
+# Load aplicación options, even deprecated one to upgrade
 options=$(bashio::addon.options)
 setup_profile=$(bashio::config "setup_profile" "custom")
 
 # Effective values based on current defaults
 userspace_networking_enabled=false
-if ! bashio::config.has_value "userspace_networking" || bashio::config.true "userspace_networking"; then
+if bashio::config.has_value "userspace_networking" && bashio::config.true "userspace_networking"; then
     userspace_networking_enabled=true
 fi
 
 accept_routes_enabled=false
-if ! bashio::config.has_value "accept_routes" || bashio::config.true "accept_routes"; then
+if bashio::config.has_value "accept_routes" && bashio::config.true "accept_routes"; then
     accept_routes_enabled=true
 fi
 
@@ -90,6 +91,13 @@ fi
 if bashio::var.has_value "${proxy_and_funnel_port}"; then
     bashio::log.info 'Removing deprecated proxy_and_funnel_port option'
     bashio::addon.option 'proxy_and_funnel_port'
+fi
+
+# Remove deprecated external compatibility toggle (no-op)
+external_apps_compat_options=$(bashio::jq "${options}" '.external_apps_compat_options | select(.!=null)')
+if bashio::var.has_value "${external_apps_compat_options}"; then
+    bashio::log.info 'Removing deprecated external_apps_compat_options option'
+    bashio::addon.option 'external_apps_compat_options'
 fi
 
 # Disable protect-subnets service when userspace-networking is enabled or accepting routes is disabled

@@ -1,12 +1,24 @@
 # Changelog
 
+All notable changes to this app will be documented in this file.
+
+The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
+
+## 3.0.0 - 2026-02-18
+### Changed
+- Promoción a canal estable de la línea `3.0.0` (base de `3.0.0-rc3` en beta).
+- Nuevo onboarding de Nodalia Connect en modo oscuro con UX simplificada y modo avanzado icon-only.
+- Soporte Nodalia unificado con `virtual-keys`, TTL visible y controles de activación/revocación desde panel.
+- Integración de scripts/servicios runtime (`support-api`, `runtime-status`) y mejoras de diagnóstico en vivo.
+
+### Known Issues
+- En algunos entornos, tras `Logauth` la transición visual a estado desconectado puede tardar más de lo esperado.
+- Plan: corregir ajuste fino de `Logauth`/recarga en `3.0.1`.
+
 ## 2.2.0 - 2026-02-17
 ### Changed
 - Bump Tailscale: 1.94.1 → 1.94.2
 - Add-on version: 2.1.6 → 2.2.0
-All notable changes to this app will be documented in this file.
-
-The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
 ## 2.1.6 - 2026-02-10
 ### Changed

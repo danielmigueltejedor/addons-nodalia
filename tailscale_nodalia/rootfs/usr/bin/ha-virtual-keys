@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+import argparse
+import asyncio
+import json
+import os
+import sys
+import warnings
+import inspect
+from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    import websockets
+except Exception as exc:  # pragma: no cover
+    print(
+        json.dumps(
+            {
+                "ok": False,
+                "reason": "python_websockets_missing",
+                "error": str(exc),
+            }
+        )
+    )
+    sys.exit(2)
+
+warnings.filterwarnings("ignore", category=DeprecationWarning, module=r"websockets(\.|$)")
+
+
+WS_URL_CANDIDATES = [
+    "ws://supervisor/core/api/websocket",
+    "ws://supervisor/core/websocket",
+]
+
+
+class VkError(Exception):
+    def __init__(self, reason: str, detail: str = "") -> None:
+        self.reason = reason
+        self.detail = detail
+        super().__init__(reason)
+
+
+def _norm(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _json_out(payload: Dict[str, Any], rc: int) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+    raise SystemExit(rc)
+
+
+class HaWsClient:
+    def __init__(self, token: str, timeout: float = 8.0) -> None:
+        self.token = token
+        self.timeout = timeout
+        self.ws: Optional[Any] = None
+        self.url: str = ""
+        self.req_id: int = 1
+
+    async def _connect_ws(self, url: str):
+        common_kwargs = {
+            "open_timeout": self.timeout,
+            "close_timeout": self.timeout,
+            "ping_interval": 20,
+        }
+        auth_header = {"Authorization": f"Bearer {self.token}"}
+
+        # websockets <= 11 usa extra_headers, websockets >= 13 usa additional_headers.
+        # Detectamos la firma para soportar ambas sin pin de versión.
+        try:
+            sig = inspect.signature(websockets.connect)
+            params = sig.parameters
+            if "additional_headers" in params:
+                return await websockets.connect(
+                    url,
+                    additional_headers=auth_header,
+                    **common_kwargs,
+                )
+            if "extra_headers" in params:
+                return await websockets.connect(
+                    url,
+                    extra_headers=auth_header,
+                    **common_kwargs,
+                )
+        except Exception:
+            pass
+
+        # Fallback defensivo para builds donde la introspección no sea fiable.
+        try:
+            return await websockets.connect(
+                url,
+                additional_headers=auth_header,
+                **common_kwargs,
+            )
+        except TypeError:
+            return await websockets.connect(
+                url,
+                extra_headers=auth_header,
+                **common_kwargs,
+            )
+
+    async def connect(self) -> None:
+        last_err = ""
+        for url in WS_URL_CANDIDATES:
+            try:
+                ws = await self._connect_ws(url)
+                await self._auth(ws)
+                self.ws = ws
+                self.url = url
+                return
+            except Exception as exc:  # pragma: no cover
+                last_err = f"{url}: {exc}"
+                continue
+        raise VkError("virtual_keys_ws_connect_failed", last_err)
+
+    async def _auth(self, ws: Any) -> None:
+        try:
+            first_raw = await asyncio.wait_for(ws.recv(), timeout=self.timeout)
+            first = json.loads(first_raw)
+        except Exception as exc:
+            raise VkError("virtual_keys_ws_handshake_failed", str(exc))
+
+        msg_type = first.get("type")
+        if msg_type == "auth_required":
+            await ws.send(json.dumps({"type": "auth", "access_token": self.token}))
+            try:
+                auth_raw = await asyncio.wait_for(ws.recv(), timeout=self.timeout)
+                auth = json.loads(auth_raw)
+            except Exception as exc:
+                raise VkError("virtual_keys_ws_auth_reply_failed", str(exc))
+            auth_type = auth.get("type")
+            if auth_type != "auth_ok":
+                raise VkError("virtual_keys_ws_auth_invalid", json.dumps(auth))
+            return
+
+        if msg_type == "auth_ok":
+            return
+
+        raise VkError("virtual_keys_ws_unexpected_handshake", json.dumps(first))
+
+    async def close(self) -> None:
+        if self.ws is not None:
+            try:
+                await self.ws.close()
+            except Exception:
+                pass
+            self.ws = None
+
+    async def call(self, command: Dict[str, Any]) -> Any:
+        if self.ws is None:
+            raise VkError("virtual_keys_ws_not_connected")
+        req_id = self.req_id
+        self.req_id += 1
+        payload = {"id": req_id}
+        payload.update(command)
+        await self.ws.send(json.dumps(payload))
+
+        while True:
+            try:
+                raw = await asyncio.wait_for(self.ws.recv(), timeout=self.timeout)
+            except Exception as exc:
+                raise VkError("virtual_keys_ws_timeout", str(exc))
+            try:
+                msg = json.loads(raw)
+            except Exception:
+                continue
+            if msg.get("id") != req_id:
+                continue
+            if msg.get("success", False):
+                return msg.get("result")
+            raise VkError(
+                "virtual_keys_ws_command_failed",
+                json.dumps(msg.get("error", msg), ensure_ascii=False),
+            )
+
+
+def _pick_user(users: List[Dict[str, Any]], username: str) -> Optional[Dict[str, Any]]:
+    u = _norm(username)
+    for user in users:
+        if _norm(user.get("username")) == u:
+            return user
+    for user in users:
+        if _norm(user.get("name")) == u:
+            return user
+    return None
+
+
+def _parse_token_remaining(token: Dict[str, Any]) -> int:
+    try:
+        return int(token.get("remaining") or 0)
+    except Exception:
+        return 0
+
+
+def _find_user_tokens(
+    user: Dict[str, Any],
+    token_name: str = "",
+    token_prefix: str = "",
+    token_id: str = "",
+) -> List[Dict[str, Any]]:
+    tokens = user.get("tokens") or []
+    result: List[Dict[str, Any]] = []
+    for token in tokens:
+        t_id = str(token.get("id") or "")
+        t_name = str(token.get("name") or "")
+        if token_id and t_id == token_id:
+            result.append(token)
+            continue
+        if token_name and t_name == token_name:
+            result.append(token)
+            continue
+        if token_prefix and t_name.startswith(token_prefix):
+            result.append(token)
+    return result
+
+
+async def _list_users(client: HaWsClient) -> List[Dict[str, Any]]:
+    result = await client.call({"type": "virtual_keys/list_users"})
+    if not isinstance(result, list):
+        raise VkError("virtual_keys_list_invalid")
+    return result
+
+
+async def _status(
+    client: HaWsClient,
+    username: str,
+    token_name: str,
+    token_prefix: str,
+    token_id: str,
+) -> Dict[str, Any]:
+    users = await _list_users(client)
+    user = _pick_user(users, username)
+    if user is None:
+        return {
+            "ok": True,
+            "action": "status",
+            "user_exists": False,
+            "user_id": "",
+            "user_name": "",
+            "username": username,
+            "is_owner": False,
+            "is_active": False,
+            "token_count": 0,
+            "tokens": [],
+        }
+
+    matches = _find_user_tokens(user, token_name=token_name, token_prefix=token_prefix, token_id=token_id)
+    return {
+        "ok": True,
+        "action": "status",
+        "user_exists": True,
+        "user_id": str(user.get("id") or ""),
+        "user_name": str(user.get("name") or ""),
+        "username": str(user.get("username") or username),
+        "is_owner": bool(user.get("is_owner")),
+        "is_active": bool(user.get("is_active")),
+        "token_count": len(matches),
+        "tokens": matches,
+    }
+
+
+async def _create(
+    client: HaWsClient,
+    username: str,
+    token_name: str,
+    minutes: int,
+) -> Dict[str, Any]:
+    users = await _list_users(client)
+    user = _pick_user(users, username)
+    if user is None:
+        raise VkError("virtual_keys_user_not_found")
+    user_id = str(user.get("id") or "")
+    if not user_id:
+        raise VkError("virtual_keys_user_id_missing")
+
+    token_value = await client.call(
+        {
+            "type": "virtual_keys/create_token",
+            "user_id": user_id,
+            "name": token_name,
+            "minutes": int(minutes),
+        }
+    )
+    token_value = str(token_value or "")
+    if not token_value:
+        raise VkError("virtual_keys_token_empty")
+
+    after = await _list_users(client)
+    after_user = _pick_user(after, username)
+    if after_user is None:
+        raise VkError("virtual_keys_user_missing_after_create")
+    matches = _find_user_tokens(after_user, token_name=token_name)
+    token_id = ""
+    remaining = 0
+    if matches:
+        matches_sorted = sorted(matches, key=_parse_token_remaining, reverse=True)
+        token_id = str(matches_sorted[0].get("id") or "")
+        remaining = _parse_token_remaining(matches_sorted[0])
+
+    return {
+        "ok": True,
+        "action": "create",
+        "user_exists": True,
+        "user_id": user_id,
+        "username": str(after_user.get("username") or username),
+        "user_name": str(after_user.get("name") or ""),
+        "token_name": token_name,
+        "token_id": token_id,
+        "token": token_value,
+        "remaining": remaining,
+        "login_path": f"/local/community/virtual-keys/login.html?token={token_value}",
+    }
+
+
+async def _delete(
+    client: HaWsClient,
+    username: str,
+    token_name: str,
+    token_prefix: str,
+    token_id: str,
+) -> Dict[str, Any]:
+    users = await _list_users(client)
+    user = _pick_user(users, username)
+    if user is None:
+        return {
+            "ok": True,
+            "action": "delete",
+            "user_exists": False,
+            "deleted_count": 0,
+            "matched_count": 0,
+        }
+
+    matches = _find_user_tokens(user, token_name=token_name, token_prefix=token_prefix, token_id=token_id)
+    deleted = 0
+    for token in matches:
+        t_id = str(token.get("id") or "")
+        if not t_id:
+            continue
+        result = await client.call({"type": "virtual_keys/delete_token", "token_id": t_id})
+        if bool(result):
+            deleted += 1
+
+    return {
+        "ok": True,
+        "action": "delete",
+        "user_exists": True,
+        "username": str(user.get("username") or username),
+        "user_name": str(user.get("name") or ""),
+        "deleted_count": deleted,
+        "matched_count": len(matches),
+    }
+
+
+async def _run(args: argparse.Namespace) -> Dict[str, Any]:
+    token = os.environ.get("SUPERVISOR_TOKEN", "").strip()
+    if not token:
+        raise VkError("supervisor_token_missing")
+
+    client = HaWsClient(token=token, timeout=float(args.timeout))
+    await client.connect()
+    try:
+        if args.action == "status":
+            result = await _status(
+                client,
+                username=args.username,
+                token_name=args.token_name,
+                token_prefix=args.token_prefix,
+                token_id=args.token_id,
+            )
+        elif args.action == "create":
+            result = await _create(
+                client,
+                username=args.username,
+                token_name=args.token_name,
+                minutes=int(args.minutes),
+            )
+        elif args.action == "delete":
+            result = await _delete(
+                client,
+                username=args.username,
+                token_name=args.token_name,
+                token_prefix=args.token_prefix,
+                token_id=args.token_id,
+            )
+        else:
+            raise VkError("action_invalid")
+        result["ws_url"] = client.url
+        return result
+    finally:
+        await client.close()
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Virtual Keys websocket helper")
+    parser.add_argument("action", choices=["status", "create", "delete"])
+    parser.add_argument("--username", required=True)
+    parser.add_argument("--token-name", default="")
+    parser.add_argument("--token-prefix", default="")
+    parser.add_argument("--token-id", default="")
+    parser.add_argument("--minutes", type=int, default=30)
+    parser.add_argument("--timeout", type=float, default=8.0)
+    return parser
+
+
+def main() -> None:
+    parser = _build_parser()
+    args = parser.parse_args()
+    try:
+        result = asyncio.run(_run(args))
+        _json_out(result, 0)
+    except VkError as exc:
+        _json_out(
+            {
+                "ok": False,
+                "action": args.action,
+                "reason": exc.reason,
+                "detail": exc.detail,
+            },
+            1,
+        )
+    except Exception as exc:  # pragma: no cover
+        _json_out(
+            {
+                "ok": False,
+                "action": getattr(args, "action", ""),
+                "reason": "virtual_keys_helper_exception",
+                "detail": str(exc),
+            },
+            1,
+        )
+
+
+if __name__ == "__main__":
+    main()

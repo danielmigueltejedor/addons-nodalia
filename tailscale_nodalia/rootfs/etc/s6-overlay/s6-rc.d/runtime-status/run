@@ -1,0 +1,310 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Community Aplicación: Tailscale
+# Periodically writes runtime status for onboarding diagnostics
+# ==============================================================================
+
+readonly RUNTIME_STATE_FILE="/data/tailscale-runtime.json"
+readonly POLL_INTERVAL=3
+readonly LOG_HEARTBEAT_EVERY_LOOPS=20
+readonly DNS_RESOLVERS_REFRESH_EVERY_LOOPS=20
+
+declare status_json
+declare backend_state
+declare auth_url
+declare self_online
+declare self_dns_name
+declare self_host_name
+declare ipv4_list
+declare ipv6_list
+declare webui_ready
+declare now
+declare runtime_payload
+declare setup_profile
+declare webui_readonly
+declare share_mode
+declare webui_probe_s
+declare webui_probe_payload
+declare webui_probe_meta
+declare webui_probe_time
+declare webui_http_code
+declare direct_webui_url
+declare support_json
+declare support_enabled
+declare support_mode
+declare support_target_id
+declare support_tailnet_dns_suffix
+declare support_tailnet_match
+declare support_eligible
+declare support_active
+declare support_url
+declare support_reason
+declare support_expires_at
+declare support_ttl_minutes
+declare support_user
+declare support_token_name
+declare support_token_count
+declare dns_resolvers
+declare dns_warning
+declare dns_degraded
+declare webui_reason
+declare log_summary
+declare support_cmd_output
+declare support_cmd_rc
+declare support_cmd_last_line
+declare support_cached_json
+declare support_fallback_dns
+declare support_fallback_user
+declare support_fallback_enabled
+declare support_fallback_mode
+declare support_reason_fallback
+
+declare -i ready_streak=0
+declare -i start_epoch
+declare -i now_epoch
+declare -i uptime_sec
+declare -i loop_count=0
+declare prev_backend_state="__init__"
+declare prev_webui_ready="__init__"
+declare prev_webui_http_code="__init__"
+declare prev_dns_degraded="__init__"
+declare prev_dns_warning="__init__"
+declare prev_support_eligible="__init__"
+declare prev_support_active="__init__"
+
+start_epoch=$(date +%s)
+setup_profile=$(bashio::config "setup_profile" "custom")
+if ! bashio::config.has_value "webui_readonly" || bashio::config.true "webui_readonly"; then
+  webui_readonly=true
+else
+  webui_readonly=false
+fi
+share_mode=$(bashio::config "share_homeassistant" "disabled")
+dns_resolvers='[]'
+
+while true
+do
+  status_json=$(/opt/tailscale status --json --self=true --peers=false 2>/dev/null || echo '{}')
+  backend_state=$(jq -r '.BackendState // "Unknown"' <<< "${status_json}" 2>/dev/null || echo "Unknown")
+  auth_url=$(jq -r '.AuthURL // .Self.AuthURL // empty' <<< "${status_json}" 2>/dev/null || true)
+  self_online=$(jq -r '.Self.Online // false' <<< "${status_json}" 2>/dev/null || echo "false")
+  self_dns_name=$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)
+  self_host_name=$(jq -r '.Self.HostName // empty' <<< "${status_json}" 2>/dev/null || true)
+
+  ipv4_list=$(/opt/tailscale ip -4 2>/dev/null | jq -Rsc 'split("\n") | map(select(length>0))' || echo '[]')
+  ipv6_list=$(/opt/tailscale ip -6 2>/dev/null | jq -Rsc 'split("\n") | map(select(length>0))' || echo '[]')
+
+  webui_ready=false
+  webui_probe_s="n/a"
+  webui_http_code="000"
+  webui_probe_payload="$(
+    curl -sS --max-time 2 -w $'\n__TS_META__:%{time_total}:%{http_code}' "http://127.0.0.1:25899/" 2>/dev/null || true
+  )"
+  if [[ -n "${webui_probe_payload}" && "${webui_probe_payload}" == *"__TS_META__:"* ]]; then
+    webui_probe_meta="${webui_probe_payload##*__TS_META__:}"
+    webui_probe_time="${webui_probe_meta%:*}"
+    webui_http_code="${webui_probe_meta##*:}"
+    if [[ -n "${webui_probe_time}" ]]; then
+      webui_probe_s="${webui_probe_time}"
+    fi
+    if [[ "${webui_http_code}" =~ ^(2[0-9][0-9]|3[0-9][0-9]|401|403)$ ]]; then
+      webui_ready=true
+      ready_streak=$((ready_streak + 1))
+    else
+      ready_streak=0
+    fi
+  else
+    ready_streak=0
+  fi
+  webui_reason="ok"
+  if [[ "${webui_http_code}" == "000" ]]; then
+    webui_reason="probe-timeout"
+  elif [[ ! "${webui_http_code}" =~ ^(2[0-9][0-9]|3[0-9][0-9]|401|403)$ ]]; then
+    webui_reason="http-${webui_http_code}"
+  fi
+
+  # In this aplicación architecture, Web UI is served via ingress/web proxy.
+  # Publishing a direct tailnet :5252 URL causes false expectations on many setups.
+  direct_webui_url=""
+
+  set +e
+  support_cmd_output="$(SUPPORT_STATUS_JSON="${status_json}" /usr/bin/support-tunnel status)"
+  support_cmd_rc=$?
+  set -e
+  support_cmd_last_line="$(printf '%s\n' "${support_cmd_output}" | awk 'NF{line=$0} END{print line}')"
+  support_cached_json=""
+  if (( support_cmd_rc == 0 )) && jq -e . > /dev/null 2>&1 <<< "${support_cmd_output}"; then
+    support_json="${support_cmd_output}"
+  elif (( support_cmd_rc == 0 )) && [[ -n "${support_cmd_last_line}" ]] && jq -e . > /dev/null 2>&1 <<< "${support_cmd_last_line}"; then
+    support_json="${support_cmd_last_line}"
+  elif [[ -f /data/support-tunnel.json ]] && support_cached_json="$(cat /data/support-tunnel.json 2>/dev/null)" && jq -e . > /dev/null 2>&1 <<< "${support_cached_json}"; then
+    support_json="${support_cached_json}"
+  else
+    support_fallback_dns="$(bashio::config "support_tailnet_dns_suffix" "")"
+    support_fallback_target_url="$(bashio::config "support_target_url" "" 2>/dev/null || true)"
+    support_fallback_user="$(bashio::config "support_user" "nodalia")"
+    support_fallback_enabled="false"
+    support_fallback_mode="virtual_keys_token"
+    if bashio::config.has_value "support_tunnel_enabled" && bashio::config.true "support_tunnel_enabled"; then
+      support_fallback_enabled="true"
+    fi
+    support_reason_fallback="support_status_failed_rc_${support_cmd_rc}"
+    if (( support_cmd_rc == 0 )); then
+      support_reason_fallback="support_status_invalid_json"
+    fi
+    support_json="$(jq -nc \
+      --arg support_target_dns_suffix "${support_fallback_dns}" \
+      --arg support_target_url "${support_fallback_target_url}" \
+      --arg support_user "${support_fallback_user}" \
+      --arg support_mode "${support_fallback_mode}" \
+      --arg reason "${support_reason_fallback}" \
+      --arg support_enabled "${support_fallback_enabled}" \
+      '{support_enabled:($support_enabled=="true"),support_mode:$support_mode,support_target_dns_suffix:$support_target_dns_suffix,support_target_url:$support_target_url,tailnet_match:false,eligible:false,active:false,reason:$reason,support_user:$support_user}')"
+  fi
+  support_enabled="$(jq -r '.support_enabled // false' <<< "${support_json}" 2>/dev/null || echo "false")"
+  support_mode="$(jq -r '.support_mode // "virtual_keys_token"' <<< "${support_json}" 2>/dev/null || echo "virtual_keys_token")"
+  support_target_id="$(jq -r '.support_target_id // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_target_url="$(jq -r '.support_target_url // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_tailnet_dns_suffix="$(jq -r '.support_target_dns_suffix // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_tailnet_match="$(jq -r '.tailnet_match // false' <<< "${support_json}" 2>/dev/null || echo "false")"
+  support_eligible="$(jq -r '.eligible // false' <<< "${support_json}" 2>/dev/null || echo "false")"
+  support_active="$(jq -r '.active // false' <<< "${support_json}" 2>/dev/null || echo "false")"
+  support_url="$(jq -r '.url // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_reason="$(jq -r '.reason // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_expires_at="$(jq -r '.expires_at // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_ttl_minutes="$(jq -r '.ttl_minutes // 0' <<< "${support_json}" 2>/dev/null || echo "0")"
+  support_user="$(jq -r '.support_user // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_token_name="$(jq -r '.support_token_name // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_token_count="$(jq -r '.support_token_count // 0' <<< "${support_json}" 2>/dev/null || echo "0")"
+  support_notify_status="$(jq -r '.support_notify_status // "disabled"' <<< "${support_json}" 2>/dev/null || echo "disabled")"
+  support_notify_reason="$(jq -r '.support_notify_reason // empty' <<< "${support_json}" 2>/dev/null || true)"
+  support_notify_updated_at="$(jq -r '.support_notify_updated_at // empty' <<< "${support_json}" 2>/dev/null || true)"
+  if (( loop_count == 0 || loop_count % DNS_RESOLVERS_REFRESH_EVERY_LOOPS == 0 )); then
+    dns_resolvers="$(awk '/^[[:space:]]*nameserver[[:space:]]+/ {print $2}' /etc/resolv.conf 2>/dev/null | jq -Rsc 'split("\n") | map(select(length>0))' || echo '[]')"
+  fi
+  dns_warning="$(jq -r '
+    (.Health // [])
+    | map(select(type=="string"))
+    | map(select(test("dns|nameserver|resolver"; "i")))
+    | .[0] // empty
+  ' <<< "${status_json}" 2>/dev/null || true)"
+  if [[ -n "${dns_warning}" ]]; then
+    dns_degraded=true
+  else
+    dns_degraded=false
+  fi
+
+  now_epoch=$(date +%s)
+  uptime_sec=$((now_epoch - start_epoch))
+  now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  runtime_payload=$(jq -nc \
+    --arg updated_at "${now}" \
+    --arg backend_state "${backend_state}" \
+    --arg auth_url "${auth_url}" \
+    --arg self_dns_name "${self_dns_name}" \
+    --arg self_host_name "${self_host_name}" \
+    --arg setup_profile "${setup_profile}" \
+    --arg share_mode "${share_mode}" \
+    --arg self_online "${self_online}" \
+    --arg webui_ready "${webui_ready}" \
+    --arg webui_http_code "${webui_http_code}" \
+    --arg webui_reason "${webui_reason}" \
+    --arg webui_readonly "${webui_readonly}" \
+    --arg webui_probe_s "${webui_probe_s}" \
+    --arg direct_webui_url "${direct_webui_url}" \
+    --argjson webui_ready_streak "${ready_streak}" \
+    --argjson uptime_sec "${uptime_sec}" \
+    --arg support_enabled "${support_enabled}" \
+    --arg support_mode "${support_mode}" \
+    --arg support_target_id "${support_target_id}" \
+    --arg support_target_url "${support_target_url}" \
+    --arg support_tailnet_dns_suffix "${support_tailnet_dns_suffix}" \
+    --arg support_tailnet_match "${support_tailnet_match}" \
+    --arg support_eligible "${support_eligible}" \
+    --arg support_active "${support_active}" \
+    --arg support_url "${support_url}" \
+    --arg support_reason "${support_reason}" \
+    --arg support_expires_at "${support_expires_at}" \
+    --arg support_ttl_minutes "${support_ttl_minutes}" \
+    --arg support_user "${support_user}" \
+    --arg support_token_name "${support_token_name}" \
+    --arg support_token_count "${support_token_count}" \
+    --arg support_notify_status "${support_notify_status}" \
+    --arg support_notify_reason "${support_notify_reason}" \
+    --arg support_notify_updated_at "${support_notify_updated_at}" \
+    --arg dns_warning "${dns_warning}" \
+    --arg dns_degraded "${dns_degraded}" \
+    --arg dns_resolvers "${dns_resolvers}" \
+    --arg ipv4 "${ipv4_list}" \
+    --arg ipv6 "${ipv6_list}" \
+    '{
+      updated_at:$updated_at,
+      backend_state:$backend_state,
+      auth_url:$auth_url,
+      self_online: ($self_online == "true"),
+      webui_ready: ($webui_ready == "true"),
+      webui_http_code:$webui_http_code,
+      webui_reason:$webui_reason,
+      webui_readonly: ($webui_readonly == "true"),
+      webui_probe_s:$webui_probe_s,
+      webui_ready_streak:$webui_ready_streak,
+      uptime_sec:$uptime_sec,
+      setup_profile:$setup_profile,
+      share_mode:$share_mode,
+      support_enabled: ($support_enabled == "true"),
+      support_mode:$support_mode,
+      support_target_id:$support_target_id,
+      support_target_url:$support_target_url,
+      support_tailnet_dns_suffix:$support_tailnet_dns_suffix,
+      support_tailnet_match: ($support_tailnet_match == "true"),
+      support_eligible: ($support_eligible == "true"),
+      support_active: ($support_active == "true"),
+      support_url:$support_url,
+      support_reason:$support_reason,
+      support_expires_at:$support_expires_at,
+      support_ttl_minutes:($support_ttl_minutes | tonumber? // 0),
+      support_user:$support_user,
+      support_token_name:$support_token_name,
+      support_token_count:($support_token_count | tonumber? // 0),
+      support_notify_status:$support_notify_status,
+      support_notify_reason:$support_notify_reason,
+      support_notify_updated_at:$support_notify_updated_at,
+      dns_warning:$dns_warning,
+      dns_degraded:($dns_degraded == "true"),
+      dns_resolvers: ($dns_resolvers | fromjson? // []),
+      direct_webui_url:$direct_webui_url,
+      self_dns_name:$self_dns_name,
+      self_host_name:$self_host_name,
+      ipv4: ($ipv4 | fromjson? // []),
+      ipv6: ($ipv6 | fromjson? // [])
+    }')
+
+  printf '%s\n' "${runtime_payload}" > "${RUNTIME_STATE_FILE}"
+  loop_count=$((loop_count + 1))
+
+  if [[ "${backend_state}" != "${prev_backend_state}" ]] || \
+    [[ "${webui_ready}" != "${prev_webui_ready}" ]] || \
+    [[ "${webui_http_code}" != "${prev_webui_http_code}" ]] || \
+    [[ "${dns_degraded}" != "${prev_dns_degraded}" ]] || \
+    [[ "${dns_warning}" != "${prev_dns_warning}" ]] || \
+    [[ "${support_eligible}" != "${prev_support_eligible}" ]] || \
+    [[ "${support_active}" != "${prev_support_active}" ]] || \
+    (( loop_count % LOG_HEARTBEAT_EVERY_LOOPS == 0 ));
+  then
+    log_summary="runtime-status: backend=${backend_state} online=${self_online} webui_ready=${webui_ready} streak=${ready_streak} webui_http=${webui_http_code} webui_reason=${webui_reason} probe_s=${webui_probe_s} dns_degraded=${dns_degraded} support_eligible=${support_eligible} support_active=${support_active}"
+    bashio::log.info "${log_summary}"
+    if [[ -n "${dns_warning}" ]]; then
+      bashio::log.warning "runtime-status: dns_warning=${dns_warning}"
+    fi
+  fi
+
+  prev_backend_state="${backend_state}"
+  prev_webui_ready="${webui_ready}"
+  prev_webui_http_code="${webui_http_code}"
+  prev_dns_degraded="${dns_degraded}"
+  prev_dns_warning="${dns_warning}"
+  prev_support_eligible="${support_eligible}"
+  prev_support_active="${support_active}"
+  sleep "${POLL_INTERVAL}"
+done

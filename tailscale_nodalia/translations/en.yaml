@@ -9,6 +9,9 @@ configuration:
       `subnet_router` enables route acceptance and (when advertise_routes is empty)
       auto-advertises local subnets.
       `exit_node` enables advertising this node as an exit node.
+      Note: when selecting a profile other than `custom`, the profile overrides
+      some parameters (for example `accept_dns`, `accept_routes`, and `userspace_networking`).
+      For full manual control, use `custom`.
   accept_dns:
     name: Accept DNS
     description: >-
@@ -117,8 +120,68 @@ configuration:
     description: >-
       Enables readonly mode for the embedded Tailscale Web UI.
       Keep this enabled for safer operation.
-      Disable it only if you need full UI actions such as logout.
+      Disable it only if you need full tailnet actions in the Web UI.
+      The onboarding panel keeps local machine controls (logout/reconnect) in readonly mode.
       When not set, this option is enabled by default.
+  external_apps_compat_options:
+    name: External apps compatibility (DEPRECATED)
+    description: >-
+      Deprecated and has no effect.
+      Kept temporarily to avoid breaking older upgrades and removed automatically
+      on app startup.
+  support_tunnel_enabled:
+    name: Support access button
+    description: >-
+      Enables temporary support access controls in onboarding.
+      Support access can be enabled only when this node matches
+      the configured support tailnet DNS suffix.
+  support_tailnet_dns_suffix:
+    name: Support tailnet DNS suffix
+    description: >-
+      DNS suffix used to validate support access (for example `tail123456.ts.net`).
+      Support access is enabled only when this node DNS matches that suffix.
+      If empty, support access is not eligible.
+  support_user:
+    name: Support local user
+    description: >-
+      Home Assistant local username used by virtual-keys support tokens (for example `nodalia`).
+      It should be a dedicated support user and not an owner account.
+  support_virtual_keys_token_prefix:
+    name: Virtual-keys token prefix
+    description: >-
+      Prefix used for temporary token names created via virtual-keys.
+      A timestamp suffix is appended on each activation.
+  support_target_url:
+    name: Support public base URL
+    description: >-
+      Optional public base URL used to build external support links
+      in virtual-keys mode (example: `https://homeassistant.getnodalia.com`).
+      If empty, it is auto-built from hostname and domain suffix.
+  support_target_domain_suffix:
+    name: Public support link domain
+    description: >-
+      Domain suffix used to auto-build external support links as:
+      `https://<hostname>.<domain>`.
+      Example: `getnodalia.com`.
+  support_notify_telegram_enabled:
+    name: Telegram support notification
+    description: >-
+      When enabled, creating a temporary support token sends a Telegram message
+      with hostname, token name, TTL and login URL.
+  support_notify_telegram_bot_token:
+    name: Telegram bot token
+    description: >-
+      Telegram bot token (BotFather) used to send support notifications.
+  support_notify_telegram_chat_id:
+    name: Telegram chat id
+    description: >-
+      Destination Telegram chat ID (user, group or channel) for support links.
+  support_tunnel_ttl_minutes:
+    name: Support access TTL (minutes)
+    description: >-
+      Auto-expire time for temporary support access.
+      After this duration, access is revoked automatically and an audit
+      event is recorded.
 network:
   41641/udp: >-
     UDP port to listen on for WireGuard and peer-to-peer traffic.

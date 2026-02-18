@@ -1,0 +1,408 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+set -euo pipefail
+
+script_name="$(basename "${0:-control}")"
+action_script=""
+case "${script_name}" in
+  control-reconnect) action_script="reconnect" ;;
+  control-logout) action_script="logout" ;;
+  control-diag) action_script="diag" ;;
+  control-dnsdiag) action_script="dnsdiag" ;;
+  control-status) action_script="status" ;;
+esac
+
+action_arg=""
+for arg in "$@"
+do
+  case "${arg}" in
+    --action=reconnect) action_arg="reconnect" ;;
+    --action=logout) action_arg="logout" ;;
+    --action=diag) action_arg="diag" ;;
+    --action=dnsdiag) action_arg="dnsdiag" ;;
+    --action=status) action_arg="status" ;;
+  esac
+done
+
+extract_action_from_text() {
+  local text="${1:-}"
+  case "${text}" in
+    *action=reconnect*|*"\"action\":\"reconnect\""*) echo "reconnect" ;;
+    *action=logout*|*"\"action\":\"logout\""*) echo "logout" ;;
+    *action=dnsdiag*|*"\"action\":\"dnsdiag\""*) echo "dnsdiag" ;;
+    *action=diag*|*"\"action\":\"diag\""*) echo "diag" ;;
+    *action=status*|*"\"action\":\"status\""*) echo "status" ;;
+    *) echo "" ;;
+  esac
+}
+
+action_qs="$(extract_action_from_text "${QUERY_STRING:-}")"
+
+request_body=""
+content_length_raw="${CONTENT_LENGTH:-0}"
+action_body=""
+if [[ "${REQUEST_METHOD:-GET}" == "POST" ]] && \
+  [[ "${content_length_raw}" =~ ^[0-9]+$ ]] && \
+  (( content_length_raw > 0 )) && \
+  (( content_length_raw <= 8192 ));
+then
+  IFS= read -r -n "${content_length_raw}" request_body || true
+  action_body="$(extract_action_from_text "${request_body}")"
+fi
+
+action_path=""
+if [[ -n "${PATH_INFO:-}" ]]; then
+  candidate="${PATH_INFO#/}"
+  candidate="${candidate%%/*}"
+  case "${candidate}" in
+    reconnect|logout|dnsdiag|diag|status) action_path="${candidate}" ;;
+  esac
+fi
+
+if [[ -z "${action_path}" ]] && [[ -n "${REQUEST_URI:-}" ]]; then
+  uri_path="${REQUEST_URI%%\?*}"
+  case "${uri_path}" in
+    */control/*)
+      candidate="${uri_path##*/control/}"
+      candidate="${candidate%%/*}"
+      case "${candidate}" in
+        reconnect|logout|dnsdiag|diag|status) action_path="${candidate}" ;;
+      esac
+      ;;
+  esac
+fi
+
+action_hdr=""
+if [[ -n "${HTTP_X_NODALIA_ACTION:-}" ]]; then
+  case "${HTTP_X_NODALIA_ACTION}" in
+    reconnect|logout|dnsdiag|diag|status) action_hdr="${HTTP_X_NODALIA_ACTION}" ;;
+  esac
+fi
+
+action="${action_qs:-status}"
+if [[ -n "${action_body}" ]]; then
+  action="${action_body}"
+fi
+if [[ -n "${action_hdr}" ]]; then
+  action="${action_hdr}"
+fi
+if [[ -n "${action_path}" ]]; then
+  action="${action_path}"
+fi
+if [[ -n "${action_script}" ]]; then
+  action="${action_script}"
+fi
+if [[ -n "${action_arg}" ]]; then
+  action="${action_arg}"
+fi
+
+request_body_preview="$(printf '%s' "${request_body}" | tr '\r\n' '  ')"
+request_body_preview="${request_body_preview:0:180}"
+
+if [[ "${REQUEST_METHOD:-GET}" != "POST" ]] && [[ "${REQUEST_METHOD:-GET}" != "GET" ]]; then
+  echo "Status: 405 Method Not Allowed"
+  echo "Content-Type: application/json"
+  echo
+  echo '{"ok":false,"error":"method_not_allowed"}'
+  exit 0
+fi
+
+run_action() {
+  local cmd_output rc
+  case "${action}" in
+    reconnect)
+      set +e
+      cmd_output="$(timeout 25 /opt/tailscale up 2>&1)"
+      rc=$?
+      set -e
+      ;;
+    logout)
+      set +e
+      cmd_output="$(timeout 95 /usr/local/bin/tailscale-logauth-reset 2>&1)"
+      rc=$?
+      set -e
+      ;;
+    diag|dnsdiag)
+      cmd_output=""
+      rc=0
+      ;;
+    *)
+      cmd_output=""
+      rc=0
+      ;;
+  esac
+  ACTION_OUTPUT="${cmd_output}"
+  ACTION_RC="${rc}"
+}
+
+json_bool() {
+  if [[ "${1:-false}" == "true" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+log_control_action() {
+  if [[ "${action}" == "status" ]]; then
+    return
+  fi
+  # Best-effort audit trail in /data for users that don't have aplicación logs open.
+  printf '%s control-api: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${1}" >> /data/control-api.log 2>/dev/null || true
+  # Write operational traces to the aplicación log without polluting CGI stdout.
+  printf '%s control-api: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${1}" > /proc/1/fd/1 2>/dev/null || \
+    printf '%s control-api: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "${1}" >&2 || true
+}
+
+run_dns_checks=false
+run_control_probe=false
+if [[ "${action}" == "diag" ]] || [[ "${action}" == "dnsdiag" ]]; then
+  run_dns_checks=true
+fi
+if [[ "${action}" == "diag" ]]; then
+  run_control_probe=true
+fi
+
+log_control_action "request action=${action} method=${REQUEST_METHOD:-GET}"
+
+run_action
+status_json=$(/opt/tailscale status --json --self=true --peers=false 2>/dev/null || echo '{}')
+backend_state="$(jq -r '.BackendState // "Unknown"' <<< "${status_json}" 2>/dev/null || echo "Unknown")"
+auth_url="$(jq -r '.AuthURL // .Self.AuthURL // empty' <<< "${status_json}" 2>/dev/null || true)"
+online="$(jq -r '.Self.Online // false' <<< "${status_json}" 2>/dev/null || echo "false")"
+dns_name="$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)"
+tailnet="$(jq -r '.CurrentTailnet.Name // empty' <<< "${status_json}" 2>/dev/null || true)"
+output_trimmed="$(printf '%s' "${ACTION_OUTPUT}" | tail -c 2000)"
+
+# After a hard identity reset, give tailscaled a few seconds to converge into
+# a login-required state so the UI can render the new auth flow immediately.
+if [[ "${action}" == "logout" ]]; then
+  logout_deadline=$((SECONDS + 20))
+  while (( SECONDS < logout_deadline )); do
+    candidate_json=$(/opt/tailscale status --json --self=true --peers=false 2>/dev/null || echo '{}')
+    candidate_state="$(jq -r '.BackendState // "Unknown"' <<< "${candidate_json}" 2>/dev/null || echo "Unknown")"
+    if [[ "${candidate_state}" == "NeedsLogin" ]] || \
+      [[ "${candidate_state}" == "NeedsMachineAuth" ]] || \
+      [[ "${candidate_state}" == "Stopped" ]] || \
+      [[ "${candidate_state}" == "NoState" ]];
+    then
+      status_json="${candidate_json}"
+      backend_state="${candidate_state}"
+      auth_url="$(jq -r '.AuthURL // .Self.AuthURL // empty' <<< "${status_json}" 2>/dev/null || true)"
+      online="$(jq -r '.Self.Online // false' <<< "${status_json}" 2>/dev/null || echo "false")"
+      dns_name="$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)"
+      tailnet="$(jq -r '.CurrentTailnet.Name // empty' <<< "${status_json}" 2>/dev/null || true)"
+      break
+    fi
+    sleep 1
+  done
+fi
+login_server="$(bashio::config "login_server" "https://controlplane.tailscale.com")"
+socket_ok=false
+webui_ok=false
+control_ok=false
+webui_http_code="000"
+dns_target="login.tailscale.com"
+dns_resolvers_json='[]'
+dns_any_ok=false
+dns_all_ok=false
+dns_count=0
+if [[ -S /var/run/tailscale/tailscaled.sock ]]; then
+  socket_ok=true
+fi
+webui_http_code="$(curl -sS --max-time 1 -o /dev/null -w "%{http_code}" "http://127.0.0.1:25899/" 2>/dev/null || echo "000")"
+if [[ "${webui_http_code}" =~ ^(2[0-9][0-9]|3[0-9][0-9]|401|403)$ ]]; then
+  webui_ok=true
+fi
+if [[ "${run_control_probe}" == "true" ]]; then
+  if curl -fsS --max-time 2 "${login_server}" > /dev/null 2>&1; then
+    control_ok=true
+  fi
+fi
+
+declare -a dns_resolvers=()
+if [[ "${run_dns_checks}" == "true" ]]; then
+  while read -r _ resolver_ip
+  do
+    if [[ -n "${resolver_ip:-}" ]]; then
+      dns_resolvers+=("${resolver_ip}")
+    fi
+  done < <(grep -E '^[[:space:]]*nameserver[[:space:]]+' /etc/resolv.conf 2>/dev/null || true)
+
+  if (( ${#dns_resolvers[@]} == 0 )); then
+    dns_resolvers=("100.100.100.100")
+  fi
+
+  declare -i dns_ok_count=0
+  for resolver in "${dns_resolvers[@]}"
+  do
+    transport_ok=false
+    query_ok=false
+    if timeout 2 ping -c 1 -W 1 "${resolver}" > /dev/null 2>&1; then
+      transport_ok=true
+    fi
+    if command -v nslookup > /dev/null 2>&1; then
+      if timeout 3 nslookup "${dns_target}" "${resolver}" > /dev/null 2>&1; then
+        query_ok=true
+      fi
+    elif command -v getent > /dev/null 2>&1; then
+      if timeout 3 getent hosts "${dns_target}" > /dev/null 2>&1; then
+        query_ok=true
+      fi
+    fi
+
+    if [[ "${query_ok}" == "true" ]]; then
+      dns_ok_count=$((dns_ok_count + 1))
+    fi
+    resolver_row="$(jq -nc \
+      --arg resolver "${resolver}" \
+      --argjson transport_ok "$(json_bool "${transport_ok}")" \
+      --argjson dns_query_ok "$(json_bool "${query_ok}")" \
+      '{resolver:$resolver, transport_ok:$transport_ok, dns_query_ok:$dns_query_ok}')"
+    dns_resolvers_json="$(jq -c --argjson row "${resolver_row}" '. + [$row]' <<< "${dns_resolvers_json}")"
+  done
+
+  dns_count=${#dns_resolvers[@]}
+  if (( dns_ok_count > 0 )); then
+    dns_any_ok=true
+  fi
+  if (( dns_count > 0 )) && (( dns_ok_count == dns_count )); then
+    dns_all_ok=true
+  fi
+fi
+
+health_score=0
+if [[ "${backend_state}" == "Running" ]]; then
+  health_score=$((health_score + 55))
+elif [[ "${backend_state}" == "NeedsLogin" ]] || [[ "${backend_state}" == "NeedsMachineAuth" ]]; then
+  health_score=$((health_score + 25))
+fi
+if [[ "${online}" == "true" ]]; then
+  health_score=$((health_score + 20))
+fi
+if [[ "${webui_ok}" == "true" ]]; then
+  health_score=$((health_score + 15))
+fi
+if [[ "${control_ok}" == "true" ]]; then
+  health_score=$((health_score + 5))
+fi
+if [[ "${dns_any_ok}" == "true" ]]; then
+  health_score=$((health_score + 5))
+fi
+if [[ "${dns_all_ok}" == "true" ]]; then
+  health_score=$((health_score + 5))
+fi
+if [[ "${backend_state}" == "Running" ]] && [[ "${online}" == "true" ]] && (( health_score < 65 )); then
+  health_score=65
+fi
+if (( health_score > 100 )); then
+  health_score=100
+fi
+
+ok="true"
+if (( ACTION_RC != 0 )); then
+  # Reconnect can return non-zero while still resulting in login-required transitional states.
+  if [[ "${action}" == "reconnect" ]] && { [[ "${backend_state}" == "NeedsLogin" ]] || [[ "${backend_state}" == "NeedsMachineAuth" ]] || [[ "${backend_state}" == "Running" ]]; }; then
+    ok="true"
+  else
+    ok="false"
+  fi
+fi
+if [[ "${action}" == "logout" ]] && \
+  [[ "${backend_state}" != "NeedsLogin" ]] && \
+  [[ "${backend_state}" != "NeedsMachineAuth" ]] && \
+  [[ "${backend_state}" != "Stopped" ]] && \
+  [[ "${backend_state}" != "NoState" ]] && \
+  [[ -z "${auth_url}" ]];
+then
+  ok="false"
+fi
+
+log_control_action "response action=${action} rc=${ACTION_RC} ok=${ok} backend=${backend_state} online=${online}"
+
+if [[ "${ok}" == "true" ]]; then
+  echo "Status: 200 OK"
+else
+  echo "Status: 400 Bad Request"
+fi
+echo "Content-Type: application/json"
+echo "Cache-Control: no-store"
+echo
+
+jq -nc \
+  --arg action "${action}" \
+  --arg request_method "${REQUEST_METHOD:-}" \
+  --arg request_uri "${REQUEST_URI:-}" \
+  --arg script_name "${script_name}" \
+  --arg query_string "${QUERY_STRING:-}" \
+  --arg path_info "${PATH_INFO:-}" \
+  --arg content_length "${content_length_raw}" \
+  --arg request_body_preview "${request_body_preview}" \
+  --arg action_arg "${action_arg}" \
+  --arg action_script "${action_script}" \
+  --arg action_qs "${action_qs}" \
+  --arg action_body "${action_body}" \
+  --arg action_hdr "${action_hdr}" \
+  --arg action_path "${action_path}" \
+  --arg x_action "${HTTP_X_NODALIA_ACTION:-}" \
+  --arg backend_state "${backend_state}" \
+  --arg auth_url "${auth_url}" \
+  --arg online "${online}" \
+  --arg dns_name "${dns_name}" \
+  --arg tailnet "${tailnet}" \
+  --arg login_server "${login_server}" \
+  --arg socket_ok "${socket_ok}" \
+  --arg webui_ok "${webui_ok}" \
+  --arg control_ok "${control_ok}" \
+  --arg output "${output_trimmed}" \
+  --arg dns_target "${dns_target}" \
+  --argjson dns_resolvers "${dns_resolvers_json}" \
+  --argjson dns_resolver_count "${dns_count}" \
+  --argjson dns_any_ok "$(json_bool "${dns_any_ok}")" \
+  --argjson dns_all_ok "$(json_bool "${dns_all_ok}")" \
+  --argjson health_score "${health_score}" \
+  --argjson rc "${ACTION_RC}" \
+  --argjson ok "$(json_bool "${ok}")" \
+  '{
+    ok: $ok,
+    action: $action,
+    _debug: {
+      request_method: $request_method,
+      request_uri: $request_uri,
+      script_name: $script_name,
+      query_string: $query_string,
+      path_info: $path_info,
+      content_length: $content_length,
+      request_body_preview: $request_body_preview,
+      action_arg: $action_arg,
+      action_script: $action_script,
+      action_qs: $action_qs,
+      action_body: $action_body,
+      action_hdr: $action_hdr,
+      action_path: $action_path,
+      x_nodalia_action: $x_action
+    },
+    rc: $rc,
+    backend_state: $backend_state,
+    auth_url: $auth_url,
+    self_online: ($online == "true"),
+    self_dns_name: $dns_name,
+    tailnet: $tailnet,
+    login_server: $login_server,
+    health_score: $health_score,
+    checks: {
+      tailscaled_socket: ($socket_ok == "true"),
+      webui_local: ($webui_ok == "true"),
+      control_plane_reachable: ($control_ok == "true"),
+      dns_any_resolver_ok: $dns_any_ok,
+      dns_all_resolvers_ok: $dns_all_ok
+    },
+    dns: {
+      target: $dns_target,
+      resolver_count: $dns_resolver_count,
+      any_resolver_ok: $dns_any_ok,
+      all_resolvers_ok: $dns_all_ok,
+      resolvers: $dns_resolvers
+    },
+    output: $output
+  }'

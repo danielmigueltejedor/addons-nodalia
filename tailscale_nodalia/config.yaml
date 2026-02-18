@@ -1,12 +1,13 @@
-name: Tailscale (Nodalia)
-version: 2.2.0
+name: Nodalia Connect
+version: 3.0.0
 slug: tailscale_nodalia
-description: Zero config VPN for building secure networks (Nodalia build)
+description: Zero config VPN for building secure networks (Nodalia stable build)
 url: https://github.com/danielmigueltejedor/apps-nodalia
 
 ingress: true
 ingress_port: 0
 ingress_stream: true
+ingress_entry: /onboarding
 
 startup: services
 panel_icon: mdi:transit-connection-variant
@@ -17,7 +18,9 @@ arch:
 
 init: false
 hassio_api: true
+auth_api: true
 homeassistant_api: true
+hassio_role: admin
 host_network: true
 
 # host_dbus no es necesario para Tailscale -> mejor fuera
@@ -39,40 +42,45 @@ ports:
 # ✅ Defaults para que la UI no empiece "vacía" y evitar errores por claves no existentes
 options:
   setup_profile: custom
-  log_level: info
   accept_dns: true
   accept_routes: false
-  advertise_exit_node: false
-  advertise_connector: false
-  advertise_routes: []
   share_homeassistant: disabled
-  share_on_port: 443
-  snat_subnet_routes: true
-  stateful_filtering: false
-  tags: []
   taildrop: true
-  userspace_networking: false
   webui_readonly: true
-  exit_node: ""
-  login_server: "https://controlplane.tailscale.com"
+  support_tunnel_enabled: false
+  support_tailnet_dns_suffix: ""
+  support_tunnel_ttl_minutes: 30
+  log_level: info
 
 schema:
   setup_profile: list(custom|home_access|subnet_router|exit_node)?
   accept_dns: bool?
   accept_routes: bool?
-  advertise_exit_node: bool?
-  advertise_connector: bool?
-  advertise_routes:
-    - "match(^(((25[0-5]|(2[0-4]|1\\d|[1-9]?)\\d)\\.){3}(25[0-5]|(2[0-4]|1\\d|[1-9]?)\\d)\\/(3[0-2]|[12]?\\d)|[a-fA-F\\d.:]+:[a-fA-F\\d.:]+\\/(12[0-8]|(1[01]|[1-9]?)\\d))$)?"
-  exit_node: str?
-  log_level: list(trace|debug|info|notice|warning|error|fatal)?
-  login_server: url?
   share_homeassistant: list(disabled|serve|funnel)?
   share_on_port: match(^(443|8443|10000)$)?
+  taildrop: bool?
+  webui_readonly: bool?
+  support_tunnel_enabled: bool?
+  support_tailnet_dns_suffix: str?
+  support_tunnel_ttl_minutes: int(5,180)?
+  support_user: str?
+  support_virtual_keys_token_prefix: str?
+  support_target_url: match(^$|^https?://.+$)?
+  support_target_domain_suffix: str?
+  support_notify_telegram_enabled: bool?
+  support_notify_telegram_bot_token: str?
+  support_notify_telegram_chat_id: str?
+  advertise_routes:
+    - "match(^(((25[0-5]|(2[0-4]|1\\d|[1-9]?)\\d)\\.){3}(25[0-5]|(2[0-4]|1\\d|[1-9]?)\\d)\\/(3[0-2]|[12]?\\d)|[a-fA-F\\d.:]+:[a-fA-F\\d.:]+\\/(12[0-8]|(1[01]|[1-9]?)\\d))$)?"
+  advertise_exit_node: bool?
+  exit_node: str?
+  advertise_connector: bool?
   snat_subnet_routes: bool?
   stateful_filtering: bool?
+  userspace_networking: bool?
   tags:
     - "match(^tag:[a-zA-Z][a-zA-Z0-9-]*$)?"
-  taildrop: bool?
-  userspace_networking: bool?
-  webui_readonly: bool?
+  login_server: url?
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?
+  # deprecated (no-op): kept temporarily to avoid breaking upgrades; removed automatically on boot.
+  external_apps_compat_options: bool?

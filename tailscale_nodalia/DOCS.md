@@ -1,4 +1,4 @@
-# Home Assistant App: Tailscale (Nodalia)
+# Home Assistant App: Nodalia Connect
 
 Tailscale es una VPN “zero config” que se instala en minutos, incluyendo tu instancia de Home Assistant.
 
@@ -30,7 +30,7 @@ También puedes crear la cuenta durante el proceso de autenticación de la aplic
    https://github.com/danielmigueltejedor/apps-nodalia
 
 4. Menú (⋮) → **Reload**
-5. Instala la aplicación **Tailscale (Nodalia)**.
+5. Instala la aplicación **Nodalia Connect**.
 6. Inicia la aplicación.
 7. Abre el **Web UI** de la aplicación para completar la autenticación.
 
@@ -274,9 +274,10 @@ Más info: https://tailscale.com/kb/1112/userspace-networking
 Controla si la Web UI embebida se ejecuta en modo solo lectura.
 
 - `true` (por defecto): modo seguro, sin acciones destructivas.
-- `false`: habilita control completo en la Web UI (por ejemplo, `logout`).
+- `false`: habilita control completo de tailnet en la Web UI (por ejemplo, gestionar sesión desde la propia Web UI).
 
-Recomendación: mantener `true` salvo que necesites gestionar sesión directamente desde la Web UI.
+Recomendación: mantener `true` salvo que necesites gestionar tailnet directamente desde la Web UI.
+El panel `/onboarding` mantiene controles locales de máquina (como `logout` y `reconnect`) incluso en modo readonly.
 
 ---
 
