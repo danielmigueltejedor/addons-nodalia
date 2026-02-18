@@ -4,6 +4,16 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta145 - 2026-02-18
+### Changed
+- Onboarding UI (pre-RC visual cleanup):
+  - se elimina el bloque redundante `Nodalia Control Center`.
+  - se aumenta ligeramente el tamaño del logo en cabecera.
+  - se eliminan los botones superiores `Ir a acciones`, `Recargar` y el selector antiguo de `Modo avanzado`.
+  - el control de `Modo avanzado` se mueve a la esquina superior derecha (donde estaba el toggle de tema).
+- Tema:
+  - se elimina por completo el modo claro y la UI queda fijada en modo oscuro.
+
 ## 3.0.0-beta144 - 2026-02-18
 ### Changed
 - Configuración:

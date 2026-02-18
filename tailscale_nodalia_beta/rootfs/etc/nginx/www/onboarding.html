@@ -49,50 +49,6 @@
       --button-shadow: 0 8px 18px rgba(14, 67, 148, 0.45);
       --button-hover-shadow: 0 10px 22px rgba(23, 98, 205, 0.55);
     }
-    body.theme-light {
-      --bg: #e8eef9;
-      --bg-2: #dbe7fb;
-      --bg-3: #dbe6f7;
-      --bg-glow-1: rgba(255, 255, 255, 0.9);
-      --bg-glow-2: rgba(198, 218, 255, 0.65);
-      --card-grad-top: rgba(255, 255, 255, 0.98);
-      --card-grad-bottom: rgba(250, 253, 255, 0.96);
-      --text: #0b1c34;
-      --muted: #4d6180;
-      --brand: #0a1f3c;
-      --badge-text: #0c4ea6;
-      --badge-bg-top: #ecf3ff;
-      --badge-bg-bottom: #e2eeff;
-      --badge-border: #c2d7fa;
-      --accent: #1262d4;
-      --accent-2: #0b4daa;
-      --ok: #0f7f4f;
-      --warn: #9b3a13;
-      --pending: #b38400;
-      --danger: #c62828;
-      --border: #ccdbf0;
-      --line: rgba(18, 56, 102, 0.08);
-      --shadow: 0 20px 50px rgba(11, 28, 52, 0.13);
-      --input-bg: #f7fbff;
-      --ghost-grad-top: #f5f8fd;
-      --ghost-grad-bottom: #e8eef8;
-      --ghost-border: #cfdbeb;
-      --ghost-text: #142844;
-      --panel-grad-top: #f9fcff;
-      --panel-grad-bottom: #f4f9ff;
-      --step-bg: #f7fafc;
-      --step-active-bg: #e9f2ff;
-      --step-active-border: #78acef;
-      --profile-bg: #ffffff;
-      --mono-bg: #f1f6fd;
-      --mono-border: #d9e6f7;
-      --mono-text: #223d5e;
-      --score-pill-bg: #eaf2ff;
-      --score-pill-border: #ccdbf0;
-      --score-pill-text: #0d2a50;
-      --button-shadow: 0 8px 18px rgba(18, 98, 212, 0.2);
-      --button-hover-shadow: 0 10px 20px rgba(18, 98, 212, 0.27);
-    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -147,7 +103,7 @@
       width: fit-content;
     }
     .brand img {
-      width: clamp(150px, 24vw, 220px);
+      width: clamp(168px, 25vw, 240px);
       height: auto;
       object-fit: contain;
       border: 0;
@@ -155,26 +111,10 @@
       padding: 0;
       box-shadow: none;
     }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      width: fit-content;
-      font-size: 0.75rem;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--badge-text);
-      background: linear-gradient(180deg, var(--badge-bg-top), var(--badge-bg-bottom));
-      border: 1px solid var(--badge-border);
-      border-radius: 999px;
-      padding: 5px 11px;
-    }
-    .theme-toggle {
-      min-width: 48px;
-      width: 48px;
-      padding: 10px 0;
-      font-size: 1.08rem;
+    .advanced-toggle {
+      min-width: 130px;
+      padding: 10px 12px;
+      font-size: 0.83rem;
       line-height: 1;
       display: inline-flex;
       align-items: center;
@@ -219,20 +159,6 @@
       border-color: #39b883;
       color: #deffef;
       box-shadow: 0 8px 18px rgba(18, 88, 57, 0.35);
-    }
-    body.theme-light .support-btn {
-      border-color: #c3d5ee;
-      color: #17355b;
-    }
-    body.theme-light .support-btn.support-on {
-      border-color: #5e92cd;
-      color: #0e3f78;
-      box-shadow: 0 8px 18px rgba(23, 84, 161, 0.2);
-    }
-    body.theme-light .support-btn.support-active {
-      border-color: #3f9b6c;
-      color: #0e5c3e;
-      box-shadow: 0 8px 18px rgba(22, 109, 71, 0.2);
     }
     .power-btn {
       min-width: 48px;
@@ -364,11 +290,6 @@
       color: var(--muted);
       margin-top: 12px;
       line-height: 1.45;
-    }
-    .quick {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
     }
     .advanced-only {
       display: block;
@@ -537,7 +458,7 @@
       button, a.btn { width: 100%; justify-content: center; text-align: center; }
       .actions { display: grid; grid-template-columns: 1fr; }
       .hero-head { align-items: center; }
-      .theme-toggle { width: 48px; min-width: 48px; }
+      .advanced-toggle { min-width: 122px; width: auto; }
       .support-btn { width: 48px; min-width: 48px; }
       .hero-actions { width: 100%; }
       .power-btn { min-width: 0; }
@@ -565,17 +486,11 @@
               <path d="M20.5 16.8v.4a2.6 2.6 0 0 1-2.6 2.6h-2"></path>
             </svg>
           </button>
-          <button id="theme-toggle-btn" type="button" class="ghost theme-toggle" aria-label="Cambiar a modo claro" title="Cambiar a modo claro">☀</button>
+          <button id="toggle-advanced-btn" type="button" class="ghost advanced-toggle" aria-label="Alternar modo avanzado" title="Alternar modo avanzado">Avanzado: ON</button>
         </div>
       </div>
-      <span class="badge">Nodalia Control Center</span>
       <h1>Asistente de inicio de sesion</h1>
       <p>Gestiona Tailscale desde aqui sin depender del iframe, con acceso directo cuando quieras.</p>
-      <div class="quick">
-        <a id="go-status-btn" class="btn ghost" href="#ok-box" title="Ir al bloque de acciones">Ir a acciones</a>
-        <button id="hard-refresh-btn" type="button" class="ghost" title="Recargar panel completo">Recargar ↻</button>
-        <button id="toggle-advanced-btn" type="button" class="ghost">Modo avanzado: ON</button>
-      </div>
       <p class="small">Dentro del iframe veras un boton flotante para volver a este panel.</p>
     </section>
     <div class="steps">
@@ -705,7 +620,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-beta144</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-beta145</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -716,10 +631,7 @@
     const openBtn = document.getElementById("open-btn");
     const openWebuiBtn = document.getElementById("open-webui-btn");
     const openDirectBtn = document.getElementById("open-direct-btn");
-    const goStatusBtn = document.getElementById("go-status-btn");
-    const hardRefreshBtn = document.getElementById("hard-refresh-btn");
     const toggleAdvancedBtn = document.getElementById("toggle-advanced-btn");
-    const themeToggleBtn = document.getElementById("theme-toggle-btn");
     const uiBuildVersionEl = document.getElementById("ui-build-version");
     const UI_BUILD_VERSION = String(uiBuildVersionEl?.textContent || "");
     const UI_IS_BETA = /beta/i.test(UI_BUILD_VERSION);
@@ -798,7 +710,6 @@
     let lastStateClass = "";
     let isFirstRender = true;
     let advancedModeEnabled = true;
-    let themeMode = "dark";
     let redirectDeadlineMs = 0;
     let actionInFlight = 0;
     let supportBusy = false;
@@ -953,41 +864,24 @@
       }
     }
 
-    function normalizeTheme(value) {
-      return value === "light" ? "light" : "dark";
-    }
-
-    function applyTheme(theme) {
-      themeMode = normalizeTheme(theme);
-      const isLight = themeMode === "light";
-      document.body.classList.toggle("theme-light", isLight);
-      document.body.classList.toggle("theme-dark", !isLight);
-      if (!themeToggleBtn) {
-        return;
-      }
-      const nextTheme = isLight ? "dark" : "light";
-      const nextLabel = nextTheme === "light" ? "☀" : "🌙";
-      const nextAria = nextTheme === "light" ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
-      themeToggleBtn.textContent = nextLabel;
-      themeToggleBtn.setAttribute("aria-label", nextAria);
-      themeToggleBtn.title = nextAria;
+    function enforceDarkTheme() {
+      document.body.classList.remove("theme-light");
+      document.body.classList.add("theme-dark");
     }
 
     function loadUiPrefs() {
       advancedModeEnabled = true;
       autoOpenCheck.checked = false;
-      themeMode = "dark";
       try {
         const raw = localStorage.getItem(UI_PREFS_KEY);
         if (raw) {
           const prefs = JSON.parse(raw);
           advancedModeEnabled = prefs?.advanced_mode !== false;
           autoOpenCheck.checked = prefs?.auto_open === true;
-          themeMode = normalizeTheme(prefs?.theme);
         }
       } catch (_) {
       }
-      applyTheme(themeMode);
+      enforceDarkTheme();
     }
 
     function saveUiPrefs() {
@@ -995,7 +889,6 @@
         localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
           advanced_mode: advancedModeEnabled,
           auto_open: autoOpenCheck.checked,
-          theme: themeMode,
         }));
       } catch (_) {
       }
@@ -1003,7 +896,7 @@
 
     function renderAdvancedMode() {
       document.body.classList.toggle("advanced-hidden", !advancedModeEnabled);
-      toggleAdvancedBtn.textContent = advancedModeEnabled ? "Modo avanzado: ON" : "Modo avanzado: OFF";
+      toggleAdvancedBtn.textContent = advancedModeEnabled ? "Avanzado: ON" : "Avanzado: OFF";
       syncLogoutTraceVisibility();
     }
 
@@ -2390,26 +2283,10 @@
         endUiAction();
       }
     });
-    goStatusBtn.addEventListener("click", (event) => {
-      event.preventDefault();
-      const target = loginBox.hidden ? (okBox.hidden ? stateEl : okBox) : loginBox;
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    hardRefreshBtn.addEventListener("click", () => {
-      try {
-        localStorage.removeItem(RUNTIME_CACHE_KEY);
-      } catch (_) {
-      }
-      window.location.reload();
-    });
-    toggleAdvancedBtn.addEventListener("click", () => {
-      advancedModeEnabled = !advancedModeEnabled;
-      renderAdvancedMode();
-      saveUiPrefs();
-    });
-    if (themeToggleBtn) {
-      themeToggleBtn.addEventListener("click", () => {
-        applyTheme(themeMode === "dark" ? "light" : "dark");
+    if (toggleAdvancedBtn) {
+      toggleAdvancedBtn.addEventListener("click", () => {
+        advancedModeEnabled = !advancedModeEnabled;
+        renderAdvancedMode();
         saveUiPrefs();
       });
     }
@@ -2429,6 +2306,7 @@
     });
     diagBtn.addEventListener("click", runDiagnostics);
     copyReportBtn.addEventListener("click", copyReport);
+    enforceDarkTheme();
     applyReleaseUiMode();
     loadUiPrefs();
     renderAdvancedMode();
