@@ -50,6 +50,9 @@
       --button-hover-shadow: 0 10px 22px rgba(23, 98, 205, 0.55);
     }
     * { box-sizing: border-box; }
+    [hidden] {
+      display: none !important;
+    }
     body {
       margin: 0;
       font-family: "Avenir Next", "Segoe UI", "Noto Sans", sans-serif;
@@ -605,6 +608,7 @@
         <button id="sup-debug-btn" type="button" class="ghost advanced-only debug-only">Debug soporte</button>
       </div>
       <p id="sup-message" class="small"></p>
+      <p id="sup-countdown" class="small" hidden></p>
       <div id="sup-audit-output" class="mono" hidden></div>
     </section>
     <section class="panel advanced-only">
@@ -671,6 +675,7 @@
     const supportExpires = document.getElementById("sup-expires");
     const supportReason = document.getElementById("sup-reason");
     const supportMessage = document.getElementById("sup-message");
+    const supportCountdown = document.getElementById("sup-countdown");
     const supportEnableBtn = document.getElementById("sup-enable-btn");
     const supportDisableBtn = document.getElementById("sup-disable-btn");
     const supportNotifyTestBtn = document.getElementById("sup-notify-test-btn");
@@ -723,6 +728,8 @@
     let supportRules = { enable: false, disable: false, notify_test: true, debug: true };
     let opBusy = false;
     let opCanLogout = false;
+    let supportCountdownHandle = null;
+    let supportCountdownExpiresAtMs = 0;
     let logoutConfirmUntilMs = 0;
     let logoutConfirmHandle = null;
     let logoutConfirmTickHandle = null;
@@ -980,6 +987,57 @@
       renderSupportButtons();
     }
 
+    function formatSupportRemainingTime(totalSeconds) {
+      const safeSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+      const hours = Math.floor(safeSeconds / 3600);
+      const minutes = Math.floor((safeSeconds % 3600) / 60);
+      const seconds = safeSeconds % 60;
+      if (hours > 0) {
+        return String(hours) + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+      }
+      return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+    }
+
+    function clearSupportCountdown() {
+      if (supportCountdownHandle) {
+        clearInterval(supportCountdownHandle);
+        supportCountdownHandle = null;
+      }
+      supportCountdownExpiresAtMs = 0;
+      if (supportCountdown) {
+        supportCountdown.hidden = true;
+        supportCountdown.textContent = "";
+      }
+    }
+
+    function renderSupportCountdown(expiresAtRaw) {
+      if (!supportCountdown) {
+        return;
+      }
+      const expiresMs = Date.parse(String(expiresAtRaw || ""));
+      if (!Number.isFinite(expiresMs) || expiresMs <= 0) {
+        clearSupportCountdown();
+        return;
+      }
+      if (supportCountdownExpiresAtMs !== expiresMs) {
+        clearSupportCountdown();
+        supportCountdownExpiresAtMs = expiresMs;
+      }
+      const tick = () => {
+        const remainingSeconds = Math.ceil((supportCountdownExpiresAtMs - Date.now()) / 1000);
+        if (remainingSeconds <= 0) {
+          clearSupportCountdown();
+          return;
+        }
+        supportCountdown.hidden = false;
+        supportCountdown.textContent = "Tiempo restante: " + formatSupportRemainingTime(remainingSeconds);
+      };
+      tick();
+      if (!supportCountdownHandle) {
+        supportCountdownHandle = setInterval(tick, 1000);
+      }
+    }
+
     function renderSupportFromRuntime(runtime) {
       const enabled = Boolean(runtime?.support_enabled);
       const mode = String(runtime?.support_mode || "virtual_keys_token");
@@ -1007,6 +1065,11 @@
       supportNotifyReason.textContent = notifyReasonValue || "-";
       supportExpires.textContent = expiresAt || "-";
       supportReason.textContent = reason || "-";
+      if (active && expiresAt) {
+        renderSupportCountdown(expiresAt);
+      } else {
+        clearSupportCountdown();
+      }
       if (supportNavBtn) {
         supportNavBtn.classList.toggle("support-on", enabled);
         supportNavBtn.classList.toggle("support-active", active);
@@ -1832,6 +1895,7 @@
         supportNotifyReason.textContent = "n/a";
         supportExpires.textContent = "n/a";
         supportReason.textContent = "runtime unavailable";
+        clearSupportCountdown();
         supportRules = { enable: false, disable: false, notify_test: false, debug: true };
         if (supportNavBtn) {
           supportNavBtn.classList.remove("support-on", "support-active");
@@ -1911,6 +1975,10 @@
       supportMessage.textContent = "Habilitando acceso temporal para soporte...";
       try {
         const payload = await callSupportApi("enable", "POST", true);
+        const expiresAt = String(payload?.support_expires_at || payload?.expires_at || "");
+        if (expiresAt) {
+          renderSupportCountdown(expiresAt);
+        }
         const activationInfo = formatSupportActivationInfo(payload);
         if (activationInfo) {
           supportMessage.textContent = "Acceso de soporte habilitado.";
@@ -1940,6 +2008,7 @@
       supportMessage.textContent = "Revocando acceso de soporte...";
       try {
         await callSupportApi("disable", "POST", true);
+        clearSupportCountdown();
         supportMessage.textContent = "Acceso de soporte revocado.";
         supportAuditOutput.hidden = true;
         supportAuditOutput.textContent = "";
@@ -2104,7 +2173,7 @@
         endUiAction();
         let finalMessage = "";
         let transitionMatched = false;
-        let reloadAfterSuccess = false;
+        let reloadAfterSuccess = logoutRequestOk;
         if (logoutRequestOk) {
           const transition = await waitForBackendTransition(["NeedsLogin", "NeedsMachineAuth", "NoState", "Stopped"], 20000, 800);
           if (transition.matched) {
@@ -2124,8 +2193,7 @@
               reloadAfterSuccess = true;
             } else {
               const state = String(transition.status?.backend_state || onboardingState || "Unknown");
-              finalMessage = "Reset solicitado, pero el backend sigue en " + state + ". Pulsa Actualizar o revisa logs.";
-              logoutFailed = true;
+              finalMessage = "Reset solicitado (backend: " + state + "). Recargando panel para sincronizar estado...";
             }
           }
         }
@@ -2141,7 +2209,9 @@
           showLogoutHint("Operacion finalizada", 1800);
         }
         if (reloadAfterSuccess) {
-          opMessage.textContent = "Desconectado • listo para nueva tailnet. Recargando panel...";
+          opMessage.textContent = transitionMatched
+            ? "Desconectado • listo para nueva tailnet. Recargando panel..."
+            : "Logauth enviado. Recargando panel para actualizar estado...";
           showLogoutHint("Recargando panel...", 2600);
           reloadPanelSoon(850);
         }
