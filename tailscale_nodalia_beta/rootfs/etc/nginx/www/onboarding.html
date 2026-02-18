@@ -794,7 +794,7 @@
         brandLogoEl.src = ingressUrl("nodalia-logo.png");
       };
     }
-    openWebuiBtn.href = ingressRootUrl();
+    openWebuiBtn.href = ingressUrl("webui");
 
     async function fetchJsonWithTimeout(path, timeoutMs = 1200) {
       const controller = new AbortController();
@@ -1823,9 +1823,9 @@
         }
         const runtimeStable = runtimeWebUiReady && runtimeStreak >= 2;
         const liveStable = liveWebUiReadyStreak >= 2;
-        const webUiReady = liveStable;
+        const webUiReady = liveStable || runtimeStable;
         const runningForMs = Date.now() - runningSinceMs;
-        const allowManualOpen = liveWebUiReady || runningForMs >= 15000;
+        const allowManualOpen = liveWebUiReady || runtimeWebUiReady || runningForMs >= 15000;
         if (webUiReady) {
           setActiveStep("access");
           updateStateView("Conectado. Web UI lista.", "good");
@@ -2311,8 +2311,9 @@
       try {
         updateStateView("Comprobando disponibilidad de Web UI...", "warn");
         const preflightOk = await probeIngressWebUiReady(2500, true);
-        if (preflightOk) {
-          window.location.replace(ingressRootUrl());
+        const runtimeSaysReady = Boolean(lastRuntime?.webui_ready);
+        if (preflightOk || runtimeSaysReady) {
+          window.location.replace(ingressUrl("webui?_ts=" + Date.now()));
           return;
         }
         const backendState = String(lastRuntime?.backend_state || lastOnboarding?.backend_state || "Unknown");
