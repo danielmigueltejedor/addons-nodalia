@@ -4,6 +4,23 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-beta144 - 2026-02-18
+### Changed
+- Configuración:
+  - `external_apps_compat_options` pasa a modo obsoleto (no-op):
+    - se mantiene temporalmente en `schema` para no romper upgrades antiguos,
+    - y se elimina automáticamente al arrancar la aplicación.
+  - Se reordena el `schema` para mostrar primero las opciones típicas.
+  - Se reducen los `options` por defecto para ocultar opciones avanzadas salvo que el usuario active "Show unused optional configuration options".
+- Soporte:
+  - `support_tailnet_dns_suffix` pasa a vacío por defecto (evita hardcodear una tailnet en releases).
+
+### Fixed
+- Defaults seguros cuando faltan opciones (al ocultarlas del `options` por defecto):
+  - `accept_routes`, `advertise_exit_node`, `advertise_connector` y `userspace_networking` ya no se activan por defecto si el campo no existe.
+- Perfiles:
+  - se documenta que los perfiles distintos de `custom` sobrescriben ciertos parámetros.
+
 ## 3.0.0-beta143 - 2026-02-18
 ### Fixed
 - Telegram:

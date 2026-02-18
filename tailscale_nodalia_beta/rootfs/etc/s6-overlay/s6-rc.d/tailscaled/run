@@ -49,9 +49,8 @@ fi
 # Effective userspace mode (aligned with setup_profile behavior)
 setup_profile="$(bashio::config "setup_profile" "custom")"
 userspace_networking_enabled=false
-if ! bashio::config.has_value "userspace_networking" || \
-  bashio::config.true "userspace_networking";
-then
+if bashio::config.has_value "userspace_networking" && \
+  bashio::config.true "userspace_networking"; then
   userspace_networking_enabled=true
 fi
 

@@ -9,6 +9,9 @@ configuration:
       `subnet_router` habilita aceptar rutas y (si advertise_routes esta vacio)
       anuncia automaticamente subredes locales.
       `exit_node` habilita anunciar este nodo como exit node.
+      Nota: si eliges un perfil distinto de `custom`, el perfil sobrescribe
+      algunos parametros (por ejemplo `accept_dns`, `accept_routes` y `userspace_networking`).
+      Para control manual completo, usa `custom`.
   accept_dns:
     name: Aceptar DNS
     description: >-
@@ -118,11 +121,11 @@ configuration:
       El panel onboarding mantiene controles locales (logout/reconnect) en modo readonly.
       Si no se configura, esta opcion esta activada por defecto.
   external_apps_compat_options:
-    name: Compatibilidad con apps externas (opcional)
+    name: Compatibilidad con apps externas (DEPRECATED)
     description: >-
-      Modo de compatibilidad para instalaciones que comparten
-      configuraciones legacy con otras apps.
-      Si no lo necesitas, mantenlo desactivado.
+      Opcion obsoleta y sin efecto.
+      Se mantiene solo para no romper upgrades antiguos y se elimina automaticamente
+      al arrancar la aplicacion.
   support_tunnel_enabled:
     name: Boton de acceso de soporte
     description: >-
@@ -132,8 +135,9 @@ configuration:
   support_tailnet_dns_suffix:
     name: DNS de tailnet para soporte
     description: >-
-      Sufijo DNS usado para validar soporte remoto (por ejemplo `tail37b857.ts.net`).
+      Sufijo DNS usado para validar soporte remoto (por ejemplo `tail123456.ts.net`).
       El acceso de soporte solo se habilita cuando el DNS de este nodo coincide con ese sufijo.
+      Si esta vacio, el acceso de soporte no sera elegible.
   support_user:
     name: Usuario local de soporte
     description: >-

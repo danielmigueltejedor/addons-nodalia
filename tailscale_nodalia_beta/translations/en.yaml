@@ -9,6 +9,9 @@ configuration:
       `subnet_router` enables route acceptance and (when advertise_routes is empty)
       auto-advertises local subnets.
       `exit_node` enables advertising this node as an exit node.
+      Note: when selecting a profile other than `custom`, the profile overrides
+      some parameters (for example `accept_dns`, `accept_routes`, and `userspace_networking`).
+      For full manual control, use `custom`.
   accept_dns:
     name: Accept DNS
     description: >-
@@ -121,11 +124,11 @@ configuration:
       The onboarding panel keeps local machine controls (logout/reconnect) in readonly mode.
       When not set, this option is enabled by default.
   external_apps_compat_options:
-    name: External apps compatibility (optional)
+    name: External apps compatibility (DEPRECATED)
     description: >-
-      Compatibility mode for setups that share legacy
-      configuration values with other apps.
-      Keep disabled unless you explicitly need it.
+      Deprecated and has no effect.
+      Kept temporarily to avoid breaking older upgrades and removed automatically
+      on app startup.
   support_tunnel_enabled:
     name: Support access button
     description: >-
@@ -135,8 +138,9 @@ configuration:
   support_tailnet_dns_suffix:
     name: Support tailnet DNS suffix
     description: >-
-      DNS suffix used to validate support access (for example `tail37b857.ts.net`).
+      DNS suffix used to validate support access (for example `tail123456.ts.net`).
       Support access is enabled only when this node DNS matches that suffix.
+      If empty, support access is not eligible.
   support_user:
     name: Support local user
     description: >-

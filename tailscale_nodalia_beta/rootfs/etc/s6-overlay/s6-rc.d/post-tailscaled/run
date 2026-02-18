@@ -122,17 +122,17 @@ if ! bashio::config.has_value "accept_dns" || bashio::config.true "accept_dns"; 
 fi
 
 accept_routes_enabled=false
-if ! bashio::config.has_value "accept_routes" || bashio::config.true "accept_routes"; then
+if bashio::config.has_value "accept_routes" && bashio::config.true "accept_routes"; then
   accept_routes_enabled=true
 fi
 
 advertise_exit_node_enabled=false
-if ! bashio::config.has_value "advertise_exit_node" || bashio::config.true "advertise_exit_node"; then
+if bashio::config.has_value "advertise_exit_node" && bashio::config.true "advertise_exit_node"; then
   advertise_exit_node_enabled=true
 fi
 
 advertise_connector_enabled=false
-if ! bashio::config.has_value "advertise_connector" || bashio::config.true "advertise_connector"; then
+if bashio::config.has_value "advertise_connector" && bashio::config.true "advertise_connector"; then
   advertise_connector_enabled=true
 fi
 
@@ -147,7 +147,7 @@ if ! bashio::config.has_value "snat_subnet_routes" || bashio::config.true "snat_
 fi
 
 userspace_networking_enabled=false
-if ! bashio::config.has_value "userspace_networking" || bashio::config.true "userspace_networking"; then
+if bashio::config.has_value "userspace_networking" && bashio::config.true "userspace_networking"; then
   userspace_networking_enabled=true
 fi
 
@@ -194,7 +194,7 @@ else
   options+=(--accept-dns=false)
 fi
 
-# Accept routes by default when not set, or when explicitly enabled
+# Accept routes only when explicitly enabled
 if bashio::var.true "${accept_routes_enabled}"; then
   options+=(--accept-routes)
 else
@@ -208,7 +208,7 @@ then
   bashio::exit.nok "You can't advertise this device as an exit node and at the same time specify an exit node to use"
 fi
 
-# Advertise as exit node by default when not set, or when explicitly enabled
+# Advertise as exit node only when explicitly enabled
 if bashio::var.true "${advertise_exit_node_enabled}"; then
   options+=(--advertise-exit-node)
 else
@@ -225,7 +225,7 @@ else
   options+=(--exit-node-allow-lan-access=false)
 fi
 
-# Advertise app connector by default when not set, or when explicitly enabled
+# Advertise app connector only when explicitly enabled
 if bashio::var.true "${advertise_connector_enabled}"; then
   options+=(--advertise-connector)
 else

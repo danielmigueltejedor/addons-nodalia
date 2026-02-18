@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-beta143`
+`3.0.0-beta144`
 
 Cambios destacados (resumen de betas recientes):
 - Flujo de Web UI por ingress estabilizado:
@@ -336,15 +336,6 @@ El panel `/onboarding` mantiene controles locales de máquina (como `logauth`) i
 
 ---
 
-### `external_apps_compat_options`
-
-Toggle de compatibilidad para escenarios donde compartes valores legacy con otras apps.
-
-- `false` (por defecto): flujo normal recomendado.
-- `true`: habilita modo de compatibilidad para opciones legacy opcionales.
-
----
-
 ### `support_tunnel_enabled`
 
 Activa el módulo de acceso temporal de soporte Nodalia.
@@ -356,9 +347,11 @@ Activa el módulo de acceso temporal de soporte Nodalia.
 
 ### `support_tailnet_dns_suffix`
 
-Sufijo DNS de la tailnet autorizada para soporte remoto (ejemplo: `tail37b857.ts.net`).
+Sufijo DNS de la tailnet autorizada para soporte remoto (ejemplo: `tail123456.ts.net`).
 
 La elegibilidad del acceso se valida con este valor.
+
+Por defecto: vacío (si está vacío, el soporte no será elegible hasta configurarlo).
 
 ---
 

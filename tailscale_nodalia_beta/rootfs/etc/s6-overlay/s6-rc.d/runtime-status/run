@@ -141,7 +141,7 @@ do
   elif [[ -f /data/support-tunnel.json ]] && support_cached_json="$(cat /data/support-tunnel.json 2>/dev/null)" && jq -e . > /dev/null 2>&1 <<< "${support_cached_json}"; then
     support_json="${support_cached_json}"
   else
-    support_fallback_dns="$(bashio::config "support_tailnet_dns_suffix" "tail37b857.ts.net")"
+    support_fallback_dns="$(bashio::config "support_tailnet_dns_suffix" "")"
     support_fallback_target_url="$(bashio::config "support_target_url" "" 2>/dev/null || true)"
     support_fallback_user="$(bashio::config "support_user" "nodalia")"
     support_fallback_enabled="false"
