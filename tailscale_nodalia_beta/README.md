@@ -9,7 +9,7 @@ Incluso separados por firewalls o subredes, Tailscale funciona y gestiona reglas
 
 ## Versión actual
 
-`3.0.0-rc4`
+`3.0.0-rc6`
 
 Cambios destacados (resumen de betas recientes):
 - Flujo de Web UI por ingress estabilizado:
@@ -127,6 +127,11 @@ Perfil de configuración simplificada para no tener que ajustar todas las opcion
 - `exit_node`: activa el nodo como exit node con ajustes seguros para ese caso.
 
 Si quieres control total, usa `custom`.
+
+> Nota: con `setup_profile` distinto de `custom`, la aplicacion fuerza automaticamente los
+> parametros preset del perfil (por ejemplo `accept_dns`, `accept_routes`, `advertise_exit_node`,
+> `advertise_connector`, `stateful_filtering`, `snat_subnet_routes` y `userspace_networking`)
+> y los restaura en cada inicio.
 
 Perfil recomendado según caso:
 
@@ -332,15 +337,6 @@ Controla si la Web UI embebida se ejecuta en modo solo lectura.
 
 Recomendación: mantener `true` salvo que necesites gestionar tailnet directamente desde la Web UI.
 El panel `/onboarding` mantiene controles locales de máquina (como `logauth`) incluso en modo readonly.
-
----
-
-### `external_apps_compat_options`
-
-Toggle de compatibilidad para escenarios donde compartes valores legacy con otras apps.
-
-- `false` (por defecto): flujo normal recomendado.
-- `true`: habilita modo de compatibilidad para opciones legacy opcionales.
 
 ---
 

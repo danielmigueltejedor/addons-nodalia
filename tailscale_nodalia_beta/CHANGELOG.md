@@ -4,6 +4,23 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-rc6 - 2026-02-18
+### Fixed
+- Soporte (virtual-keys):
+  - `support-api enable/disable/notify-test` ahora funciona aunque algún proxy degrade el método a `GET`:
+    - el cliente UI envía un body mínimo en `POST`.
+    - el backend permite `GET` solo si viene con `X-Nodalia-Action` (evita 405 `post_required_for_action`).
+- Marcador visual actualizado a `UI build: 3.0.0-rc6`.
+
+## 3.0.0-rc5 - 2026-02-18
+### Changed
+- Configuracion:
+  - eliminado `external_apps_compat_options` (ya no se muestra ni se acepta en schema).
+- Perfiles:
+  - con `setup_profile != custom`, los parametros preset del perfil se fuerzan y se restauran en cada inicio
+    para evitar overrides accidentales desde la configuracion.
+- Marcador visual actualizado a `UI build: 3.0.0-rc5`.
+
 ## 3.0.0-rc4 - 2026-02-18
 ### Fixed
 - Configuración:
