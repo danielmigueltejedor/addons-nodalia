@@ -4,6 +4,12 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-rc3 - 2026-02-18
+### Fixed
+- Supervisor build:
+  - corregido un problema de empaquetado que podia provocar `dockerfile is missing` al actualizar la aplicacion desde el repositorio.
+- Marcador visual actualizado a `UI build: 3.0.0-rc3`.
+
 ## 3.0.0-rc2 - 2026-02-18
 ### Changed
 - Onboarding UI:
