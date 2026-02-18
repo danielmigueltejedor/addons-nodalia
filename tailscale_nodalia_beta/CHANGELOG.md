@@ -4,6 +4,18 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-rc3 - 2026-02-18
+### Changed
+- Onboarding UI:
+  - se elimina el texto informativo `Dentro del iframe veras un boton flotante para volver a este panel.`
+  - en modo básico (`Modo avanzado` OFF), la sección de soporte se simplifica para mostrar solo acciones principales (sin detalles técnicos).
+
+### Fixed
+- Soporte:
+  - el contador de tiempo restante del acceso temporal vuelve a mostrarse también en modo básico.
+- Logout/Power:
+  - cuando la respuesta llega con `ok=true` y `action=status`, ahora también se considera `logauth` aceptado y se fuerza recarga automática del panel.
+
 ## 3.0.0-rc2 - 2026-02-18
 ### Fixed
 - Onboarding:

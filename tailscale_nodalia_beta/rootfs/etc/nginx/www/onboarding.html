@@ -513,7 +513,6 @@
       </div>
       <h1>Asistente de inicio de sesion</h1>
       <p>Gestiona Tailscale desde aqui sin depender del iframe, con acceso directo cuando quieras.</p>
-      <p class="small">Dentro del iframe veras un boton flotante para volver a este panel.</p>
     </section>
     <div class="steps">
       <div id="step-auth" class="step">Paso 1: Autenticacion en tu tailnet</div>
@@ -586,8 +585,8 @@
     </section>
     <section id="support-panel" class="panel">
       <h2>Acceso soporte Nodalia</h2>
-      <p class="small">Disponible solo si el DNS de esta instancia coincide con el DNS de soporte configurado.</p>
-      <div class="kv">
+      <p class="small advanced-only">Disponible solo si el DNS de esta instancia coincide con el DNS de soporte configurado.</p>
+      <div class="kv advanced-only">
         <div>Soporte habilitado:</div><div><code id="sup-enabled">-</code></div>
         <div class="advanced-only">Modo soporte:</div><div class="advanced-only"><code id="sup-mode">-</code></div>
         <div class="advanced-only">DNS objetivo:</div><div class="advanced-only"><code id="sup-tailnet">-</code></div>
@@ -607,9 +606,9 @@
         <button id="sup-notify-test-btn" type="button" class="ghost advanced-only">Probar Telegram</button>
         <button id="sup-debug-btn" type="button" class="ghost advanced-only debug-only">Debug soporte</button>
       </div>
-      <p id="sup-message" class="small"></p>
+      <p id="sup-message" class="small advanced-only"></p>
       <p id="sup-countdown" class="small" hidden></p>
-      <div id="sup-audit-output" class="mono" hidden></div>
+      <div id="sup-audit-output" class="mono advanced-only" hidden></div>
     </section>
     <section class="panel advanced-only">
       <h2>Perfiles recomendados</h2>
@@ -636,7 +635,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-rc2</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0-rc3</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -2152,18 +2151,20 @@
           }
         }
         data = result.data || {};
-        const responseAction = String(data?.action || "");
-        logoutRequestOk = Boolean(data?.ok) && responseAction === "logout";
-        if (responseAction && responseAction !== "logout") {
+        const responseAction = String(data?.action || "").toLowerCase();
+        const responseLooksLogout = responseAction === "logout";
+        const responseLooksStatus = responseAction === "status";
+        logoutRequestOk = Boolean(data?.ok) && (responseLooksLogout || responseLooksStatus || responseAction === "");
+        if (logoutRequestOk) {
+          opMessage.textContent = responseLooksStatus
+            ? "Logout solicitado (action=status). Confirmando estado real..."
+            : "Logout solicitado. Confirmando estado real...";
+        } else if (responseAction && !responseLooksLogout) {
           opMessage.textContent = "La llamada no ejecuto Logauth (action=" + responseAction + ").";
           logoutFailed = true;
         } else {
-          opMessage.textContent = logoutRequestOk
-            ? "Logout solicitado. Confirmando estado real..."
-            : "Logout no confirmado. Estado actual: " + String(data.backend_state || "Unknown");
-          if (!logoutRequestOk) {
-            logoutFailed = true;
-          }
+          opMessage.textContent = "Logout no confirmado. Estado actual: " + String(data.backend_state || "Unknown");
+          logoutFailed = true;
         }
       } catch (error) {
         opMessage.textContent = "Error al cerrar sesion: " + error.message;
