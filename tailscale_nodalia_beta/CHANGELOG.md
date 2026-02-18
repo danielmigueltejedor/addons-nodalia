@@ -4,6 +4,13 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.0-rc4 - 2026-02-18
+### Fixed
+- Configuración:
+  - `support_target_url` ahora acepta valor vacío en el schema (antes fallaba con `^https?://.+$`).
+  - evita el error de Supervisor: `does not match regular expression ^https?://.+$`.
+- Marcador visual actualizado a `UI build: 3.0.0-rc4`.
+
 ## 3.0.0-rc3 - 2026-02-18
 ### Fixed
 - Supervisor build:
