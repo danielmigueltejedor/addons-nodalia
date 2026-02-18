@@ -4,12 +4,25 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
-## 3.0.1-beta1 - 2026-02-18
+## 3.0.1-beta2 - 2026-02-18
 ### Fixed
 - Telegram en soporte temporal:
   - se añade fallback de red cuando falla DNS con `accept_dns=true`.
   - las llamadas `sendMessage`, `getMe`, `getChat` y `getUpdates` ahora reintentan por IP directa de Telegram usando `curl --resolve api.telegram.org:443:<ip>`.
   - `debug` de Telegram incluye trazas de transporte (`transport_attempts`, `transport_fallback_ip`) para confirmar cuándo entró el fallback.
+- Logauth / recarga de UI:
+  - tras `logauth`, el panel fuerza estado local de `NeedsLogin` y aplica recarga reforzada para reflejar el estado real sin recarga manual.
+  - se elimina fallback por `GET` en acciones sensibles de soporte (`enable/disable/notify-test`) para alinear frontend con política `POST`.
+- Seguridad (hardening):
+  - `control-api` y `support-api` exigen `POST` + cabecera `X-Nodalia-Action` en acciones mutables.
+  - se añaden cabeceras `X-Content-Type-Options: nosniff` y `Pragma: no-cache` en respuestas CGI.
+  - el `debug` de soporte vuelve a enmascarar `support_notify_telegram_bot_token`.
+- Soporte:
+  - nuevo comando interno `support-tunnel revoke-all` para cerrar todas las sesiones/token de soporte por prefijo.
+  - `tailscale-logauth-reset` ejecuta `revoke-all` al iniciar `logauth` para garantizar revocación total antes del reset.
+- Machine Name / URL de soporte:
+  - la URL automática de soporte ahora prioriza `Self.DNSName` (primer label) para construir `https://<machine-name>.getnodalia.com`.
+  - se expone `Machine Name` en estado en vivo y se usa también en el texto de notificación de soporte.
 
 ## 3.0.0-rc3 - 2026-02-18
 ### Changed

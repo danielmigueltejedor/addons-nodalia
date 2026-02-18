@@ -98,6 +98,14 @@ sanitize_hostname_label() {
   printf '%s' "${value}"
 }
 
+machine_name_from_dns() {
+  local dns_value machine_label
+  dns_value="$(normalize_dns_value "${1:-}")"
+  machine_label="${dns_value%%.*}"
+  machine_label="$(sanitize_hostname_label "${machine_label}")"
+  printf '%s' "${machine_label}"
+}
+
 sanitize_reason_token() {
   local value
   value="$(normalize_lc "$(trim_spaces "${1:-}")")"
@@ -107,6 +115,23 @@ sanitize_reason_token() {
     value="${value%_}"
   fi
   printf '%s' "${value}"
+}
+
+mask_secret() {
+  local value len head tail
+  value="${1:-}"
+  len="${#value}"
+  if (( len == 0 )); then
+    printf ''
+    return 0
+  fi
+  if (( len <= 6 )); then
+    printf '***'
+    return 0
+  fi
+  head="${value:0:3}"
+  tail="${value: -3}"
+  printf '%s***%s' "${head}" "${tail}"
 }
 
 telegram_http_reason() {
@@ -785,7 +810,7 @@ send_support_notification_telegram() {
   message=$(
     cat <<EOF
 Nodalia Connect: token temporal creado
-HostName: ${host_label}
+MachineName: ${host_label}
 Token: ${token_name}
 TTL(min): ${ttl_minutes}
 Login URL: ${login_url}
@@ -2003,7 +2028,7 @@ clear_meta() {
 
 build_eligibility() {
   local status_json support_enabled target_dns_suffix backend candidate_strings
-  local self_dns_name self_host_name magic_dns_suffix token_lc
+  local self_dns_name self_host_name self_machine_name magic_dns_suffix token_lc
   local target_url_cfg target_domain_suffix support_host_label
   local temp_create_service_cfg temp_delete_service_cfg
   local create_path_rc delete_path_rc
@@ -2021,7 +2046,11 @@ build_eligibility() {
   backend="$(jq -r '.BackendState // "Unknown"' <<< "${status_json}" 2>/dev/null || echo "Unknown")"
   self_dns_name="$(normalize_dns_value "$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)")"
   self_host_name="$(jq -r '.Self.HostName // empty' <<< "${status_json}" 2>/dev/null || true)"
-  support_host_label="$(sanitize_hostname_label "${self_host_name}")"
+  self_machine_name="$(machine_name_from_dns "${self_dns_name}")"
+  support_host_label="${self_machine_name}"
+  if [[ -z "${support_host_label}" ]]; then
+    support_host_label="$(sanitize_hostname_label "${self_host_name}")"
+  fi
   magic_dns_suffix="$(normalize_dns_value "$(jq -r '.CurrentTailnet.MagicDNSSuffix // empty' <<< "${status_json}" 2>/dev/null || true)")"
   candidate_strings="$(jq -r '[.CurrentTailnet.Name,.CurrentTailnet.MagicDNSSuffix,.CurrentTailnet.Tailnet,.Self.DNSName,.Self.HostName,.Self.Tailnet] | map(select(type=="string" and length>0)) | .[]' <<< "${status_json}" 2>/dev/null || true)"
 
@@ -2039,6 +2068,7 @@ build_eligibility() {
   SUPPORT_TARGET_DNS_SUFFIX="${target_dns_suffix}"
   SUPPORT_TARGET_URL="${target_url_cfg}"
   SUPPORT_TARGET_DOMAIN_SUFFIX="${target_domain_suffix}"
+  SUPPORT_MACHINE_NAME="${support_host_label}"
   SUPPORT_SELF_HOST_NAME="${support_host_label}"
   SUPPORT_BACKEND="${backend}"
   SUPPORT_REASON=""
@@ -2179,6 +2209,7 @@ write_state() {
     --arg support_target_id "${SUPPORT_TARGET_ID}" \
     --arg support_target_url "${SUPPORT_TARGET_URL:-}" \
     --arg support_target_dns_suffix "${SUPPORT_TARGET_DNS_SUFFIX}" \
+    --arg support_machine_name "${SUPPORT_MACHINE_NAME:-${SUPPORT_SELF_HOST_NAME:-}}" \
     --arg backend_state "${SUPPORT_BACKEND}" \
     --arg reason "${SUPPORT_REASON}" \
     --arg expires_at "${META_EXPIRES_AT}" \
@@ -2206,6 +2237,7 @@ write_state() {
       support_target_id:$support_target_id,
       support_target_url:$support_target_url,
       support_target_dns_suffix:$support_target_dns_suffix,
+      support_machine_name:$support_machine_name,
       backend_state:$backend_state,
       tailnet_match:$tailnet_match,
       eligible:$eligible,
@@ -2488,6 +2520,60 @@ disable_cmd() {
   cat "${STATE_FILE}"
 }
 
+revoke_all_cmd() {
+  local token_prefix deleted_count matched_count reason rc
+  build_eligibility
+
+  # Force virtual-keys cleanup semantics regardless of current runtime/meta state.
+  SUPPORT_MODE="virtual_keys_token"
+  if [[ -z "${SUPPORT_USER:-}" ]]; then
+    SUPPORT_USER="$(sanitize_username "$(bashio::config "support_user" "nodalia")")"
+  fi
+  token_prefix="$(virtual_keys_token_prefix)"
+  reason="logauth_cleanup"
+
+  set +e
+  virtual_keys_call "delete" "${SUPPORT_USER}" "" "${token_prefix}" "" "0"
+  rc=$?
+  set -e
+
+  if (( rc != 0 )); then
+    USER_OP_REASON="support_virtual_keys_revoke_all_failed:${VK_LAST_REASON:-virtual_keys_call_failed}"
+    audit_event "revoke_all_failed" "${reason}" "${USER_OP_REASON}"
+    clear_meta
+    write_state false false >/dev/null 2>&1 || true
+    jq -nc \
+      --arg action "revoke-all" \
+      --arg error "support_revoke_all_failed" \
+      --arg reason "${USER_OP_REASON}" \
+      --arg support_user "${SUPPORT_USER:-}" \
+      '{ok:false,action:$action,error:$error,reason:$reason,support_user:$support_user}'
+    return 1
+  fi
+
+  deleted_count="$(sanitize_uint "$(jq -r '.deleted_count // 0' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "0")")"
+  matched_count="$(sanitize_uint "$(jq -r '.matched_count // 0' <<< "${VK_LAST_JSON}" 2>/dev/null || echo "0")")"
+
+  SUPPORT_VK_TOKEN_NAME=""
+  SUPPORT_VK_TOKEN_ID=""
+  SUPPORT_VK_TOKEN_VALUE=""
+  SUPPORT_VK_LOGIN_PATH=""
+  SUPPORT_VK_LOGIN_URL=""
+  SUPPORT_VK_TOKEN_COUNT="0"
+  SUPPORT_VK_TOKEN_PRESENT="false"
+  clear_meta
+  write_notify_state "disabled" "" "" "" "${SUPPORT_SELF_HOST_NAME:-}"
+  write_state false false >/dev/null 2>&1 || true
+  audit_event "revoke_all" "${reason}" "deleted_count=${deleted_count};matched_count=${matched_count};prefix=${token_prefix}"
+  jq -nc \
+    --arg action "revoke-all" \
+    --arg support_user "${SUPPORT_USER:-}" \
+    --arg token_prefix "${token_prefix}" \
+    --argjson deleted_count "${deleted_count}" \
+    --argjson matched_count "${matched_count}" \
+    '{ok:true,action:$action,support_user:$support_user,token_prefix:$token_prefix,deleted_count:$deleted_count,matched_count:$matched_count}'
+}
+
 notify_test_cmd() {
   local test_token_name login_base telegram_debug_snapshot
   build_eligibility
@@ -2540,7 +2626,7 @@ audit_cmd() {
 debug_cmd() {
   local cfg_enabled cfg_dns cfg_user
   local cfg_virtual_keys_token_prefix cfg_target_url cfg_target_domain_suffix
-  local cfg_notify_telegram_enabled cfg_notify_telegram_bot_token cfg_notify_telegram_chat_id cfg_notify_telegram_chat_id_normalized
+  local cfg_notify_telegram_enabled cfg_notify_telegram_bot_token cfg_notify_telegram_bot_token_raw cfg_notify_telegram_chat_id cfg_notify_telegram_chat_id_normalized
   local cfg_notify_telegram_bot_probe_status cfg_notify_telegram_bot_probe_reason
   local cfg_notify_telegram_bot_probe_last_http_status cfg_notify_telegram_bot_probe_last_description cfg_notify_telegram_bot_probe_last_error
   local cfg_notify_telegram_bot_id cfg_notify_telegram_bot_username cfg_notify_telegram_bot_name
@@ -2551,7 +2637,7 @@ debug_cmd() {
   local cfg_notify_telegram_chat_probe_last_error
   local cfg_notify_telegram_chat_probe_attempted_ids
   local cfg_notify_telegram_bot_token_set cfg_notify_telegram_chat_id_set
-  local status_json self_dns_name self_host_name magic_dns_suffix current_tailnet_name
+  local status_json self_dns_name self_host_name self_machine_name magic_dns_suffix current_tailnet_name
   local lookup_forced lookup_rc lookup_hint
   local debug_eligible now_epoch debug_active
   local state_snapshot meta_snapshot notify_snapshot telegram_debug_snapshot
@@ -2569,11 +2655,12 @@ debug_cmd() {
   if telegram_notify_enabled; then
     cfg_notify_telegram_enabled=true
   fi
-  cfg_notify_telegram_bot_token="$(trim_spaces "$(bashio::config "support_notify_telegram_bot_token" "" 2>/dev/null || true)")"
+  cfg_notify_telegram_bot_token_raw="$(trim_spaces "$(bashio::config "support_notify_telegram_bot_token" "" 2>/dev/null || true)")"
+  cfg_notify_telegram_bot_token="$(mask_secret "${cfg_notify_telegram_bot_token_raw}")"
   cfg_notify_telegram_chat_id="$(trim_spaces "$(bashio::config "support_notify_telegram_chat_id" "" 2>/dev/null || true)")"
   cfg_notify_telegram_chat_id_normalized="$(normalize_telegram_chat_target "${cfg_notify_telegram_chat_id}")"
   cfg_notify_telegram_bot_token_set=false
-  if [[ -n "${cfg_notify_telegram_bot_token}" ]]; then
+  if [[ -n "${cfg_notify_telegram_bot_token_raw}" ]]; then
     cfg_notify_telegram_bot_token_set=true
   fi
   cfg_notify_telegram_chat_id_set=false
@@ -2600,8 +2687,8 @@ debug_cmd() {
   cfg_notify_telegram_chat_probe_last_description=""
   cfg_notify_telegram_chat_probe_last_error=""
   cfg_notify_telegram_chat_probe_attempted_ids=""
-  if [[ -n "${cfg_notify_telegram_bot_token}" ]]; then
-    telegram_probe_bot_identity "${cfg_notify_telegram_bot_token}" || true
+  if [[ -n "${cfg_notify_telegram_bot_token_raw}" ]]; then
+    telegram_probe_bot_identity "${cfg_notify_telegram_bot_token_raw}" || true
     cfg_notify_telegram_bot_probe_status="${TELEGRAM_BOT_PROBE_STATUS:-error}"
     cfg_notify_telegram_bot_probe_reason="${TELEGRAM_BOT_PROBE_REASON:-}"
     cfg_notify_telegram_bot_probe_last_http_status="${TELEGRAM_BOT_PROBE_LAST_HTTP_STATUS:-}"
@@ -2610,7 +2697,7 @@ debug_cmd() {
     cfg_notify_telegram_bot_id="${TELEGRAM_BOT_ID:-}"
     cfg_notify_telegram_bot_username="${TELEGRAM_BOT_USERNAME:-}"
     cfg_notify_telegram_bot_name="${TELEGRAM_BOT_NAME:-}"
-    telegram_probe_chat_access "${cfg_notify_telegram_bot_token}" "${cfg_notify_telegram_chat_id}" || true
+    telegram_probe_chat_access "${cfg_notify_telegram_bot_token_raw}" "${cfg_notify_telegram_chat_id}" || true
     cfg_notify_telegram_chat_probe_status="${TELEGRAM_CHAT_PROBE_STATUS:-error}"
     cfg_notify_telegram_chat_probe_reason="${TELEGRAM_CHAT_PROBE_REASON:-}"
     cfg_notify_telegram_chat_probe_input="${TELEGRAM_CHAT_PROBE_INPUT:-${cfg_notify_telegram_chat_id}}"
@@ -2667,6 +2754,10 @@ debug_cmd() {
 
   self_dns_name="$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)"
   self_host_name="$(jq -r '.Self.HostName // empty' <<< "${status_json}" 2>/dev/null || true)"
+  self_machine_name="$(machine_name_from_dns "${self_dns_name}")"
+  if [[ -z "${self_machine_name}" ]]; then
+    self_machine_name="$(sanitize_hostname_label "${self_host_name}")"
+  fi
   magic_dns_suffix="$(jq -r '.CurrentTailnet.MagicDNSSuffix // empty' <<< "${status_json}" 2>/dev/null || true)"
   current_tailnet_name="$(jq -r '.CurrentTailnet.Name // empty' <<< "${status_json}" 2>/dev/null || true)"
 
@@ -2725,6 +2816,7 @@ debug_cmd() {
     --arg user_op_path "${USER_OP_PATH:-}" \
     --arg self_dns_name "${self_dns_name}" \
     --arg self_host_name "${self_host_name}" \
+    --arg self_machine_name "${self_machine_name}" \
     --arg magic_dns_suffix "${magic_dns_suffix}" \
     --arg current_tailnet_name "${current_tailnet_name}" \
     --arg api_last_rc "${API_LAST_RC:-}" \
@@ -2790,6 +2882,7 @@ debug_cmd() {
         backend_state:$backend_state,
         self_dns_name:$self_dns_name,
         self_host_name:$self_host_name,
+        self_machine_name:$self_machine_name,
         current_tailnet_name:$current_tailnet_name,
         magic_dns_suffix:$magic_dns_suffix
       },
@@ -2905,6 +2998,9 @@ case "${1:-status}" in
   disable)
     disable_cmd
     ;;
+  revoke-all|revoke_all)
+    revoke_all_cmd
+    ;;
   notifytest|notify-test)
     notify_test_cmd
     ;;
@@ -2921,7 +3017,7 @@ case "${1:-status}" in
     fi
     ;;
   *)
-    echo "Usage: support-tunnel [status|enable|disable|notifytest|audit|debug]" >&2
+    echo "Usage: support-tunnel [status|enable|disable|revoke-all|notifytest|audit|debug]" >&2
     exit 2
     ;;
 esac

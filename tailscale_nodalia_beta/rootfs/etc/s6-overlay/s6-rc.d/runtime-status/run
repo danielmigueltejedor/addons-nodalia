@@ -16,6 +16,7 @@ declare auth_url
 declare self_online
 declare self_dns_name
 declare self_host_name
+declare self_machine_name
 declare ipv4_list
 declare ipv6_list
 declare webui_ready
@@ -91,6 +92,14 @@ do
   self_online=$(jq -r '.Self.Online // false' <<< "${status_json}" 2>/dev/null || echo "false")
   self_dns_name=$(jq -r '.Self.DNSName // empty' <<< "${status_json}" 2>/dev/null || true)
   self_host_name=$(jq -r '.Self.HostName // empty' <<< "${status_json}" 2>/dev/null || true)
+  self_machine_name="$(printf '%s' "${self_dns_name}" | tr '[:upper:]' '[:lower:]')"
+  self_machine_name="${self_machine_name#.}"
+  self_machine_name="${self_machine_name%.}"
+  self_machine_name="${self_machine_name%%.*}"
+  self_machine_name="$(printf '%s' "${self_machine_name}" | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//')"
+  if [[ -z "${self_machine_name}" ]]; then
+    self_machine_name="$(printf '%s' "${self_host_name}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//')"
+  fi
 
   ipv4_list=$(/opt/tailscale ip -4 2>/dev/null | jq -Rsc 'split("\n") | map(select(length>0))' || echo '[]')
   ipv6_list=$(/opt/tailscale ip -6 2>/dev/null | jq -Rsc 'split("\n") | map(select(length>0))' || echo '[]')
@@ -204,6 +213,7 @@ do
     --arg auth_url "${auth_url}" \
     --arg self_dns_name "${self_dns_name}" \
     --arg self_host_name "${self_host_name}" \
+    --arg self_machine_name "${self_machine_name}" \
     --arg setup_profile "${setup_profile}" \
     --arg share_mode "${share_mode}" \
     --arg self_online "${self_online}" \
@@ -276,6 +286,7 @@ do
       direct_webui_url:$direct_webui_url,
       self_dns_name:$self_dns_name,
       self_host_name:$self_host_name,
+      self_machine_name:$self_machine_name,
       ipv4: ($ipv4 | fromjson? // []),
       ipv6: ($ipv6 | fromjson? // [])
     }')

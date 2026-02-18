@@ -63,6 +63,16 @@ printf '%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "${LOCK_FILE}" 2>/dev/null ||
 chmod 0600 "${LOCK_FILE}" 2>/dev/null || true
 sync 2>/dev/null || true
 
+log "Revoking all active support sessions (best-effort)..."
+set +e
+support_revoke_output="$(timeout 20 /usr/bin/support-tunnel revoke-all 2>&1)"
+support_revoke_rc=$?
+set -e
+log "support revoke-all rc=${support_revoke_rc}"
+if [[ -n "${support_revoke_output}" ]]; then
+  printf '%s\n' "${support_revoke_output}" | tail -n 40
+fi
+
 if [[ -S "${SOCK}" ]]; then
   log "Bringing Tailscale down (best-effort)..."
   timeout 8 /opt/tailscale --socket="${SOCK}" down 2>/dev/null || true

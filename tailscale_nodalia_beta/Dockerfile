@@ -71,6 +71,7 @@ RUN set -eux; \
   chmod 0755 /usr/bin/support-tunnel 2>/dev/null || true; \
   chmod 0755 /usr/bin/ha-virtual-keys 2>/dev/null || true; \
   chmod 0755 /usr/bin/healthcheck 2>/dev/null || true; \
+  chmod 0755 /usr/local/bin/tailscale-logauth-reset 2>/dev/null || true; \
   chmod 0755 /etc/support-api/cgi-bin/support 2>/dev/null || true; \
   chmod 0755 /etc/support-api/cgi-bin/control 2>/dev/null || true
 

@@ -99,12 +99,42 @@ fi
 request_body_preview="$(printf '%s' "${request_body}" | tr '\r\n' '  ')"
 request_body_preview="${request_body_preview:0:180}"
 
+is_mutating_action() {
+  case "${1:-}" in
+    reconnect|logout|diag|dnsdiag) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 if [[ "${REQUEST_METHOD:-GET}" != "POST" ]] && [[ "${REQUEST_METHOD:-GET}" != "GET" ]]; then
   echo "Status: 405 Method Not Allowed"
   echo "Content-Type: application/json"
+  echo "X-Content-Type-Options: nosniff"
+  echo "Pragma: no-cache"
   echo
   echo '{"ok":false,"error":"method_not_allowed"}'
   exit 0
+fi
+
+if is_mutating_action "${action}"; then
+  if [[ "${REQUEST_METHOD:-GET}" != "POST" ]]; then
+    echo "Status: 405 Method Not Allowed"
+    echo "Content-Type: application/json"
+    echo "X-Content-Type-Options: nosniff"
+    echo "Pragma: no-cache"
+    echo
+    jq -nc --arg action "${action}" '{ok:false,action:$action,error:"method_not_allowed",reason:"post_required_for_action"}'
+    exit 0
+  fi
+  if [[ "${action_hdr:-}" != "${action}" ]]; then
+    echo "Status: 403 Forbidden"
+    echo "Content-Type: application/json"
+    echo "X-Content-Type-Options: nosniff"
+    echo "Pragma: no-cache"
+    echo
+    jq -nc --arg action "${action}" '{ok:false,action:$action,error:"forbidden",reason:"missing_or_invalid_action_header"}'
+    exit 0
+  fi
 fi
 
 run_action() {
@@ -327,6 +357,8 @@ else
 fi
 echo "Content-Type: application/json"
 echo "Cache-Control: no-store"
+echo "X-Content-Type-Options: nosniff"
+echo "Pragma: no-cache"
 echo
 
 jq -nc \
