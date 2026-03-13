@@ -635,7 +635,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.0</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.1</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -1516,6 +1516,41 @@
       }, ms);
     }
 
+    function applyLoggedOutUiState(authUrlHint = "") {
+      const authCandidate = String(
+        authUrlHint ||
+        lastRuntime?.auth_url ||
+        lastOnboarding?.auth_url ||
+        ""
+      );
+      lastRuntime = Object.assign({}, lastRuntime || {}, {
+        backend_state: "NeedsLogin",
+        webui_ready: false,
+        webui_ready_streak: 0
+      });
+      lastOnboarding = Object.assign({}, lastOnboarding || {}, {
+        backend_state: "NeedsLogin",
+        needs_login: true,
+        auth_url: authCandidate
+      });
+      liveWebUiReadyStreak = 0;
+      setStepsVisible(true);
+      setActiveStep("auth");
+      setUiDisabled(openWebuiBtn, true);
+      setUiDisabled(openDirectBtn, true);
+      updateStateView("Desconectado. Login requerido.", "bad");
+      if (authCandidate) {
+        loginUrlInput.value = authCandidate;
+        openBtn.href = authCandidate;
+        loginBox.hidden = false;
+        okBox.hidden = true;
+      } else {
+        loginBox.hidden = true;
+        okBox.hidden = false;
+      }
+      renderSuggestions();
+    }
+
     function appendLogoutTrace(text) {
       if (!text) {
         return;
@@ -2104,6 +2139,7 @@
       clearLogoutTrace();
       let logoutRequestOk = false;
       let logoutFailed = false;
+      let logoutAuthUrlHint = "";
       try {
         const endpointBase = ingressUrl("control-api");
         const endpointPath = ingressUrl("control-api/logout");
@@ -2151,6 +2187,7 @@
           }
         }
         data = result.data || {};
+        logoutAuthUrlHint = String(data?.auth_url || "");
         const responseAction = String(data?.action || "").toLowerCase();
         const responseLooksLogout = responseAction === "logout";
         const responseLooksStatus = responseAction === "status";
@@ -2174,13 +2211,12 @@
         endUiAction();
         let finalMessage = "";
         let transitionMatched = false;
-        let reloadAfterSuccess = logoutRequestOk;
         if (logoutRequestOk) {
           const transition = await waitForBackendTransition(["NeedsLogin", "NeedsMachineAuth", "NoState", "Stopped"], 20000, 800);
           if (transition.matched) {
+            logoutAuthUrlHint = String(transition.status?.auth_url || logoutAuthUrlHint || "");
             transitionMatched = true;
             finalMessage = "Desconectado • listo para nueva tailnet.";
-            reloadAfterSuccess = true;
           } else {
             let onboardingState = "";
             try {
@@ -2191,14 +2227,16 @@
             if (isAlreadyLoggedOutState(onboardingState)) {
               transitionMatched = true;
               finalMessage = "Desconectado • listo para nueva tailnet.";
-              reloadAfterSuccess = true;
             } else {
               const state = String(transition.status?.backend_state || onboardingState || "Unknown");
-              finalMessage = "Reset solicitado (backend: " + state + "). Recargando panel para sincronizar estado...";
+              finalMessage = "Reset solicitado (backend: " + state + "). Sincronizando estado en vivo...";
             }
           }
         }
         resetStateCaches();
+        if (logoutRequestOk) {
+          applyLoggedOutUiState(logoutAuthUrlHint);
+        }
         await refreshRuntime(1800);
         await loadState();
         clearLogoutConfirm();
@@ -2209,12 +2247,12 @@
         } else {
           showLogoutHint("Operacion finalizada", 1800);
         }
-        if (reloadAfterSuccess) {
+        if (logoutRequestOk) {
           opMessage.textContent = transitionMatched
-            ? "Desconectado • listo para nueva tailnet. Recargando panel..."
-            : "Logauth enviado. Recargando panel para actualizar estado...";
-          showLogoutHint("Recargando panel...", 2600);
-          reloadPanelSoon(850);
+            ? "Desconectado • listo para nueva tailnet."
+            : "Logauth enviado. Actualizando estado en vivo...";
+          showLogoutHint(transitionMatched ? "Reset confirmado" : "Sincronizando estado...", 2600);
+          schedulePoll(700);
         }
         if (transitionMatched) {
           clearLogoutTrace();

@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.1 - 2026-03-14
+### Fixed
+- Logauth / onboarding:
+  - se mantiene el flujo de `logauth` de la estable (incluyendo fallbacks de endpoint) y se mejora la sincronización de estado del panel tras el reset.
+  - el panel aplica estado local de login requerido y refresco en vivo (`runtime.json`/`onboarding.json`) sin depender de recarga manual de Home Assistant.
+- Web UI del panel:
+  - marcador de build actualizado a `3.0.1` para validar visualmente la versión cargada en caché.
+
 ## 3.0.0 - 2026-02-18
 ### Changed
 - Promoción a canal estable de la línea `3.0.0` (base de `3.0.0-rc3` en beta).
