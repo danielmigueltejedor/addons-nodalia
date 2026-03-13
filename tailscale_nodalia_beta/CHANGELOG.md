@@ -4,6 +4,12 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.1-rc5 - 2026-03-14
+### Fixed
+- Logauth / control-api:
+  - se añade compatibilidad explícita para `GET` en acción `logout` cuando llega por ruta dedicada, para evitar bloqueos `post_required_for_action` en entornos/proxies que transforman `POST`.
+  - se mantiene el hardening para el resto de acciones mutables (`reconnect`, `diag`, `dnsdiag`) que siguen exigiendo `POST`.
+
 ## 3.0.1-rc4 - 2026-03-14
 ### Fixed
 - Logauth / onboarding:

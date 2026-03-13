@@ -116,8 +116,14 @@ if [[ "${REQUEST_METHOD:-GET}" != "POST" ]] && [[ "${REQUEST_METHOD:-GET}" != "G
   exit 0
 fi
 
+request_method="${REQUEST_METHOD:-GET}"
+allow_get_logout_compat=false
+if [[ "${action}" == "logout" ]] && [[ "${request_method}" == "GET" ]]; then
+  allow_get_logout_compat=true
+fi
+
 if is_mutating_action "${action}"; then
-  if [[ "${REQUEST_METHOD:-GET}" != "POST" ]]; then
+  if [[ "${request_method}" != "POST" ]] && [[ "${allow_get_logout_compat}" != "true" ]]; then
     echo "Status: 405 Method Not Allowed"
     echo "Content-Type: application/json"
     echo "X-Content-Type-Options: nosniff"
@@ -126,21 +132,35 @@ if is_mutating_action "${action}"; then
     jq -nc --arg action "${action}" '{ok:false,action:$action,error:"method_not_allowed",reason:"post_required_for_action"}'
     exit 0
   fi
-  header_matches=false
-  if [[ "${action_hdr:-}" == "${action}" ]]; then
-    header_matches=true
-  fi
+
   action_from_local_route=false
   if [[ -n "${action_script:-}" ]] || [[ -n "${action_path:-}" ]] || [[ -n "${action_body:-}" ]]; then
     action_from_local_route=true
   fi
-  if [[ "${header_matches}" != "true" ]] && [[ "${action_from_local_route}" != "true" ]]; then
+
+  if [[ "${request_method}" == "POST" ]]; then
+    header_matches=false
+    if [[ "${action_hdr:-}" == "${action}" ]]; then
+      header_matches=true
+    fi
+    if [[ "${header_matches}" != "true" ]] && [[ "${action_from_local_route}" != "true" ]]; then
+      echo "Status: 403 Forbidden"
+      echo "Content-Type: application/json"
+      echo "X-Content-Type-Options: nosniff"
+      echo "Pragma: no-cache"
+      echo
+      jq -nc --arg action "${action}" '{ok:false,action:$action,error:"forbidden",reason:"missing_or_invalid_action_authorization"}'
+      exit 0
+    fi
+  fi
+
+  if [[ "${allow_get_logout_compat}" == "true" ]] && [[ "${action_from_local_route}" != "true" ]]; then
     echo "Status: 403 Forbidden"
     echo "Content-Type: application/json"
     echo "X-Content-Type-Options: nosniff"
     echo "Pragma: no-cache"
     echo
-    jq -nc --arg action "${action}" '{ok:false,action:$action,error:"forbidden",reason:"missing_or_invalid_action_authorization"}'
+    jq -nc --arg action "${action}" '{ok:false,action:$action,error:"forbidden",reason:"logout_get_requires_route"}'
     exit 0
   fi
 fi
