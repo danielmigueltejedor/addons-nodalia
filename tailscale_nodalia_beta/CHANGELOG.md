@@ -4,6 +4,14 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.1-rc2 - 2026-03-13
+### Fixed
+- Logauth / control-api:
+  - se corrige la autorización de acciones mutables para aceptar también acciones resueltas por ruta/script/body en `POST`, además de `X-Nodalia-Action`.
+  - evita falsos `forbidden` cuando algún proxy intermedio no preserva la cabecera personalizada y restablece el flujo de `Logauth` desde onboarding.
+- Support API:
+  - se aplica la misma lógica de autorización compatible en acciones mutables (`enable/disable/notify-test`) para mantener consistencia entre endpoints.
+
 ## 3.0.1-rc1 - 2026-03-13
 ### Changed
 - Release candidate de `3.0.1` para validación final en el canal beta.

@@ -636,7 +636,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.1-rc1</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.1-rc2</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -2213,11 +2213,27 @@
         const responseAction = String(data?.action || "").toLowerCase();
         const responseLooksLogout = responseAction === "logout";
         const responseLooksStatus = responseAction === "status";
-        logoutRequestOk = Boolean(data?.ok) && (responseLooksLogout || responseLooksStatus || responseAction === "");
+        const responseError = String(data?.error || "").toLowerCase();
+        const responseReason = String(data?.reason || "").toLowerCase();
+        const responseRc = Number(data?.rc);
+        const hasResponseRc = Number.isFinite(responseRc);
+        const responseRejected = (
+          responseError === "forbidden" ||
+          responseError === "method_not_allowed" ||
+          responseReason === "post_required_for_action" ||
+          responseReason === "missing_or_invalid_action_authorization" ||
+          responseReason === "missing_or_invalid_action_header"
+        );
+        const actionAccepted = (responseLooksLogout || responseLooksStatus);
+        const actionAcceptedWithRc = actionAccepted && (!hasResponseRc || responseRc === 0);
+        logoutRequestOk = !responseRejected && (Boolean(data?.ok) || actionAcceptedWithRc || responseAction === "");
         if (logoutRequestOk) {
           opMessage.textContent = responseLooksStatus
             ? "Logout solicitado (action=status). Confirmando estado real..."
             : "Logout solicitado. Confirmando estado real...";
+        } else if (responseRejected) {
+          opMessage.textContent = "Solicitud de logout bloqueada por politica API (" + (responseReason || responseError || "forbidden") + ").";
+          logoutFailed = true;
         } else if (responseAction && !responseLooksLogout) {
           opMessage.textContent = "La llamada no ejecuto Logauth (action=" + responseAction + ").";
           logoutFailed = true;
