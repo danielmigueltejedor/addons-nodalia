@@ -4,6 +4,13 @@ All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## 3.0.1-rc4 - 2026-03-14
+### Fixed
+- Logauth / onboarding:
+  - se replica el orden de intentos de la estable para `logout` (primero `POST /control-api` con `action=logout` en body), manteniendo compatibilidad con rutas dedicadas.
+  - `action=status` ya no se considera éxito automático: solo cuenta como válido si refleja transición real de estado (`NeedsLogin`/`NeedsMachineAuth`/`NoState`/`Stopped`) o incluye `auth_url`.
+  - se elimina la recarga forzada del panel tras `logauth`; ahora el onboarding sincroniza en vivo con polling y refresco de estado, evitando tener que recargar Home Assistant manualmente.
+
 ## 3.0.1-rc3 - 2026-03-14
 ### Fixed
 - Logauth / onboarding:

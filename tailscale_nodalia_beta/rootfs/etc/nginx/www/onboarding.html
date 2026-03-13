@@ -636,7 +636,7 @@
         <button id="session-download-btn" type="button" class="ghost">Descargar diagnostico</button>
       </div>
     </section>
-    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.1-rc3</code>.</p>
+    <p class="small">Nota: esta pagina lee <code>onboarding.json</code> y <code>runtime.json</code> generados por la aplicacion. UI build: <code id="ui-build-version">3.0.1-rc4</code>.</p>
   </main>
   <script>
     const stateEl = document.getElementById("state");
@@ -2196,30 +2196,47 @@
           return { response, data };
         };
 
-        let result = null;
-        const attempts = [
-          { method: "POST", url: endpointPath, useBodyAction: false },
-          { method: "POST", url: endpointBase, useBodyAction: true },
-        ];
-        for (const item of attempts) {
-          result = await attempt(item.method, item.url, item.useBodyAction);
-          const responseData = result?.data || {};
-          const responseAction = String(responseData.action || "").toLowerCase();
-          const responseError = String(responseData.error || "").toLowerCase();
-          const responseReason = String(responseData.reason || "").toLowerCase();
-          const responseRc = Number(responseData.rc);
-          const hasResponseRc = Number.isFinite(responseRc);
-          const responseRejected = (
+        const isRejectedResponse = (payloadObj) => {
+          const responseError = String(payloadObj?.error || "").toLowerCase();
+          const responseReason = String(payloadObj?.reason || "").toLowerCase();
+          return (
             responseError === "forbidden" ||
             responseError === "method_not_allowed" ||
             responseReason === "post_required_for_action" ||
             responseReason === "missing_or_invalid_action_authorization" ||
             responseReason === "missing_or_invalid_action_header"
           );
-          const actionAccepted = (responseAction === "logout" || responseAction === "status");
+        };
+        const isStatusTransitionAccepted = (payloadObj) => {
+          const responseState = String(payloadObj?.backend_state || "");
+          const responseAuthUrl = String(payloadObj?.auth_url || "");
+          return isAlreadyLoggedOutState(responseState) || responseAuthUrl.length > 0;
+        };
+        const isAttemptAccepted = (payloadObj) => {
+          const responseAction = String(payloadObj?.action || "").toLowerCase();
+          const responseRc = Number(payloadObj?.rc);
+          const hasResponseRc = Number.isFinite(responseRc);
+          if (isRejectedResponse(payloadObj)) {
+            return false;
+          }
+          const statusTransitionAccepted = isStatusTransitionAccepted(payloadObj);
+          const actionAccepted = (
+            responseAction === "logout" ||
+            (responseAction === "status" && statusTransitionAccepted)
+          );
           const actionAcceptedWithRc = actionAccepted && (!hasResponseRc || responseRc === 0);
-          const attemptAccepted = !responseRejected && (Boolean(responseData.ok) || actionAcceptedWithRc || responseAction === "");
-          if (attemptAccepted) {
+          return actionAcceptedWithRc || (Boolean(payloadObj?.ok) && (responseAction === "" || actionAccepted));
+        };
+
+        let result = null;
+        const attempts = [
+          { method: "POST", url: endpointBase, useBodyAction: true },
+          { method: "POST", url: endpointPath, useBodyAction: false },
+          { method: "POST", url: endpointPath, useBodyAction: true },
+        ];
+        for (const item of attempts) {
+          result = await attempt(item.method, item.url, item.useBodyAction);
+          if (isAttemptAccepted(result?.data || {})) {
             break;
           }
         }
@@ -2228,20 +2245,15 @@
         const responseAction = String(data?.action || "").toLowerCase();
         const responseLooksLogout = responseAction === "logout";
         const responseLooksStatus = responseAction === "status";
-        const responseError = String(data?.error || "").toLowerCase();
-        const responseReason = String(data?.reason || "").toLowerCase();
+        const responseError = String(data?.error || "");
+        const responseReason = String(data?.reason || "");
         const responseRc = Number(data?.rc);
         const hasResponseRc = Number.isFinite(responseRc);
-        const responseRejected = (
-          responseError === "forbidden" ||
-          responseError === "method_not_allowed" ||
-          responseReason === "post_required_for_action" ||
-          responseReason === "missing_or_invalid_action_authorization" ||
-          responseReason === "missing_or_invalid_action_header"
-        );
-        const actionAccepted = (responseLooksLogout || responseLooksStatus);
+        const responseRejected = isRejectedResponse(data);
+        const statusTransitionAccepted = isStatusTransitionAccepted(data);
+        const actionAccepted = (responseLooksLogout || (responseLooksStatus && statusTransitionAccepted));
         const actionAcceptedWithRc = actionAccepted && (!hasResponseRc || responseRc === 0);
-        logoutRequestOk = !responseRejected && (Boolean(data?.ok) || actionAcceptedWithRc || responseAction === "");
+        logoutRequestOk = !responseRejected && (actionAcceptedWithRc || (Boolean(data?.ok) && (responseAction === "" || actionAccepted)));
         if (logoutRequestOk) {
           opMessage.textContent = responseLooksStatus
             ? "Logout solicitado (action=status). Confirmando estado real..."
@@ -2264,14 +2276,12 @@
         endUiAction();
         let finalMessage = "";
         let transitionMatched = false;
-        let reloadAfterSuccess = logoutRequestOk;
         if (logoutRequestOk) {
           const transition = await waitForBackendTransition(["NeedsLogin", "NeedsMachineAuth", "NoState", "Stopped"], 20000, 800);
           if (transition.matched) {
             logoutAuthUrlHint = String(transition.status?.auth_url || logoutAuthUrlHint || "");
             transitionMatched = true;
             finalMessage = "Desconectado • listo para nueva tailnet.";
-            reloadAfterSuccess = true;
           } else {
             let onboardingState = "";
             try {
@@ -2282,10 +2292,9 @@
             if (isAlreadyLoggedOutState(onboardingState)) {
               transitionMatched = true;
               finalMessage = "Desconectado • listo para nueva tailnet.";
-              reloadAfterSuccess = true;
             } else {
               const state = String(transition.status?.backend_state || onboardingState || "Unknown");
-              finalMessage = "Reset solicitado (backend: " + state + "). Recargando panel para sincronizar estado...";
+              finalMessage = "Reset solicitado (backend: " + state + "). Sincronizando estado en vivo...";
             }
           }
         }
@@ -2303,12 +2312,12 @@
         } else {
           showLogoutHint("Operacion finalizada", 1800);
         }
-        if (reloadAfterSuccess) {
+        if (logoutRequestOk) {
           opMessage.textContent = transitionMatched
-            ? "Desconectado • listo para nueva tailnet. Recargando panel..."
-            : "Logauth enviado. Recargando panel para actualizar estado...";
-          showLogoutHint("Recargando panel...", 2600);
-          reloadPanelSoon(650, "logauth");
+            ? "Desconectado • listo para nueva tailnet."
+            : "Logauth enviado. Actualizando estado en vivo...";
+          showLogoutHint(transitionMatched ? "Reset confirmado" : "Sincronizando estado...", 2600);
+          schedulePoll(700);
         }
         if (transitionMatched) {
           clearLogoutTrace();
