@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-beta.23
+- Fixed TypeScript build regression introduced in `basic-information-server` identity fallback helpers where `hash()` could return `undefined`.
+- `hash()` now always returns a string fallback, unblocking addon image builds on Home Assistant Supervisor.
+
 ## 0.1.0-beta.22
 - Fixed Apple Home room-selection parsing in `ServiceArea.selectAreas` when `newAreas` arrives in non-plain-array payload shapes (iterable/array-like objects).
 - Added robust area-id extraction for iterable and typed-array inputs, plus object `valueOf()` numeric wrappers.

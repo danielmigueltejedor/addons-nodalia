@@ -221,12 +221,12 @@ function ellipse(maxLength: number, value?: string) {
   return trimToLength(value, maxLength, "...");
 }
 
-function hash(maxLength: number, value?: string) {
+function hash(maxLength: number, value?: string): string {
   const hashLength = 4;
   const suffix = crypto
     .createHash("md5")
     .update(value ?? "")
     .digest("hex")
     .substring(0, hashLength);
-  return trimToLength(value, maxLength, suffix);
+  return trimToLength(value, maxLength, suffix) ?? suffix;
 }
