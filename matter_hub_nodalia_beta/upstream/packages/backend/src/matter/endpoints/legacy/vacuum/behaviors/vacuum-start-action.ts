@@ -14,8 +14,9 @@ export function resolveVacuumStartAction(agent: Agent): HomeAssistantAction {
     ) as VacuumServiceAreaServerBase;
     const selectedAreasAction = serviceArea.getSelectedAreasAction();
     if (selectedAreasAction == null) {
+      const debugSnapshot = serviceArea.getSelectionDebugSnapshot();
       console.debug(
-        "VacuumStartAction using fallback vacuum.start (no selected service areas)",
+        `VacuumStartAction using fallback vacuum.start (no selected service areas) snapshot=${JSON.stringify(debugSnapshot)}`,
       );
       return DEFAULT_START_ACTION;
     }

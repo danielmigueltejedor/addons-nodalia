@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.25
+- Fixed a remaining selective-clean race where `ServiceArea.selectAreas` stored IDs correctly, but immediate `start` still fell back to `vacuum.start`.
+- `getSelectedAreasAction` now always attempts to build an action from stored selected IDs and can reuse a cached selective-clean action when temporary runtime state is incomplete.
+- Relaxed selected-area action value resolution to fall back to numeric Matter area IDs when per-area action mapping is temporarily unavailable.
+- Added deeper fallback diagnostics (`VacuumStartAction`/`VacuumServiceArea` snapshots) to explain exactly why selective-clean action generation failed if fallback happens again.
+
 ## 0.1.0-beta.24
 - Fixed Apple Home selective-clean flow where valid `selectAreas` requests were dropped before start due over-strict filtering against in-memory action-value maps.
 - `selectAreas` now persists normalized requested area IDs even when action-value mapping is temporarily unavailable.

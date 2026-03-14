@@ -46,6 +46,9 @@ export class VacuumServiceAreaServerBase extends Base {
   #data: VacuumServiceAreaData | undefined;
   #actionValuesByAreaId = new Map<number, VacuumServiceAreaActionValue>();
   #selectedMatterAreaIds: number[] = [];
+  #cachedSelectedAreasAction:
+    | { action: string; data: Record<string, unknown> }
+    | undefined;
 
   private get supportsMaps(): boolean {
     const features = this.features as Record<string, unknown>;
@@ -203,6 +206,9 @@ export class VacuumServiceAreaServerBase extends Base {
 
     const state = this.state as unknown as MutableServiceAreaState;
     state.selectedAreas = selectedAreas;
+    this.#cachedSelectedAreasAction =
+      this.buildSelectedAreasActionFromIds(selectedAreas) ??
+      this.#cachedSelectedAreasAction;
     console.debug(
       `VacuumServiceArea selectAreas status=${response.status} selected=${JSON.stringify(this.#selectedMatterAreaIds)} normalized=${JSON.stringify(normalizedAreas)} fromState=${JSON.stringify(selectedAreasFromState)} fromRequest=${JSON.stringify(selectedAreasFromRequest)} supportedAreas=${JSON.stringify(this.getKnownSupportedAreaIds())}`,
     );
@@ -214,12 +220,33 @@ export class VacuumServiceAreaServerBase extends Base {
     return this.#selectedMatterAreaIds;
   }
 
+  getSelectionDebugSnapshot(): {
+    selectedAreasFromState: number[];
+    storedSelectedAreas: number[];
+    knownSupportedAreas: number[];
+    knownActionValueAreas: number[];
+    hasData: boolean;
+    hasCachedSelectedAreasAction: boolean;
+  } {
+    return {
+      selectedAreasFromState: this.getNormalizedStateSelectedAreaIds(),
+      storedSelectedAreas: this.getSelectedMatterAreaIds(),
+      knownSupportedAreas: this.getKnownSupportedAreaIds(),
+      knownActionValueAreas: [...this.#actionValuesByAreaId.keys()],
+      hasData: this.#data != null,
+      hasCachedSelectedAreasAction: this.#cachedSelectedAreasAction != null,
+    };
+  }
+
   private setStoredSelectedAreas(areaIds: number[], source: string) {
     const normalized = toUniqueAreaIds(areaIds);
     if (areSameNumberArrays(this.#selectedMatterAreaIds, normalized)) {
       return;
     }
     this.#selectedMatterAreaIds = normalized;
+    if (normalized.length === 0) {
+      this.#cachedSelectedAreasAction = undefined;
+    }
     console.debug(
       `VacuumServiceArea stored selected areas updated (${source}): ${JSON.stringify(this.#selectedMatterAreaIds)}`,
     );
@@ -228,32 +255,33 @@ export class VacuumServiceAreaServerBase extends Base {
   getSelectedAreasAction():
     | { action: string; data: Record<string, unknown> }
     | undefined {
-    const data = this.#data;
-    if (data == null) {
-      return undefined;
-    }
-
     const selectedAreaIdsFromState = this.getNormalizedStateSelectedAreaIds();
     const selectedAreaIds =
       selectedAreaIdsFromState.length > 0
         ? selectedAreaIdsFromState
         : this.getSelectedMatterAreaIds();
 
-    const selectedAreaValues = selectedAreaIds
-      .map(
-        (areaId) =>
-          this.#actionValuesByAreaId.get(areaId) ??
-          (this.isKnownAreaId(areaId) ? areaId : undefined),
-      )
-      .filter(
-        (value): value is VacuumServiceAreaActionValue => value != null,
-      );
-
-    if (selectedAreaValues.length === 0) {
-      return undefined;
+    const selectedAction = this.buildSelectedAreasActionFromIds(selectedAreaIds);
+    if (selectedAction != null) {
+      this.#cachedSelectedAreasAction = selectedAction;
+      return selectedAction;
     }
 
-    return buildSelectAreasAction(data, selectedAreaValues);
+    if (selectedAreaIds.length > 0 && this.#cachedSelectedAreasAction != null) {
+      console.debug(
+        `VacuumServiceArea using cached selected-areas action for ids ${JSON.stringify(selectedAreaIds)}`,
+      );
+      return this.#cachedSelectedAreasAction;
+    }
+
+    if (selectedAreaIds.length > 0) {
+      const debugSnapshot = this.getSelectionDebugSnapshot();
+      console.debug(
+        `VacuumServiceArea could not build selected-areas action for ids ${JSON.stringify(selectedAreaIds)} snapshot=${JSON.stringify(debugSnapshot)}`,
+      );
+    }
+
+    return undefined;
   }
 
   // Optional command: emulate skip by re-selecting areas except the skipped one.
@@ -314,6 +342,27 @@ export class VacuumServiceAreaServerBase extends Base {
       this.#actionValuesByAreaId.has(areaId) ||
       this.getKnownSupportedAreaIds().includes(areaId)
     );
+  }
+
+  private buildSelectedAreasActionFromIds(
+    selectedAreaIds: number[],
+  ): { action: string; data: Record<string, unknown> } | undefined {
+    const data = this.#data;
+    if (data == null || selectedAreaIds.length === 0) {
+      return undefined;
+    }
+
+    const selectedAreaValues = selectedAreaIds
+      .map((areaId) => this.#actionValuesByAreaId.get(areaId) ?? areaId)
+      .filter(
+        (value): value is VacuumServiceAreaActionValue => value != null,
+      );
+
+    if (selectedAreaValues.length === 0) {
+      return undefined;
+    }
+
+    return buildSelectAreasAction(data, selectedAreaValues);
   }
 }
 
