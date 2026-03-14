@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-beta.10
+- Hardened robotic vacuum `ServiceArea` state initialization by enforcing safe defaults (`supportedMaps`, `supportedAreas`, `selectedAreas`, `currentArea`, `progress`) before behavior validation.
+- Added automatic disambiguation for duplicate area names on the same map to satisfy Matter `AreaInfo` uniqueness validation.
+- Improved unhandled rejection diagnostics to include full stack traces and nested AggregateError causes, making behavior initialization failures visible in logs.
+
 ## 0.1.0-beta.9
 - Fixed `ServiceArea` startup crash on Matter.js `0.16.10` by initializing `supportedMaps`, `supportedAreas`, `selectedAreas`, `currentArea`, and `progress` with safe defaults before behavior validation.
 - Prevented `Cannot read properties of undefined (reading 'length')` during robotic vacuum endpoint initialization.

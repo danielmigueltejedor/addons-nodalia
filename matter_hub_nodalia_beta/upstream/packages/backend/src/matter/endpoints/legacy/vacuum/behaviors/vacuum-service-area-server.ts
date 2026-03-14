@@ -115,6 +115,7 @@ class VacuumServiceAreaServerBase extends Base {
         landmarkInfo: null,
       },
     }));
+    disambiguateDuplicateAreaNames(supportedAreas);
 
     const selectedAreas = data.selectedMatterAreaIds;
     const progress = selectedAreas.map((areaId) => ({
@@ -316,4 +317,28 @@ function toNumber(value: unknown): number | undefined {
     }
   }
   return undefined;
+}
+
+function disambiguateDuplicateAreaNames(areas: ServiceArea.Area[]) {
+  const counts = new Map<string, number>();
+  for (const area of areas) {
+    const locationName = area.areaInfo.locationInfo?.locationName ?? "";
+    const key = `${area.mapId}:${locationName}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  for (const area of areas) {
+    const locationInfo = area.areaInfo.locationInfo;
+    if (locationInfo == null) {
+      continue;
+    }
+
+    const key = `${area.mapId}:${locationInfo.locationName}`;
+    if ((counts.get(key) ?? 0) > 1) {
+      area.areaInfo.locationInfo = {
+        ...locationInfo,
+        locationName: `${locationInfo.locationName} (${area.areaId})`,
+      };
+    }
+  }
 }
