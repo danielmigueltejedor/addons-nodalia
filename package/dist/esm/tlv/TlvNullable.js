@@ -1,0 +1,70 @@
+/**
+ * @license
+ * Copyright 2022-2026 Matter.js Authors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import { TlvNumericSchema } from "#tlv/TlvNumber.js";
+import { ArraySchema } from "./TlvArray.js";
+import { TlvType } from "./TlvCodec.js";
+import { TlvSchema } from "./TlvSchema.js";
+import { StringSchema } from "./TlvString.js";
+class NullableSchema extends TlvSchema {
+  schema;
+  constructor(schema) {
+    super();
+    if (schema instanceof TlvNumericSchema && schema.type !== TlvType.Float) {
+      if (schema.baseTypeMin === 0 && schema.max === schema.baseTypeMax) {
+        if (typeof schema.baseTypeMax === "number") {
+          schema = schema.bound({ min: schema.min, max: schema.baseTypeMax - 1 });
+        } else {
+          schema = schema.bound({ min: schema.min, max: schema.baseTypeMax - BigInt(1) });
+        }
+      } else if (schema.baseTypeMin < 0 && schema.min === schema.baseTypeMin) {
+        if (typeof schema.baseTypeMin === "number") {
+          schema = schema.bound({ min: schema.baseTypeMin + 1, max: schema.max });
+        } else {
+          schema = schema.bound({ min: schema.baseTypeMin + BigInt(1), max: schema.max });
+        }
+      }
+    }
+    this.schema = schema;
+  }
+  encodeTlvInternal(writer, value, tag, options) {
+    if (value === null) {
+      writer.writeTag({ type: TlvType.Null }, tag);
+    } else {
+      this.schema.encodeTlvInternal(writer, value, tag, options);
+    }
+  }
+  decodeTlvInternalValue(reader, typeLength) {
+    if (typeLength.type === TlvType.Null) return null;
+    const value = this.schema.decodeTlvInternalValue(reader, typeLength);
+    if (value !== null && (this.schema instanceof ArraySchema || this.schema instanceof StringSchema) && value.length === 0) {
+      if (this.schema instanceof StringSchema && this.schema.type === TlvType.ByteString || this.schema.minLength !== void 0 && this.schema.minLength > 0) {
+        return null;
+      }
+    }
+    return value;
+  }
+  validate(value) {
+    if (value !== null) this.schema.validate(value);
+  }
+  injectField(value, fieldId, fieldValue, injectChecker) {
+    if (value !== null) {
+      return this.schema.injectField(value, fieldId, fieldValue, injectChecker);
+    }
+    return value;
+  }
+  removeField(value, fieldId, removeChecker) {
+    if (value !== null) {
+      return this.schema.removeField(value, fieldId, removeChecker);
+    }
+    return value;
+  }
+}
+const TlvNullable = (schema) => new NullableSchema(schema);
+export {
+  NullableSchema,
+  TlvNullable
+};
+//# sourceMappingURL=TlvNullable.js.map

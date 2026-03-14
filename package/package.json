@@ -1,7 +1,7 @@
 {
-    "name": "@matter/node",
+    "name": "@matter/types",
     "version": "0.16.10",
-    "description": "API for building Matter nodes",
+    "description": "Definitions for Matter application",
     "keywords": [
         "iot",
         "home automation",
@@ -11,8 +11,10 @@
     "license": "Apache-2.0",
     "author": "matter.js authors",
     "contributors": [
-        "Greg Lauckhart <greg@lauckhart.com>",
-        "Ingo Fischer <github@fischer-ka.de>"
+        "Ingo Fischer <github@fischer-ka.de>",
+        "Martin Turon <mturon@google.com>",
+        "Marco Fucci di Napoli <mfucci@gmail.com>",
+        "Greg Lauckhart <greg@lauckhart.com>"
     ],
     "bugs": {
         "url": "https://github.com/matter-js/matter.js/issues"
@@ -30,22 +32,9 @@
         "coverage": "c8 matter-test esm",
         "embed-examples": "embedme **/README.md"
     },
-    "imports": {
-        "#general": "@matter/general",
-        "#model": "@matter/model",
-        "#types": "@matter/types",
-        "#protocol": "@matter/protocol",
-        "#clusters/*": "@matter/types/clusters/*",
-        "#behaviors/*": "./src/behaviors/*/index.js",
-        "#endpoints/*": "./src/endpoints/*.js",
-        "#devices/*": "./src/devices/*.js",
-        "#*": "./src/*"
-    },
     "dependencies": {
         "@matter/general": "0.16.10",
-        "@matter/model": "0.16.10",
-        "@matter/types": "0.16.10",
-        "@matter/protocol": "0.16.10"
+        "@matter/model": "0.16.10"
     },
     "devDependencies": {
         "@matter/tools": "0.16.10",
@@ -71,80 +60,31 @@
                 "default": "./dist/cjs/index.js"
             }
         },
-        "./load": {
-            "static-load": {
-                "types": "./dist/esm/loader/load.d.ts",
-                "default": "./dist/esm/loader/static.js"
-            },
+        "./clusters/*": {
             "import": {
-                "types": "./dist/esm/loader/load.d.ts",
-                "default": "./dist/esm/loader/load.mjs"
+                "types": "./dist/esm/clusters/*.d.ts",
+                "default": "./dist/esm/clusters/*.js"
             },
             "require": {
-                "types": "./dist/cjs/loader/load.d.ts",
-                "default": "./dist/cjs/loader/load.cjs"
+                "types": "./dist/cjs/clusters/*.d.ts",
+                "default": "./dist/cjs/clusters/*.js"
             }
         },
-        "./behaviors": {
+        "./*": {
             "import": {
-                "types": "./dist/esm/behaviors/index.d.ts",
-                "default": "./dist/esm/behaviors/index.js"
+                "types": "./dist/esm/*/index.d.ts",
+                "default": "./dist/esm/*/index.js"
             },
             "require": {
-                "types": "./dist/cjs/behaviors/index.d.ts",
-                "default": "./dist/cjs/behaviors/index.js"
-            }
-        },
-        "./behaviors/*": {
-            "import": {
-                "types": "./dist/esm/behaviors/*/index.d.ts",
-                "default": "./dist/esm/behaviors/*/index.js"
-            },
-            "require": {
-                "types": "./dist/cjs/behaviors/*/index.d.ts",
-                "default": "./dist/cjs/behaviors/*/index.js"
-            }
-        },
-        "./devices": {
-            "import": {
-                "types": "./dist/esm/devices/index.d.ts",
-                "default": "./dist/esm/devices/index.js"
-            },
-            "require": {
-                "types": "./dist/cjs/devices/index.d.ts",
-                "default": "./dist/cjs/devices/index.js"
-            }
-        },
-        "./devices/*": {
-            "import": {
-                "types": "./dist/esm/devices/*.d.ts",
-                "default": "./dist/esm/devices/*.js"
-            },
-            "require": {
-                "types": "./dist/cjs/devices/*.d.ts",
-                "default": "./dist/cjs/devices/*.js"
-            }
-        },
-        "./endpoints": {
-            "import": {
-                "types": "./dist/esm/endpoints/index.d.ts",
-                "default": "./dist/esm/endpoints/index.js"
-            },
-            "require": {
-                "types": "./dist/cjs/endpoints/index.d.ts",
-                "default": "./dist/cjs/endpoints/index.js"
-            }
-        },
-        "./endpoints/*": {
-            "import": {
-                "types": "./dist/esm/endpoints/*.d.ts",
-                "default": "./dist/esm/endpoints/*.js"
-            },
-            "require": {
-                "types": "./dist/cjs/endpoints/*.d.ts",
-                "default": "./dist/cjs/endpoints/*.js"
+                "types": "./dist/cjs/*/index.d.ts",
+                "default": "./dist/cjs/*/index.js"
             }
         }
+    },
+    "imports": {
+        "#general": "@matter/general",
+        "#model": "@matter/model",
+        "#*": "./src/*"
     },
     "types": "dist/esm/index.d.ts",
     "typesVersions": {

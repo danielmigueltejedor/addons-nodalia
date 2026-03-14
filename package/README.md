@@ -1,6 +1,15 @@
-# @matter/node - Matter node specific functionality for Matter.js
+# @matter/types - Matter operational types and data structures for Matter.js
 
-This package provides Matter node specific functionality required by matter.js.
+This package implements operational types and data structures for Matter.
 
-For more information about matter.js, see the [matter.js README](../../README.md). 
-Importing this package is only needed in special cases. For all normal use cases, import the [main package](../main/README.md).
+Due to type definition size, we do not export clusters as part of the root package.  You may instead import then as:
+
+```typescript
+import { OnOffCluster } from "@matter/types/clusters/OnOffCluster";
+```
+
+or:
+
+```typescript
+import { OnOffCluster } from "@matter/types/clusters";
+```

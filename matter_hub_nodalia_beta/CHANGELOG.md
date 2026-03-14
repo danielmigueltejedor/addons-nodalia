@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0-beta.29
+- Added richer Robotic Vacuum operational-state mapping so Apple Home can reflect dock maintenance states from Home Assistant status hints.
+- New mappings in `RvcOperationalState`:
+  - Mop washing/self-clean -> `CleaningMop`
+  - Water refill -> `FillingWaterTank`
+  - Auto-empty -> `EmptyingDustBin`
+  - Map updates -> `UpdatingMaps`
+  - Charging and mop drying-like statuses -> `Charging`
+- Status detection now considers `entity.state`, `attributes.status`, and additional operational hint attributes (`activity`, `operation`, `task_status`, `dock_state`, `charging_state`, etc.), with normalization for common formats.
+
+## 0.1.0-beta.28
+- Adjusted vacuum start debug logging to show effective selected service areas (state-first) instead of potentially stale stored IDs, so logs reflect the actual room selection used for selective cleaning.
+
 ## 0.1.0-beta.27
 - Fixed remaining full-clean fallback after successful `selectAreas` by allowing selected-area action construction even when live parsed room metadata is temporarily unavailable (`hasData:false`).
 - Added persistent action-config template (`action`, `command`, `commandKey`, `paramsKey`, `paramsNested`) captured from valid vacuum metadata and reused during transient updates.

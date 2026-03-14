@@ -12,9 +12,13 @@ export function resolveVacuumStartAction(agent: Agent): HomeAssistantAction {
     const serviceArea = agent.get(
       VacuumServiceAreaServer as never,
     ) as VacuumServiceAreaServerBase;
+    const debugSnapshot = serviceArea.getSelectionDebugSnapshot();
+    const effectiveSelectedAreas =
+      debugSnapshot.selectedAreasFromState.length > 0
+        ? debugSnapshot.selectedAreasFromState
+        : debugSnapshot.storedSelectedAreas;
     const selectedAreasAction = serviceArea.getSelectedAreasAction();
     if (selectedAreasAction == null) {
-      const debugSnapshot = serviceArea.getSelectionDebugSnapshot();
       console.debug(
         `VacuumStartAction using fallback vacuum.start (no selected service areas) snapshot=${JSON.stringify(debugSnapshot)}`,
       );
@@ -22,7 +26,7 @@ export function resolveVacuumStartAction(agent: Agent): HomeAssistantAction {
     }
 
     console.debug(
-      `VacuumStartAction using selected service areas ${JSON.stringify(serviceArea.getSelectedMatterAreaIds())}`,
+      `VacuumStartAction using selected service areas ${JSON.stringify(effectiveSelectedAreas)}`,
     );
     return selectedAreasAction;
   } catch {

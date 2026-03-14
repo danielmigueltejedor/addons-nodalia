@@ -4,12 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// No exports for behaviors, endpoints or devices here.  They are heavy both at compile time and runtime so we only
-// export directly by name under behaviors/, endpoints/ and devices/ respectively.
+// Note - no export for clusters here, they are ideally imported directly by name
 
-export * from "./behavior/index.js";
-export * from "./endpoint/index.js";
-export * from "./loader/index.js";
-export * from "./node/index.js";
-export * from "./storage/index.js";
-export * from "./tags/index.js";
+export * from "./cluster/index.js";
+export * from "./commissioning/index.js";
+export * from "./common/index.js";
+export * from "./datatype/index.js";
+export * from "./dcl/index.js";
+export * from "./globals/index.js";
+export * from "./protocol/index.js";
+export * from "./schema/index.js";
+export * from "./tlv/index.js";

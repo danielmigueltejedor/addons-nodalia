@@ -15,12 +15,15 @@ var __reExport = (target, mod, secondTarget) => (__copyProps(target, mod, "defau
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var src_exports = {};
 module.exports = __toCommonJS(src_exports);
-__reExport(src_exports, require("./behavior/index.js"), module.exports);
-__reExport(src_exports, require("./endpoint/index.js"), module.exports);
-__reExport(src_exports, require("./loader/index.js"), module.exports);
-__reExport(src_exports, require("./node/index.js"), module.exports);
-__reExport(src_exports, require("./storage/index.js"), module.exports);
-__reExport(src_exports, require("./tags/index.js"), module.exports);
+__reExport(src_exports, require("./cluster/index.js"), module.exports);
+__reExport(src_exports, require("./commissioning/index.js"), module.exports);
+__reExport(src_exports, require("./common/index.js"), module.exports);
+__reExport(src_exports, require("./datatype/index.js"), module.exports);
+__reExport(src_exports, require("./dcl/index.js"), module.exports);
+__reExport(src_exports, require("./globals/index.js"), module.exports);
+__reExport(src_exports, require("./protocol/index.js"), module.exports);
+__reExport(src_exports, require("./schema/index.js"), module.exports);
+__reExport(src_exports, require("./tlv/index.js"), module.exports);
 /**
  * @license
  * Copyright 2022-2026 Matter.js Authors
