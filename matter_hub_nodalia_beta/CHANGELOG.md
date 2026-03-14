@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.24
+- Fixed Apple Home selective-clean flow where valid `selectAreas` requests were dropped before start due over-strict filtering against in-memory action-value maps.
+- `selectAreas` now persists normalized requested area IDs even when action-value mapping is temporarily unavailable.
+- `getSelectedAreasAction` now falls back to numeric Matter area IDs when no explicit area-action mapping exists, avoiding fallback to plain `vacuum.start`.
+- Added richer debug output for `selectAreas` including normalized request IDs and currently known supported area IDs.
+
 ## 0.1.0-beta.23
 - Fixed TypeScript build regression introduced in `basic-information-server` identity fallback helpers where `hash()` could return `undefined`.
 - `hash()` now always returns a string fallback, unblocking addon image builds on Home Assistant Supervisor.

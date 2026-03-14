@@ -115,9 +115,7 @@ export class VacuumServiceAreaServerBase extends Base {
       this.#actionValuesByAreaId.set(area.matterAreaId, area.actionValue);
     }
 
-    const selectedAreasFromState = this.getNormalizedStateSelectedAreaIds().filter(
-      (areaId) => this.#actionValuesByAreaId.has(areaId),
-    );
+    const selectedAreasFromState = this.getNormalizedStateSelectedAreaIds();
     if (selectedAreasFromState.length > 0) {
       this.setStoredSelectedAreas(selectedAreasFromState, "state");
     }
@@ -153,9 +151,7 @@ export class VacuumServiceAreaServerBase extends Base {
       this.setStoredSelectedAreas(selectedAreasFromAttributes, "attributes");
     }
 
-    const selectedAreas = this.#selectedMatterAreaIds.filter((areaId) =>
-      this.#actionValuesByAreaId.has(areaId),
-    );
+    const selectedAreas = this.#selectedMatterAreaIds;
     const progress = selectedAreas.map((areaId) => ({
       areaId,
       status: ServiceArea.OperationalStatus.Pending,
@@ -191,37 +187,35 @@ export class VacuumServiceAreaServerBase extends Base {
     }
 
     const selectedAreasFromState = this.getNormalizedStateSelectedAreaIds().filter(
-      (areaId) => this.#actionValuesByAreaId.has(areaId),
+      (areaId) => this.isKnownAreaId(areaId),
     );
     const selectedAreasFromRequest = normalizedAreas.filter((areaId) =>
-      this.#actionValuesByAreaId.has(areaId),
+      this.isKnownAreaId(areaId),
     );
+    const selectedAreasFromRequestWithoutKnownFilter =
+      selectedAreasFromRequest.length > 0 ? selectedAreasFromRequest : normalizedAreas;
     const selectedAreas =
       selectedAreasFromState.length > 0
         ? selectedAreasFromState
-        : selectedAreasFromRequest;
+        : selectedAreasFromRequestWithoutKnownFilter;
 
     this.setStoredSelectedAreas(selectedAreas, "selectAreas");
 
     const state = this.state as unknown as MutableServiceAreaState;
     state.selectedAreas = selectedAreas;
     console.debug(
-      `VacuumServiceArea selectAreas status=${response.status} selected=${JSON.stringify(this.#selectedMatterAreaIds)} fromState=${JSON.stringify(selectedAreasFromState)} fromRequest=${JSON.stringify(selectedAreasFromRequest)}`,
+      `VacuumServiceArea selectAreas status=${response.status} selected=${JSON.stringify(this.#selectedMatterAreaIds)} normalized=${JSON.stringify(normalizedAreas)} fromState=${JSON.stringify(selectedAreasFromState)} fromRequest=${JSON.stringify(selectedAreasFromRequest)} supportedAreas=${JSON.stringify(this.getKnownSupportedAreaIds())}`,
     );
 
     return response;
   }
 
   getSelectedMatterAreaIds(): number[] {
-    return this.#selectedMatterAreaIds.filter((areaId) =>
-      this.#actionValuesByAreaId.has(areaId),
-    );
+    return this.#selectedMatterAreaIds;
   }
 
   private setStoredSelectedAreas(areaIds: number[], source: string) {
-    const normalized = toUniqueAreaIds(areaIds).filter((areaId) =>
-      this.#actionValuesByAreaId.has(areaId),
-    );
+    const normalized = toUniqueAreaIds(areaIds);
     if (areSameNumberArrays(this.#selectedMatterAreaIds, normalized)) {
       return;
     }
@@ -239,16 +233,18 @@ export class VacuumServiceAreaServerBase extends Base {
       return undefined;
     }
 
-    const selectedAreaIdsFromState = this.getNormalizedStateSelectedAreaIds().filter(
-      (areaId) => this.#actionValuesByAreaId.has(areaId),
-    );
+    const selectedAreaIdsFromState = this.getNormalizedStateSelectedAreaIds();
     const selectedAreaIds =
       selectedAreaIdsFromState.length > 0
         ? selectedAreaIdsFromState
         : this.getSelectedMatterAreaIds();
 
     const selectedAreaValues = selectedAreaIds
-      .map((areaId) => this.#actionValuesByAreaId.get(areaId))
+      .map(
+        (areaId) =>
+          this.#actionValuesByAreaId.get(areaId) ??
+          (this.isKnownAreaId(areaId) ? areaId : undefined),
+      )
       .filter(
         (value): value is VacuumServiceAreaActionValue => value != null,
       );
@@ -296,6 +292,27 @@ export class VacuumServiceAreaServerBase extends Base {
       selectedAreas
         .map((areaId) => toNumber(areaId))
         .filter((areaId): areaId is number => areaId != null),
+    );
+  }
+
+  private getKnownSupportedAreaIds(): number[] {
+    const state = this.state as unknown as Partial<MutableServiceAreaState>;
+    const supportedAreas = Array.isArray(state.supportedAreas)
+      ? state.supportedAreas
+      : [];
+    return toUniqueAreaIds(
+      supportedAreas
+        .map((area) =>
+          toNumber((area as unknown as { areaId?: unknown }).areaId),
+        )
+        .filter((areaId): areaId is number => areaId != null),
+    );
+  }
+
+  private isKnownAreaId(areaId: number): boolean {
+    return (
+      this.#actionValuesByAreaId.has(areaId) ||
+      this.getKnownSupportedAreaIds().includes(areaId)
     );
   }
 }
