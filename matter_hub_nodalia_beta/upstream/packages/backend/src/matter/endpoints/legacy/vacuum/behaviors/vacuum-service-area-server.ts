@@ -43,8 +43,25 @@ interface MutableServiceAreaState {
   progress: ServiceArea.Progress[];
 }
 
+interface VacuumServiceAreaActionConfig {
+  action: string;
+  command?: string;
+  commandKey: string;
+  paramsKey: string;
+  paramsNested: boolean;
+}
+
+const DEFAULT_VACUUM_SERVICE_AREA_ACTION_CONFIG: VacuumServiceAreaActionConfig = {
+  action: "vacuum.send_command",
+  command: "app_segment_clean",
+  commandKey: "command",
+  paramsKey: "params",
+  paramsNested: false,
+};
+
 export class VacuumServiceAreaServerBase extends Base {
   #data: VacuumServiceAreaData | undefined;
+  #actionConfig: VacuumServiceAreaActionConfig | undefined;
   #actionValuesByAreaId = new Map<number, VacuumServiceAreaActionValue>();
   #selectedMatterAreaIds: number[] = [];
   #cachedSelectedAreasAction:
@@ -135,6 +152,7 @@ export class VacuumServiceAreaServerBase extends Base {
     }
 
     this.#data = data;
+    this.#actionConfig = toActionConfig(data);
     this.#actionValuesByAreaId.clear();
 
     for (const area of data.areas) {
@@ -249,6 +267,7 @@ export class VacuumServiceAreaServerBase extends Base {
     knownSupportedAreas: number[];
     knownActionValueAreas: number[];
     hasData: boolean;
+    hasActionConfig: boolean;
     hasCachedSelectedAreasAction: boolean;
   } {
     return {
@@ -257,6 +276,7 @@ export class VacuumServiceAreaServerBase extends Base {
       knownSupportedAreas: this.getKnownSupportedAreaIds(),
       knownActionValueAreas: [...this.#actionValuesByAreaId.keys()],
       hasData: this.#data != null,
+      hasActionConfig: this.#actionConfig != null,
       hasCachedSelectedAreasAction: this.#cachedSelectedAreasAction != null,
     };
   }
@@ -370,8 +390,7 @@ export class VacuumServiceAreaServerBase extends Base {
   private buildSelectedAreasActionFromIds(
     selectedAreaIds: number[],
   ): { action: string; data: Record<string, unknown> } | undefined {
-    const data = this.#data;
-    if (data == null || selectedAreaIds.length === 0) {
+    if (selectedAreaIds.length === 0) {
       return undefined;
     }
 
@@ -385,7 +404,18 @@ export class VacuumServiceAreaServerBase extends Base {
       return undefined;
     }
 
-    return buildSelectAreasAction(data, selectedAreaValues);
+    const actionConfig =
+      this.#actionConfig ??
+      (this.#data != null ? toActionConfig(this.#data) : undefined) ??
+      DEFAULT_VACUUM_SERVICE_AREA_ACTION_CONFIG;
+
+    if (this.#data == null) {
+      console.debug(
+        `VacuumServiceArea building selected-areas action without live data using action config ${JSON.stringify(actionConfig)}`,
+      );
+    }
+
+    return buildSelectAreasAction(actionConfig, selectedAreaValues);
   }
 
   private buildFallbackDataFromState(): VacuumServiceAreaData | undefined {
@@ -444,17 +474,19 @@ export class VacuumServiceAreaServerBase extends Base {
 
     const selectedMatterAreaIds = this.getNormalizedStateSelectedAreaIds();
     const currentMatterAreaId = toNumber(state.currentArea);
+    const actionConfig =
+      this.#actionConfig ?? DEFAULT_VACUUM_SERVICE_AREA_ACTION_CONFIG;
 
     return {
       maps,
       areas,
       selectedMatterAreaIds,
       currentMatterAreaId,
-      action: "vacuum.send_command",
-      command: "app_segment_clean",
-      commandKey: "command",
-      paramsKey: "params",
-      paramsNested: false,
+      action: actionConfig.action,
+      command: actionConfig.command,
+      commandKey: actionConfig.commandKey,
+      paramsKey: actionConfig.paramsKey,
+      paramsNested: actionConfig.paramsNested,
     };
   }
 }
@@ -468,22 +500,34 @@ export function createVacuumServiceAreaServer(): object {
   return VacuumServiceAreaServer;
 }
 
-function buildSelectAreasAction(
+function toActionConfig(
   data: VacuumServiceAreaData,
+): VacuumServiceAreaActionConfig {
+  return {
+    action: data.action,
+    command: data.command,
+    commandKey: data.commandKey,
+    paramsKey: data.paramsKey,
+    paramsNested: data.paramsNested,
+  };
+}
+
+function buildSelectAreasAction(
+  config: VacuumServiceAreaActionConfig,
   selectedAreaValues: VacuumServiceAreaActionValue[],
 ): { action: string; data: Record<string, unknown> } {
   const payload: Record<string, unknown> = {
-    [data.paramsKey]: data.paramsNested
+    [config.paramsKey]: config.paramsNested
       ? [selectedAreaValues]
       : selectedAreaValues,
   };
 
-  if (data.command != null) {
-    payload[data.commandKey] = data.command;
+  if (config.command != null) {
+    payload[config.commandKey] = config.command;
   }
 
   return {
-    action: data.action,
+    action: config.action,
     data: payload,
   };
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.27
+- Fixed remaining full-clean fallback after successful `selectAreas` by allowing selected-area action construction even when live parsed room metadata is temporarily unavailable (`hasData:false`).
+- Added persistent action-config template (`action`, `command`, `commandKey`, `paramsKey`, `paramsNested`) captured from valid vacuum metadata and reused during transient updates.
+- Added resilient selected-area action builder that falls back to Matter numeric area IDs with the persisted action template, preventing fallback to `vacuum.start`.
+- Extended debug snapshot with `hasActionConfig` to quickly identify whether action template context is available.
+
 ## 0.1.0-beta.26
 - Fixed a critical selective-clean context loss where Home Assistant transient updates without room metadata set `hasData:false`, clearing in-memory action-value mappings right before `start`.
 - `VacuumServiceArea` now keeps previous valid parsed room/action data when incoming HA attributes temporarily omit room metadata.
