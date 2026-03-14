@@ -12,8 +12,22 @@ export function resolveVacuumStartAction(agent: Agent): HomeAssistantAction {
     const serviceArea = agent.get(
       VacuumServiceAreaServer as never,
     ) as VacuumServiceAreaServerBase;
-    return serviceArea.getSelectedAreasAction() ?? DEFAULT_START_ACTION;
+    const selectedAreasAction = serviceArea.getSelectedAreasAction();
+    if (selectedAreasAction == null) {
+      console.debug(
+        "VacuumStartAction using fallback vacuum.start (no selected service areas)",
+      );
+      return DEFAULT_START_ACTION;
+    }
+
+    console.debug(
+      `VacuumStartAction using selected service areas ${JSON.stringify(serviceArea.getSelectedMatterAreaIds())}`,
+    );
+    return selectedAreasAction;
   } catch {
+    console.debug(
+      "VacuumStartAction using fallback vacuum.start (ServiceArea behavior unavailable)",
+    );
     return DEFAULT_START_ACTION;
   }
 }

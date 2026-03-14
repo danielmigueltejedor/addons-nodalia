@@ -44,6 +44,7 @@ interface MutableServiceAreaState {
 export class VacuumServiceAreaServerBase extends Base {
   #data: VacuumServiceAreaData | undefined;
   #actionValuesByAreaId = new Map<number, VacuumServiceAreaActionValue>();
+  #selectedMatterAreaIds: number[] = [];
 
   private get supportsMaps(): boolean {
     const features = this.features as Record<string, unknown>;
@@ -96,6 +97,7 @@ export class VacuumServiceAreaServerBase extends Base {
     this.#actionValuesByAreaId.clear();
 
     if (data == null) {
+      this.#selectedMatterAreaIds = [];
       if (this.supportsMaps) {
         state.supportedMaps = [];
       }
@@ -133,7 +135,19 @@ export class VacuumServiceAreaServerBase extends Base {
     }));
     disambiguateDuplicateAreaNames(supportedAreas);
 
-    const selectedAreas = data.selectedMatterAreaIds;
+    const selectedAreasFromAttributes = data.selectedMatterAreaIds.filter((areaId) =>
+      this.#actionValuesByAreaId.has(areaId),
+    );
+    if (
+      selectedAreasFromAttributes.length > 0 ||
+      this.#selectedMatterAreaIds.length === 0
+    ) {
+      this.#selectedMatterAreaIds = selectedAreasFromAttributes;
+    }
+
+    const selectedAreas = this.#selectedMatterAreaIds.filter((areaId) =>
+      this.#actionValuesByAreaId.has(areaId),
+    );
     const progress = selectedAreas.map((areaId) => ({
       areaId,
       status: ServiceArea.OperationalStatus.Pending,
@@ -153,21 +167,29 @@ export class VacuumServiceAreaServerBase extends Base {
   override async selectAreas(
     request: ServiceArea.SelectAreasRequest,
   ): Promise<ServiceArea.SelectAreasResponse> {
-    const response = await super.selectAreas(request);
+    const normalizedAreas = normalizeSelectedAreaIds(request);
+    const response = await super.selectAreas(
+      normalizedAreas.length > 0 ? { newAreas: normalizedAreas } : request,
+    );
 
     if (response.status !== ServiceArea.SelectAreasStatus.Success) {
       return response;
     }
 
-    const selectedAreasAction = this.getSelectedAreasAction();
-    if (selectedAreasAction == null) {
-      return response;
-    }
-
-    const entity = this.agent.get(HomeAssistantEntityBehavior);
-    entity.callAction(selectedAreasAction);
+    this.#selectedMatterAreaIds = this.state.selectedAreas.filter((areaId) =>
+      this.#actionValuesByAreaId.has(areaId),
+    );
+    console.debug(
+      `VacuumServiceArea selectAreas status=${response.status} selected=${JSON.stringify(this.#selectedMatterAreaIds)}`,
+    );
 
     return response;
+  }
+
+  getSelectedMatterAreaIds(): number[] {
+    return this.#selectedMatterAreaIds.filter((areaId) =>
+      this.#actionValuesByAreaId.has(areaId),
+    );
   }
 
   getSelectedAreasAction():
@@ -178,7 +200,12 @@ export class VacuumServiceAreaServerBase extends Base {
       return undefined;
     }
 
-    const selectedAreaValues = this.state.selectedAreas
+    const selectedAreaIds =
+      this.state.selectedAreas.length > 0
+        ? this.state.selectedAreas
+        : this.getSelectedMatterAreaIds();
+
+    const selectedAreaValues = selectedAreaIds
       .map((areaId) => this.#actionValuesByAreaId.get(areaId))
       .filter(
         (value): value is VacuumServiceAreaActionValue => value != null,

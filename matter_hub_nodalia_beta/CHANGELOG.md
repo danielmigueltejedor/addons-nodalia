@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-beta.16
+- Changed vacuum `ServiceArea.selectAreas` behavior to update internal Matter room selection without immediately triggering a Home Assistant clean action.
+- Preserved Matter-selected room IDs in backend state so subsequent `Start` commands (Apple Home `OnOff`/`RunMode`) can reliably launch selective room cleaning even when Home Assistant entity attributes do not mirror selected areas.
+- Added debug traces to show whether start falls back to `vacuum.start` or uses selected room IDs, improving diagnosis of Apple Home command flow.
+
 ## 0.1.0-beta.15
 - Fixed vacuum start behavior for Matter clients (including Apple Home) to honor selected Service Area rooms when available instead of always sending `vacuum.start`.
 - Applied the same start-routing fix across `OnOff`, `RvcRunMode.start`, and `RvcOperationalState.resume` paths so room-based cleaning is consistent regardless of which Matter command path the controller uses.
