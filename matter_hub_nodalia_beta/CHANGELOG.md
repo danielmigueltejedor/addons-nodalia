@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.0-beta.5
+- Fixed beta image build context by providing required package metadata files (`README.md`/`LICENSE`) expected by upstream bundling scripts.
+
 ## 0.1.0-beta.4
 - Updated Matter.js packages to latest npm stable (`@matter/main`, `@matter/nodejs`, `@matter/general` => `0.16.10`).
 - Added first beta support for exposing selective room cleaning through Matter Service Area for robot vacuums.

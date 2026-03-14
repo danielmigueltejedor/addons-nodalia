@@ -8,6 +8,8 @@ RUN npm install -g pnpm@10.28.1
 
 WORKDIR /tmp/home-assistant-matter-hub
 COPY upstream/ ./
+COPY README.md ./README.md
+RUN [ -f LICENSE ] || printf "Apache-2.0\n" > LICENSE
 
 RUN pnpm install --frozen-lockfile \
   && pnpm --filter './packages/*' run build \
