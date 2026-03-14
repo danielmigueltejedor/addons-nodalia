@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-beta.30
+- Improved Service Area progress reporting during selective room cleaning so Apple Home reflects active cleaning instead of staying in a “moving to room” style status.
+- While vacuum is in `cleaning` state, Matter `ServiceArea.progress` now marks the active room as `Operating` (instead of all selected areas being `Pending`).
+- Added active-area inference fallback: if Home Assistant does not provide `current_area/current_segment` yet, the bridge temporarily uses the first selected area as the active area for progress/currentArea reporting.
+
 ## 0.1.0-beta.29
 - Added richer Robotic Vacuum operational-state mapping so Apple Home can reflect dock maintenance states from Home Assistant status hints.
 - New mappings in `RvcOperationalState`:

@@ -1,5 +1,8 @@
 import { inspect } from "node:util";
-import type { HomeAssistantEntityInformation } from "@home-assistant-matter-hub/common";
+import {
+  type HomeAssistantEntityInformation,
+  VacuumState,
+} from "@home-assistant-matter-hub/common";
 import { ServiceAreaServer as Base } from "@matter/main/behaviors/service-area";
 import { ServiceArea } from "@matter/main/clusters/service-area";
 import { HomeAssistantEntityBehavior } from "../../../../behaviors/home-assistant-entity-behavior.js";
@@ -196,9 +199,17 @@ export class VacuumServiceAreaServerBase extends Base {
     }
 
     const selectedAreas = this.#selectedMatterAreaIds;
+    const isOperating = isOperatingVacuumState(entity.state.state);
+    const operatingAreaId = isOperating
+      ? data.currentMatterAreaId ??
+        (selectedAreas.length > 0 ? selectedAreas[0] : null)
+      : data.currentMatterAreaId ?? null;
     const progress = selectedAreas.map((areaId) => ({
       areaId,
-      status: ServiceArea.OperationalStatus.Pending,
+      status:
+        isOperating && operatingAreaId != null && areaId === operatingAreaId
+          ? ServiceArea.OperationalStatus.Operating
+          : ServiceArea.OperationalStatus.Pending,
     }));
 
     if (this.supportsMaps) {
@@ -206,7 +217,7 @@ export class VacuumServiceAreaServerBase extends Base {
     }
     state.supportedAreas = supportedAreas;
     state.selectedAreas = selectedAreas;
-    state.currentArea = data.currentMatterAreaId ?? null;
+    state.currentArea = operatingAreaId;
     if (this.supportsProgressReporting) {
       state.progress = progress;
     }
@@ -632,6 +643,10 @@ function extractAreaId(value: unknown): number | undefined {
   }
 
   return undefined;
+}
+
+function isOperatingVacuumState(state: unknown): boolean {
+  return state === VacuumState.cleaning || state === "cleaning";
 }
 
 function toUniqueAreaIds(values: number[]): number[] {
