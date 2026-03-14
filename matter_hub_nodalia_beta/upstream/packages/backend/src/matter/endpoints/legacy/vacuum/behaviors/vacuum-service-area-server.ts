@@ -1,5 +1,8 @@
 import { HomeAssistantEntityBehavior } from "../../../../behaviors/home-assistant-entity-behavior.js";
-import { parseVacuumServiceAreaData } from "../service-area-data.js";
+import {
+  parseVacuumServiceAreaData,
+  type VacuumServiceAreaData,
+} from "../service-area-data.js";
 
 import * as MatterBehaviors from "@matter/main/behaviors";
 
@@ -15,7 +18,26 @@ interface SelectAreasLike {
   selectedAreas?: unknown;
   newAreas?: unknown;
   areaIds?: unknown;
+  selectedAreaIds?: unknown;
+  areas?: unknown;
 }
+
+interface SkipAreaLike {
+  skippedArea?: unknown;
+  area?: unknown;
+  areaId?: unknown;
+}
+
+const AREA_ID_KEYS = [
+  "areaId",
+  "area_id",
+  "id",
+  "value",
+  "segmentId",
+  "segment_id",
+  "roomId",
+  "room_id",
+] as const;
 
 export function createVacuumServiceAreaServer(): object | undefined {
   const serviceAreaServer = (MatterBehaviors as Record<string, unknown>)
@@ -104,17 +126,11 @@ export function createVacuumServiceAreaServer(): object | undefined {
         return;
       }
 
-      entity.callAction({
-        action: "vacuum.send_command",
-        data: {
-          command: data.command,
-          params: data.paramsNested ? [selectedSegmentIds] : selectedSegmentIds,
-        },
-      });
+      entity.callAction(buildSelectAreasAction(data, selectedSegmentIds));
     },
 
     skipArea: (request: unknown, agent: unknown) => {
-      const areaId = toNumber(request);
+      const areaId = normalizeSkippedAreaId(request);
       if (areaId == null) {
         return;
       }
@@ -126,6 +142,26 @@ export function createVacuumServiceAreaServer(): object | undefined {
     config: configuration,
     configuration,
   });
+}
+
+function buildSelectAreasAction(
+  data: VacuumServiceAreaData,
+  selectedSegmentIds: number[],
+): { action: string; data: Record<string, unknown> } {
+  const payload: Record<string, unknown> = {
+    [data.paramsKey]: data.paramsNested
+      ? [selectedSegmentIds]
+      : selectedSegmentIds,
+  };
+
+  if (data.command != null) {
+    payload[data.commandKey] = data.command;
+  }
+
+  return {
+    action: data.action,
+    data: payload,
+  };
 }
 
 function getEntity(agent: unknown): HomeAssistantEntityBehavior | undefined {
@@ -152,29 +188,103 @@ function getData(agent: unknown) {
   );
 }
 
-function normalizeSelectedAreaIds(request: unknown): number[] {
+export function normalizeSelectedAreaIds(request: unknown): number[] {
   if (Array.isArray(request)) {
-    return request
-      .map((value) => toNumber(value))
-      .filter((value): value is number => value != null);
+    return toUniqueAreaIds(request.flatMap((value) => extractAreaIds(value)));
   }
 
   if (request != null && typeof request === "object") {
     const payload = request as SelectAreasLike;
-    const selected = payload.selectedAreas ?? payload.newAreas ?? payload.areaIds;
-    if (Array.isArray(selected)) {
-      return selected
-        .map((value) => toNumber(value))
-        .filter((value): value is number => value != null);
+    const selected =
+      payload.selectedAreas ??
+      payload.newAreas ??
+      payload.areaIds ??
+      payload.selectedAreaIds ??
+      payload.areas;
+
+    if (selected != null) {
+      return toUniqueAreaIds(extractAreaIds(selected));
     }
+
+    return toUniqueAreaIds(extractAreaIds(payload));
   }
 
   return [];
 }
 
+export function normalizeSkippedAreaId(request: unknown): number | undefined {
+  if (request != null && typeof request === "object") {
+    const payload = request as SkipAreaLike;
+    const skippedArea = payload.skippedArea ?? payload.area ?? payload.areaId;
+    const skippedAreaId = extractAreaId(skippedArea);
+    if (skippedAreaId != null) {
+      return skippedAreaId;
+    }
+  }
+
+  return extractAreaId(request);
+}
+
+function extractAreaIds(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => extractAreaId(entry))
+      .filter((entry): entry is number => entry != null);
+  }
+
+  const areaId = extractAreaId(value);
+  return areaId != null ? [areaId] : [];
+}
+
+function extractAreaId(value: unknown): number | undefined {
+  const direct = toNumber(value);
+  if (direct != null) {
+    return direct;
+  }
+
+  if (value == null || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  for (const key of AREA_ID_KEYS) {
+    const numeric = toNumber(record[key]);
+    if (numeric != null) {
+      return numeric;
+    }
+  }
+
+  const nestedCandidates = [
+    record.area,
+    record.areaInfo,
+    record.selectedArea,
+    record.newArea,
+    record.skippedArea,
+    record.targetArea,
+  ];
+
+  for (const candidate of nestedCandidates) {
+    const nested = extractAreaId(candidate);
+    if (nested != null) {
+      return nested;
+    }
+  }
+
+  return undefined;
+}
+
+function toUniqueAreaIds(values: number[]): number[] {
+  return [...new Set(values)];
+}
+
 function toNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
+  }
+  if (typeof value === "bigint") {
+    const asNumber = Number(value);
+    return Number.isFinite(asNumber) ? asNumber : undefined;
   }
   if (typeof value === "string" && value.trim() !== "") {
     const parsed = Number(value);

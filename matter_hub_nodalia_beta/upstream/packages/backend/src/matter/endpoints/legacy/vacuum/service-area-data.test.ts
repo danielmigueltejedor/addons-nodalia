@@ -23,7 +23,10 @@ describe("parseVacuumServiceAreaData", () => {
       ],
       selectedMatterAreaIds: [17, 16],
       currentMatterAreaId: 16,
+      action: "vacuum.send_command",
       command: "app_segment_clean",
+      commandKey: "command",
+      paramsKey: "params",
       paramsNested: false,
     });
   });
@@ -45,8 +48,69 @@ describe("parseVacuumServiceAreaData", () => {
       ],
       selectedMatterAreaIds: [],
       currentMatterAreaId: undefined,
+      action: "vacuum.send_command",
       command: "vacuum_clean_segment",
+      commandKey: "command",
+      paramsKey: "params",
       paramsNested: true,
+    });
+  });
+
+  it("should parse tuple-based mappings and custom action metadata", () => {
+    const data = parseVacuumServiceAreaData({
+      room_mapping: [
+        [31, "Office"],
+        ["32", "Bedroom", 2],
+      ],
+      selected_areas: [{ areaId: 32 }, { id: "31" }],
+      current_area: "31",
+      matter_service_area_action: "vacuum.clean_segment",
+      matter_service_area_params_key: "segments",
+      matter_service_area_params_nested: "true",
+    });
+
+    expect(data).toEqual({
+      maps: [
+        { mapId: 1, name: "Map 1" },
+        { mapId: 2, name: "Map 2" },
+      ],
+      areas: [
+        { matterAreaId: 31, segmentId: 31, mapId: 1, name: "Office" },
+        { matterAreaId: 32, segmentId: 32, mapId: 2, name: "Bedroom" },
+      ],
+      selectedMatterAreaIds: [32, 31],
+      currentMatterAreaId: 31,
+      action: "vacuum.clean_segment",
+      command: undefined,
+      commandKey: "command",
+      paramsKey: "segments",
+      paramsNested: true,
+    });
+  });
+
+  it("should parse object-based ids and mixed name formats", () => {
+    const data = parseVacuumServiceAreaData({
+      segment_ids: { "41": true, "42": "1", "43": false },
+      segment_names: [
+        [41, "Desk"],
+        { id: 42, name: "Hall" },
+      ],
+      selected_segments: { "42": "on" },
+    });
+
+    expect(data).toEqual({
+      maps: [{ mapId: 1, name: "Map" }],
+      areas: [
+        { matterAreaId: 41, segmentId: 41, mapId: 1, name: "Desk" },
+        { matterAreaId: 42, segmentId: 42, mapId: 1, name: "Hall" },
+      ],
+      selectedMatterAreaIds: [42],
+      currentMatterAreaId: undefined,
+      action: "vacuum.send_command",
+      command: "app_segment_clean",
+      commandKey: "command",
+      paramsKey: "params",
+      paramsNested: false,
     });
   });
 
