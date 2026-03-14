@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.0-beta.20
+- Fixed vacuum selective-clean persistence when Matter controllers (Apple Home) send `ServiceArea.selectAreas` with IDs that can arrive as non-number runtime types (e.g. bigint).
+- Normalized `selectedAreas` read from Matter state before filtering/mapping, preventing false-empty selections that triggered fallback `vacuum.start`.
+- Updated start-action resolution to use normalized state-selected area IDs first, then stored selected IDs.
+- Added richer debug logging for `selectAreas` to show selected IDs from state and from request payload.
+
+## 0.1.0-beta.19
+- Traducida al español la interfaz principal de gestión de puentes (listado, detalle, crear, editar y menús de acciones).
+- Traducidos los textos del esquema de configuración del puente para que el formulario muestre etiquetas y descripciones en español.
+- Mejorada la estética del editor de configuración con:
+  - Contenedor visual más claro y moderno.
+  - Selector de modo "Formulario / JSON" más legible.
+  - Botones de acción y ayudas contextualizadas en español.
+  - Ajustes de usabilidad en el formulario (`placeholders`, ayuda de puerto y orden de listas).
+
 ## 0.1.0-beta.18
 - Improved vacuum room-selection persistence by tracking selected Matter areas not only from `selectAreas` command flow but also from current cluster state updates.
 - Prevents room selections from being lost when Home Assistant entity attributes don't include selected areas (common when Apple Home starts cleaning via `RvcRunMode.changeToMode`).

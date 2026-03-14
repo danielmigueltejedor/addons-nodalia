@@ -36,7 +36,7 @@ const AREA_ID_KEYS = [
 interface MutableServiceAreaState {
   supportedMaps: ServiceArea.Map[];
   supportedAreas: ServiceArea.Area[];
-  selectedAreas: number[];
+  selectedAreas: unknown[];
   currentArea: number | null;
   progress: ServiceArea.Progress[];
 }
@@ -114,9 +114,9 @@ export class VacuumServiceAreaServerBase extends Base {
       this.#actionValuesByAreaId.set(area.matterAreaId, area.actionValue);
     }
 
-    const selectedAreasFromState = (
-      Array.isArray(state.selectedAreas) ? state.selectedAreas : []
-    ).filter((areaId) => this.#actionValuesByAreaId.has(areaId));
+    const selectedAreasFromState = this.getNormalizedStateSelectedAreaIds().filter(
+      (areaId) => this.#actionValuesByAreaId.has(areaId),
+    );
     if (selectedAreasFromState.length > 0) {
       this.setStoredSelectedAreas(selectedAreasFromState, "state");
     }
@@ -183,14 +183,23 @@ export class VacuumServiceAreaServerBase extends Base {
       return response;
     }
 
-    this.setStoredSelectedAreas(
-      this.state.selectedAreas.filter((areaId) =>
-        this.#actionValuesByAreaId.has(areaId),
-      ),
-      "selectAreas",
+    const selectedAreasFromState = this.getNormalizedStateSelectedAreaIds().filter(
+      (areaId) => this.#actionValuesByAreaId.has(areaId),
     );
+    const selectedAreasFromRequest = normalizedAreas.filter((areaId) =>
+      this.#actionValuesByAreaId.has(areaId),
+    );
+    const selectedAreas =
+      selectedAreasFromState.length > 0
+        ? selectedAreasFromState
+        : selectedAreasFromRequest;
+
+    this.setStoredSelectedAreas(selectedAreas, "selectAreas");
+
+    const state = this.state as unknown as MutableServiceAreaState;
+    state.selectedAreas = selectedAreas;
     console.debug(
-      `VacuumServiceArea selectAreas status=${response.status} selected=${JSON.stringify(this.#selectedMatterAreaIds)}`,
+      `VacuumServiceArea selectAreas status=${response.status} selected=${JSON.stringify(this.#selectedMatterAreaIds)} fromState=${JSON.stringify(selectedAreasFromState)} fromRequest=${JSON.stringify(selectedAreasFromRequest)}`,
     );
 
     return response;
@@ -223,9 +232,12 @@ export class VacuumServiceAreaServerBase extends Base {
       return undefined;
     }
 
+    const selectedAreaIdsFromState = this.getNormalizedStateSelectedAreaIds().filter(
+      (areaId) => this.#actionValuesByAreaId.has(areaId),
+    );
     const selectedAreaIds =
-      this.state.selectedAreas.length > 0
-        ? this.state.selectedAreas
+      selectedAreaIdsFromState.length > 0
+        ? selectedAreaIdsFromState
         : this.getSelectedMatterAreaIds();
 
     const selectedAreaValues = selectedAreaIds
@@ -250,7 +262,7 @@ export class VacuumServiceAreaServerBase extends Base {
       return skipResult;
     }
 
-    const remainingAreas = this.state.selectedAreas.filter(
+    const remainingAreas = this.getNormalizedStateSelectedAreaIds().filter(
       (areaId) => areaId !== request.skippedArea,
     );
 
@@ -266,6 +278,18 @@ export class VacuumServiceAreaServerBase extends Base {
       status: ServiceArea.SkipAreaStatus.Success,
       statusText: "",
     };
+  }
+
+  private getNormalizedStateSelectedAreaIds(): number[] {
+    const state = this.state as unknown as Partial<MutableServiceAreaState>;
+    const selectedAreas = Array.isArray(state.selectedAreas)
+      ? state.selectedAreas
+      : [];
+    return toUniqueAreaIds(
+      selectedAreas
+        .map((areaId) => toNumber(areaId))
+        .filter((areaId): areaId is number => areaId != null),
+    );
   }
 }
 

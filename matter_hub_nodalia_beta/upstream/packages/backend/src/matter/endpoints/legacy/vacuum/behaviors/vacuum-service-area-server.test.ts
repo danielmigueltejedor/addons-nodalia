@@ -5,6 +5,14 @@ import {
 } from "./vacuum-service-area-server.js";
 
 describe("normalizeSelectedAreaIds", () => {
+  it("should parse bigint area IDs", () => {
+    const ids = normalizeSelectedAreaIds({
+      newAreas: [{ areaId: 17n }, { id: 18n }],
+    });
+
+    expect(ids).toEqual([17, 18]);
+  });
+
   it("should parse area IDs from structured area arrays", () => {
     const ids = normalizeSelectedAreaIds({
       newAreas: [{ areaId: 10 }, { id: "11" }, { segment_id: 12 }],
