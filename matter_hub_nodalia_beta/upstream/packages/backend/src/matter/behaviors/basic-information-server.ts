@@ -137,8 +137,8 @@ export class BasicInformationServer extends Base {
         toVersionStringValue(attributes.sw_version),
         toVersionStringValue(attributes.software_version),
         toVersionStringValue(attributes.firmware_version),
-        toVersionStringValue(attributes.version),
-        toVersionStringValue(relatedState.state),
+        toFirmwareLikeVersionValue(attributes.version),
+        toFirmwareLikeVersionValue(relatedState.state),
       );
       if (fromVersionEntity != null) {
         return fromVersionEntity;
@@ -269,9 +269,9 @@ function resolveSoftwareVersionString(
       toVersionStringValue(attributes.sw_version),
       toVersionStringValue(attributes.software_version),
       toVersionStringValue(attributes.firmware_version),
-      toVersionStringValue(attributes.version),
       relatedSoftwareVersion,
       device?.sw_version,
+      toFirmwareLikeVersionValue(attributes.version),
     ),
   );
 }
@@ -308,6 +308,19 @@ function toVersionStringValue(value: unknown): string | undefined {
     return undefined;
   }
   if (/^(unknown|unavailable|none|null|on|off)$/i.test(normalized)) {
+    return undefined;
+  }
+  return normalized;
+}
+
+function toFirmwareLikeVersionValue(value: unknown): string | undefined {
+  const normalized = toVersionStringValue(value);
+  if (normalized == null) {
+    return undefined;
+  }
+  // Avoid generic integer-like values (e.g. "2026") that are often
+  // hardware revisions or placeholder versions.
+  if (!/[._-]/.test(normalized)) {
     return undefined;
   }
   return normalized;

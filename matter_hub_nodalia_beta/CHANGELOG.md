@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-beta.35
+- Fixed firmware string selection precedence to avoid generic numeric `version` values (e.g. `2026`) overriding real software version strings.
+- Firmware now prioritizes explicit software fields (`sw_version`, `software_version`, `firmware_version`, `update.installed_version/current_version`) and only uses generic `version` when it looks firmware-like (contains separators such as `.` / `_` / `-`).
+- Prevents Home ecosystems from showing hardware-like version values as firmware when a real firmware string is available.
+
 ## 0.1.0-beta.34
 - Added automatic firmware version resolution from Home Assistant companion entities on the same device (especially `update.*` entities using `installed_version/current_version`).
 - Bridged vacuum `softwareVersionString` now updates dynamically from Home Assistant metadata when no manual override is set.
