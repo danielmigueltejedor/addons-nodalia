@@ -1,5 +1,6 @@
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
+ARG BUILD_VERSION
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -10,6 +11,7 @@ WORKDIR /tmp/home-assistant-matter-hub
 COPY upstream/ ./
 COPY README.md ./README.md
 RUN [ -f LICENSE ] || printf "Apache-2.0\n" > LICENSE
+ENV APP_VERSION=${BUILD_VERSION}
 
 RUN pnpm install --frozen-lockfile \
   && pnpm --filter './packages/*' run build \

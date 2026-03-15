@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-beta.38
+- Fixed backend TypeScript build failure in `BridgeDataProvider` (`TS2540: Cannot assign to 'deviceIdentity' because it is a read-only property`) by applying identity updates via object merge instead of direct property assignment.
+
+## 0.1.0-beta.37
+- Fixed WebUI app version display in addon builds by wiring frontend `APP_VERSION` to Home Assistant `BUILD_VERSION`, so ingress UI now shows the actual addon version (e.g. `0.1.0-beta.x`) instead of `0.0.0-dev`.
+- Updated frontend branding icon to use the addon application icon in both header logo and browser favicon.
+
 ## 0.1.0-beta.36
 - Added automatic bridge root identity enrichment when a bridge exposes a single Home Assistant device: vendor, model, product label, serial number and firmware are now derived from that device metadata if not manually configured.
 - Root-node serial now avoids hashed fallback values (e.g. `17d73...`) when Home Assistant provides serial data from the device or companion entities.

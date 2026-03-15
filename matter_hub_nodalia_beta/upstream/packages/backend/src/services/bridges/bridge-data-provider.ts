@@ -76,10 +76,12 @@ export class BridgeDataProvider extends Service implements BridgeData {
     }
 
     const current = this.data.deviceIdentity ?? {};
-    this.data.deviceIdentity = {
-      ...next,
-      ...current,
-    };
+    Object.assign(this.data, {
+      deviceIdentity: {
+        ...next,
+        ...current,
+      },
+    });
   }
 
   /**
