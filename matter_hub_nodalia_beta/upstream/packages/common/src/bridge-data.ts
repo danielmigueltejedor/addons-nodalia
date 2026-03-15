@@ -11,6 +11,8 @@ export interface BridgeDeviceIdentityOverrides {
   readonly vendorName?: string;
   readonly productName?: string;
   readonly productLabel?: string;
+  readonly serialNumber?: string;
+  readonly softwareVersionString?: string;
 }
 
 export interface BridgeConfig {

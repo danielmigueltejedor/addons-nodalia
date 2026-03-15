@@ -43,6 +43,21 @@ export class BasicInformationServer extends Base {
       deviceIdentity,
       basicInformation.productLabel,
     );
+    const serialNumber = resolveSerialNumber(
+      device,
+      attributes,
+      deviceIdentity,
+      entity.entity_id,
+    );
+    const softwareVersionString = resolveSoftwareVersionString(
+      device,
+      attributes,
+      deviceIdentity,
+    );
+    const softwareVersion = resolveSoftwareVersionNumber(
+      basicInformation.softwareVersion,
+      softwareVersionString,
+    );
 
     applyPatchState(this.state, {
       vendorId: VendorId(basicInformation.vendorId),
@@ -50,18 +65,15 @@ export class BasicInformationServer extends Base {
       productName,
       productLabel,
       hardwareVersion: basicInformation.hardwareVersion,
-      softwareVersion: basicInformation.softwareVersion,
+      softwareVersion,
       hardwareVersionString: ellipse(64, device?.hw_version),
-      softwareVersionString: ellipse(64, device?.sw_version),
+      softwareVersionString,
       nodeLabel:
         ellipse(32, entity.state?.attributes?.friendly_name) ??
         ellipse(32, entity.entity_id),
       reachable:
         entity.state?.state != null && entity.state.state !== "unavailable",
-      // The device serial number is available in `device?.serial_number`, but
-      // we're keeping it as the entity ID for now to avoid breaking existing
-      // deployments.
-      serialNumber: hash(32, entity.entity_id),
+      serialNumber,
     });
   }
 }
@@ -152,6 +164,53 @@ function resolveProductLabel(
   );
 }
 
+function resolveSerialNumber(
+  device: HomeAssistantDeviceRegistry | undefined,
+  attributes: Record<string, unknown>,
+  identityOverrides: BridgeDeviceIdentityOverrides | undefined,
+  fallback: string,
+): string {
+  return (
+    ellipse(
+      32,
+      firstNonEmpty(
+        identityOverrides?.serialNumber,
+        toStringValue(attributes.serial_number),
+        toStringValue(attributes.serialNumber),
+        toStringValue(attributes.device_serial_number),
+        toStringValue(attributes.sn),
+        device?.serial_number,
+      ),
+    ) ?? hash(32, fallback)
+  );
+}
+
+function resolveSoftwareVersionString(
+  device: HomeAssistantDeviceRegistry | undefined,
+  attributes: Record<string, unknown>,
+  identityOverrides: BridgeDeviceIdentityOverrides | undefined,
+): string | undefined {
+  return ellipse(
+    64,
+    firstNonEmpty(
+      identityOverrides?.softwareVersionString,
+      toStringValue(attributes.sw_version),
+      toStringValue(attributes.software_version),
+      toStringValue(attributes.firmware_version),
+      toStringValue(attributes.version),
+      device?.sw_version,
+    ),
+  );
+}
+
+function resolveSoftwareVersionNumber(
+  fallback: number,
+  softwareVersionString: string | undefined,
+): number {
+  const parsed = parseVersionStringAsNumber(softwareVersionString);
+  return parsed ?? fallback;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   if (value == null || typeof value !== "object") {
     return {};
@@ -229,4 +288,21 @@ function hash(maxLength: number, value?: string): string {
     .digest("hex")
     .substring(0, hashLength);
   return trimToLength(value, maxLength, suffix) ?? suffix;
+}
+
+function parseVersionStringAsNumber(
+  softwareVersion: string | undefined,
+): number | undefined {
+  if (softwareVersion == null) {
+    return undefined;
+  }
+  const digits = softwareVersion.replace(/[^0-9]/g, "");
+  if (digits.length === 0) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(digits, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 0xffffffff) {
+    return undefined;
+  }
+  return parsed;
 }

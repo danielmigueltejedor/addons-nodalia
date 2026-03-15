@@ -65,7 +65,7 @@ const featureFlagSchema: JSONSchema7 = {
 const deviceIdentitySchema: JSONSchema7 = {
   title: "Identidad del dispositivo bridged",
   description:
-    "Opcional: sobrescribe fabricante/modelo visibles en ecosistemas Matter (útil cuando Home Assistant no aporta metadatos del dispositivo).",
+    "Opcional: sobrescribe metadatos visibles en ecosistemas Matter (fabricante/modelo/serie/firmware) cuando Home Assistant no aporta valores correctos.",
   type: "object",
   properties: {
     vendorName: {
@@ -82,6 +82,19 @@ const deviceIdentitySchema: JSONSchema7 = {
     },
     productLabel: {
       title: "Etiqueta de producto",
+      type: "string",
+      minLength: 1,
+      maxLength: 64,
+    },
+    serialNumber: {
+      title: "Número de serie",
+      type: "string",
+      minLength: 1,
+      maxLength: 32,
+    },
+    softwareVersionString: {
+      title: "Firmware (texto)",
+      description: "Ejemplo: 02.07.14",
       type: "string",
       minLength: 1,
       maxLength: 64,

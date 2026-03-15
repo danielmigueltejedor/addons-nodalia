@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0-beta.33
+- Added editable bridged identity fields for serial number and firmware string in bridge configuration (`deviceIdentity.serialNumber`, `deviceIdentity.softwareVersionString`).
+- Updated bridge configuration schema/UI to expose:
+  - Número de serie
+  - Firmware (texto)
+- Bridged device `BasicInformation` now resolves serial/firmware from:
+  1) explicit bridge identity overrides,
+  2) Home Assistant attributes/registry metadata,
+  3) safe fallback values.
+- Root bridge `BasicInformation` now also honors serial/firmware identity overrides, including derived numeric `softwareVersion` from firmware text when possible.
+
 ## 0.1.0-beta.32
 - Fixed robotic vacuum operational-state “stuck in CleaningMop” behavior after returning to normal cleaning.
 - `RvcOperationalState` resolution now prioritizes hints from the main vacuum entity first, and only uses companion entities (`sensor`/`binary_sensor`/`select`/`text`) as fallback when the main entity provides no clear operational match.

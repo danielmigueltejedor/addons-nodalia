@@ -57,6 +57,12 @@ const bridgeConfigUiSchema: UiSchema = {
     productLabel: {
       "ui:placeholder": "Ej. Aspirador principal",
     },
+    serialNumber: {
+      "ui:placeholder": "Ej. R77MBD44501217",
+    },
+    softwareVersionString: {
+      "ui:placeholder": "Ej. 02.07.14",
+    },
   },
   "ui:submitButtonOptions": {
     norender: true,
