@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+- Stable release bump to avoid downgrade from previously published `0.1.1`.
+- Keeps the full upstream feature set synced from Nodalia beta line for stable channel.
+
 ## 0.1.0
 - First stable release of the Nodalia Matter Hub branch based on the beta line.
 - Includes vacuum `ServiceArea` selective room cleaning support for Apple Home.

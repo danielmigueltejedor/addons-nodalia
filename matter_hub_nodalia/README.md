@@ -9,7 +9,7 @@ Home Assistant app to bridge entities to Matter ecosystems.
 - This is a Nodalia packaging of Matter Hub.
 - The image bundles the local `upstream/` source tree during build.
 
-## Highlights in Stable 0.1.0
+## Highlights in Stable 0.1.2
 
 - Robotic vacuum room cleaning through Matter `ServiceArea` (Apple Home compatible).
 - Improved Roborock operational state mapping for washing/emptying/drying-related flows.
