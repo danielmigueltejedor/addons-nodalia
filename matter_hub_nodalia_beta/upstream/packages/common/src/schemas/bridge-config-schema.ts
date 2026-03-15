@@ -94,7 +94,8 @@ const deviceIdentitySchema: JSONSchema7 = {
     },
     softwareVersionString: {
       title: "Firmware (texto)",
-      description: "Ejemplo: 02.07.14",
+      description:
+        "Opcional. Déjalo vacío para usar automáticamente la versión detectada en Home Assistant (ej: 02.07.14).",
       type: "string",
       minLength: 1,
       maxLength: 64,

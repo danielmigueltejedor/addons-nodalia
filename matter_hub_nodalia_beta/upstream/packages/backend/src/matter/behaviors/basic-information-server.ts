@@ -6,6 +6,7 @@ import type {
 } from "@home-assistant-matter-hub/common";
 import { VendorId } from "@matter/main";
 import { BridgedDeviceBasicInformationServer as Base } from "@matter/main/behaviors";
+import { HomeAssistantRegistry } from "../../services/home-assistant/home-assistant-registry.js";
 import { BridgeDataProvider } from "../../services/bridges/bridge-data-provider.js";
 import { applyPatchState } from "../../utils/apply-patch-state.js";
 import { trimToLength } from "../../utils/trim-to-length.js";
@@ -53,6 +54,7 @@ export class BasicInformationServer extends Base {
       device,
       attributes,
       deviceIdentity,
+      this.resolveRelatedSoftwareVersionString(entity),
     );
     const softwareVersion = resolveSoftwareVersionNumber(
       basicInformation.softwareVersion,
@@ -75,6 +77,75 @@ export class BasicInformationServer extends Base {
         entity.state?.state != null && entity.state.state !== "unavailable",
       serialNumber,
     });
+  }
+
+  private resolveRelatedSoftwareVersionString(
+    entity: HomeAssistantEntityInformation,
+  ): string | undefined {
+    const deviceId = entity.deviceRegistry?.id ?? entity.registry?.device_id;
+    if (deviceId == null) {
+      return undefined;
+    }
+
+    let registry: HomeAssistantRegistry;
+    try {
+      registry = this.env.get(HomeAssistantRegistry);
+    } catch {
+      return undefined;
+    }
+
+    for (const relatedEntity of Object.values(registry.entities)) {
+      if (
+        relatedEntity.device_id !== deviceId ||
+        relatedEntity.entity_id === entity.entity_id
+      ) {
+        continue;
+      }
+
+      const relatedState = registry.states[relatedEntity.entity_id];
+      if (relatedState == null) {
+        continue;
+      }
+
+      const attributes = asRecord(relatedState.attributes);
+      const [domain] = relatedEntity.entity_id.split(".");
+      const fromUpdateEntity =
+        domain === "update"
+          ? firstNonEmpty(
+              toVersionStringValue(attributes.installed_version),
+              toVersionStringValue(attributes.current_version),
+              toVersionStringValue(attributes.sw_version),
+              toVersionStringValue(attributes.software_version),
+              toVersionStringValue(attributes.firmware_version),
+            )
+          : undefined;
+
+      if (fromUpdateEntity != null) {
+        return fromUpdateEntity;
+      }
+
+      if (
+        !isLikelySoftwareVersionEntity(
+          relatedEntity.entity_id,
+          toStringValue(attributes.friendly_name),
+        )
+      ) {
+        continue;
+      }
+
+      const fromVersionEntity = firstNonEmpty(
+        toVersionStringValue(attributes.sw_version),
+        toVersionStringValue(attributes.software_version),
+        toVersionStringValue(attributes.firmware_version),
+        toVersionStringValue(attributes.version),
+        toVersionStringValue(relatedState.state),
+      );
+      if (fromVersionEntity != null) {
+        return fromVersionEntity;
+      }
+    }
+
+    return undefined;
   }
 }
 
@@ -189,15 +260,17 @@ function resolveSoftwareVersionString(
   device: HomeAssistantDeviceRegistry | undefined,
   attributes: Record<string, unknown>,
   identityOverrides: BridgeDeviceIdentityOverrides | undefined,
+  relatedSoftwareVersion: string | undefined,
 ): string | undefined {
   return ellipse(
     64,
     firstNonEmpty(
       identityOverrides?.softwareVersionString,
-      toStringValue(attributes.sw_version),
-      toStringValue(attributes.software_version),
-      toStringValue(attributes.firmware_version),
-      toStringValue(attributes.version),
+      toVersionStringValue(attributes.sw_version),
+      toVersionStringValue(attributes.software_version),
+      toVersionStringValue(attributes.firmware_version),
+      toVersionStringValue(attributes.version),
+      relatedSoftwareVersion,
       device?.sw_version,
     ),
   );
@@ -224,6 +297,20 @@ function toStringValue(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function toVersionStringValue(value: unknown): string | undefined {
+  const normalized = toStringValue(value);
+  if (normalized == null) {
+    return undefined;
+  }
+  if (!/[0-9]/.test(normalized)) {
+    return undefined;
+  }
+  if (/^(unknown|unavailable|none|null|on|off)$/i.test(normalized)) {
+    return undefined;
+  }
+  return normalized;
 }
 
 function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
@@ -260,6 +347,21 @@ function stripVendorPrefix(value: string | undefined, vendor: string): string | 
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isLikelySoftwareVersionEntity(
+  entityId: string,
+  friendlyName: string | undefined,
+): boolean {
+  const normalized = `${entityId} ${friendlyName ?? ""}`.toLowerCase();
+  return (
+    normalized.includes("firmware") ||
+    normalized.includes("software") ||
+    normalized.includes("version") ||
+    normalized.includes("versi") ||
+    normalized.includes("sw_version") ||
+    normalized.includes("fw_version")
+  );
 }
 
 function isLikelyOpaqueModelName(value: string): boolean {

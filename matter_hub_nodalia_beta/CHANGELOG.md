@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.34
+- Added automatic firmware version resolution from Home Assistant companion entities on the same device (especially `update.*` entities using `installed_version/current_version`).
+- Bridged vacuum `softwareVersionString` now updates dynamically from Home Assistant metadata when no manual override is set.
+- Manual firmware override remains optional (`deviceIdentity.softwareVersionString`) and still has highest priority when explicitly configured.
+- Clarified bridge config schema help text to explain that leaving firmware empty enables automatic Home Assistant version sync.
+
 ## 0.1.0-beta.33
 - Added editable bridged identity fields for serial number and firmware string in bridge configuration (`deviceIdentity.serialNumber`, `deviceIdentity.softwareVersionString`).
 - Updated bridge configuration schema/UI to expose:
