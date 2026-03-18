@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.0 - 2026-03-18
+### Changed
+- Bump Tailscale: 1.94.2 → 1.96.2
+- Add-on version: 3.0.1 → 3.1.0
 All notable changes to this app will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
